@@ -1,0 +1,23 @@
+/*
+ * CSS do content script PAIdegua.
+ *
+ * Atenção: na Fase 2 o sidebar e o FAB serão isolados em Shadow DOM,
+ * portanto estilos pesados ficarão injetados dentro do shadow root.
+ * Este arquivo reserva apenas variáveis globais e uma classe-âncora
+ * segura para evitar conflito com o PJe.
+ */
+
+:root {
+  --paidegua-accent: #4361ee;
+  --paidegua-bg-dark: #1a1a2e;
+  --paidegua-bg-light: #ffffff;
+  --paidegua-text-dark: #e6e6e6;
+  --paidegua-text-light: #1a1a2e;
+  --paidegua-radius: 12px;
+  --paidegua-font: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.paidegua-root {
+  all: initial;
+  font-family: var(--paidegua-font);
+}

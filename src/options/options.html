@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pAIdegua — Modelos de Minuta</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <header class="paidegua-options__header">
+      <span class="paidegua-options__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>pAIdegua — Modelos de Minuta</h1>
+        <p class="paidegua-options__subtitle">
+          Configure a pasta com seus modelos de minutas. A extensão usa esses
+          modelos como referência para gerar peças no estilo que você já adota,
+          preservando estrutura e linguagem.
+        </p>
+      </div>
+    </header>
+
+    <main class="paidegua-options__main">
+      <section class="paidegua-options__card">
+        <h2>Pasta de modelos</h2>
+        <p class="paidegua-options__hint">
+          Selecione a pasta raiz onde estão suas minutas-modelo. Subpastas
+          são lidas recursivamente — você pode organizar por categoria
+          (ex.: <em>procedente</em>, <em>improcedente</em>, <em>despachos</em>).
+          Formatos aceitos: .docx, .pdf, .txt, .md.
+        </p>
+
+        <div id="dir-status" class="paidegua-options__status">
+          Nenhuma pasta configurada.
+        </div>
+
+        <div class="paidegua-options__row">
+          <button id="btn-pick" type="button" class="paidegua-options__btn paidegua-options__btn--primary">
+            Configurar pasta…
+          </button>
+          <button id="btn-reindex" type="button" class="paidegua-options__btn" disabled>
+            Reindexar agora
+          </button>
+          <button id="btn-clear" type="button" class="paidegua-options__btn paidegua-options__btn--danger" disabled>
+            Remover configuração
+          </button>
+        </div>
+
+        <div id="progress-wrap" class="paidegua-options__progress" hidden>
+          <div class="paidegua-options__progress-bar">
+            <div id="progress-fill" class="paidegua-options__progress-fill"></div>
+          </div>
+          <p id="progress-text" class="paidegua-options__hint paidegua-options__hint--small"></p>
+        </div>
+      </section>
+
+      <section class="paidegua-options__card">
+        <h2>Modelos indexados</h2>
+        <p id="templates-summary" class="paidegua-options__hint">
+          Nenhum modelo indexado ainda.
+        </p>
+        <ul id="templates-list" class="paidegua-options__list"></ul>
+        <p id="skipped-summary" class="paidegua-options__hint paidegua-options__hint--small"></p>
+      </section>
+
+      <section class="paidegua-options__card paidegua-options__card--note">
+        <h2>Como funciona</h2>
+        <ul class="paidegua-options__doc">
+          <li>
+            Os arquivos ficam armazenados localmente no navegador (IndexedDB),
+            sem sair da sua estação.
+          </li>
+          <li>
+            Apenas o texto é indexado — sua pasta original não é modificada.
+          </li>
+          <li>
+            Você pode optar por gerar minutas <strong>com base nos modelos</strong>
+            ou <strong>do zero</strong> a cada uso, diretamente na barra lateral
+            do PJe.
+          </li>
+          <li>
+            Reindexar reprocessa toda a pasta — útil quando você adicionar,
+            editar ou remover modelos.
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

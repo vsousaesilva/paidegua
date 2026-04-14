@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pAIdegua &#8212; Configura&#231;&#245;es</title>
+    <style>
+      :root {
+        --primary: #1351B4;
+        --primary-dark: #0C326F;
+        --primary-light: #5992ED;
+        --yellow: #FFCD07;
+        --bg: #F6F8FC;
+        --bg-card: rgba(255,255,255,0.92);
+        --fg: #16243A;
+        --muted: #5B6B82;
+        --border: rgba(19,81,180,0.14);
+        --border-strong: rgba(19,81,180,0.26);
+        --danger: #c0392b;
+        --success: #1e7e34;
+        --radius: 12px;
+        --radius-sm: 9px;
+        --gradient: linear-gradient(135deg, #1351B4 0%, #0C326F 100%);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0; width: 780px;
+        background: radial-gradient(700px 320px at 100% 0%, rgba(89,146,237,0.18), transparent 60%),
+                    radial-gradient(500px 240px at 0% 100%, rgba(255,205,7,0.10), transparent 60%),
+                    var(--bg);
+        color: var(--fg);
+        font-family: "Inter","Rawline",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+        font-size: 13px;
+        -webkit-font-smoothing: antialiased;
+      }
+      button { border: 0; cursor: pointer; font-family: inherit; }
+
+      .paidegua-popup__header {
+        padding: 16px 20px 12px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(244,247,252,0.55));
+        backdrop-filter: saturate(180%) blur(12px);
+        -webkit-backdrop-filter: saturate(180%) blur(12px);
+        display: flex; align-items: center; gap: 12px;
+      }
+      .paidegua-popup__logo {
+        width: 38px; height: 38px; border-radius: 11px;
+        background: linear-gradient(135deg, #1351B4 0%, #0C326F 100%);
+        box-shadow: 0 8px 22px rgba(19,81,180,0.32), inset 0 1px 0 rgba(255,255,255,0.25);
+        flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff;
+      }
+      .paidegua-popup__logo svg { display: block; }
+      .paidegua-popup__header > div { flex: 1; min-width: 0; }
+      .paidegua-popup__header h1 {
+        margin: 0; font-size: 19px; color: var(--primary-dark);
+        letter-spacing: -0.3px; font-weight: 700; line-height: 1;
+      }
+      .paidegua-popup__subtitle {
+        margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.3;
+      }
+
+      .paidegua-popup__main {
+        padding: 14px 18px 6px; max-height: 600px; overflow-y: auto;
+        scrollbar-width: thin; scrollbar-color: rgba(19,81,180,0.25) transparent;
+      }
+      .paidegua-popup__main::-webkit-scrollbar { width: 8px; }
+      .paidegua-popup__main::-webkit-scrollbar-thumb {
+        background: rgba(19,81,180,0.22); border-radius: 8px;
+      }
+
+      .paidegua-popup__grid {
+        display: flex; gap: 16px; align-items: flex-start;
+      }
+      .paidegua-popup__col {
+        flex: 1; min-width: 0; display: flex; flex-direction: column;
+      }
+
+      .paidegua-popup__section {
+        margin-bottom: 14px; padding: 12px 14px;
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--radius); box-shadow: 0 2px 8px rgba(12,50,111,0.04);
+      }
+      .paidegua-popup__section h2 {
+        margin: 0 0 6px; font-size: 10.5px; font-weight: 700;
+        text-transform: uppercase; color: var(--primary); letter-spacing: 0.8px;
+      }
+
+      .paidegua-popup__lgpd-text {
+        margin: 0 0 10px; line-height: 1.5; font-size: 11px; color: var(--muted);
+        background: rgba(255,205,7,0.10); border: 1px solid rgba(255,205,7,0.35);
+        padding: 10px 12px; border-radius: var(--radius-sm);
+      }
+      .paidegua-popup__checkbox {
+        display: flex; align-items: flex-start; gap: 9px;
+        font-size: 12px; cursor: pointer; line-height: 1.4; color: var(--fg);
+      }
+      .paidegua-popup__checkbox input { margin-top: 2px; accent-color: var(--primary); }
+
+      .paidegua-popup__input {
+        width: 100%; background: rgba(255,255,255,0.95); color: var(--fg);
+        border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none;
+        box-sizing: border-box;
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+      .paidegua-popup__input:focus {
+        border-color: var(--primary); box-shadow: 0 0 0 4px rgba(19,81,180,0.14);
+      }
+
+      .paidegua-popup__row { display: flex; gap: 7px; margin-top: 7px; }
+      .paidegua-popup__row--buttons { flex-wrap: wrap; }
+
+      .paidegua-popup__btn {
+        flex: 1; background: rgba(255,255,255,0.85); color: var(--primary-dark);
+        border: 1px solid var(--border-strong); padding: 9px 11px;
+        border-radius: var(--radius-sm); font-size: 12px; font-weight: 600;
+        transition: all 180ms ease;
+      }
+      .paidegua-popup__btn:hover:not(:disabled) {
+        background: rgba(19,81,180,0.10); transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(19,81,180,0.12);
+      }
+      .paidegua-popup__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .paidegua-popup__btn--primary {
+        background: var(--gradient); color: #fff; border-color: transparent;
+        box-shadow: 0 6px 18px rgba(19,81,180,0.26);
+      }
+      .paidegua-popup__btn--primary:hover:not(:disabled) {
+        background: linear-gradient(135deg, #0C326F 0%, #1351B4 100%);
+        box-shadow: 0 10px 24px rgba(19,81,180,0.34);
+      }
+      .paidegua-popup__btn--danger { color: var(--danger); border-color: rgba(192,57,43,0.32); }
+      .paidegua-popup__btn--danger:hover:not(:disabled) { background: rgba(192,57,43,0.10); }
+
+      .paidegua-popup__hint {
+        margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45;
+      }
+      .paidegua-popup__hint--small { font-size: 10.5px; margin-top: 8px; font-style: italic; }
+      .paidegua-popup__hint.is-ok { color: var(--success); }
+      .paidegua-popup__hint.is-error { color: var(--danger); }
+
+      .paidegua-popup__status { margin: 8px 0 0; color: var(--muted); font-size: 11px; min-height: 14px; }
+      .paidegua-popup__status.is-ok { color: var(--success); }
+      .paidegua-popup__status.is-error { color: var(--danger); }
+      .paidegua-popup__status.is-info { color: var(--primary); }
+
+      .paidegua-popup__details { border-radius: var(--radius-sm); }
+      .paidegua-popup__details summary {
+        cursor: pointer; list-style: none; padding: 4px 0;
+        font-size: 11.5px; font-weight: 600; color: var(--primary-dark);
+        display: flex; align-items: center; gap: 8px; user-select: none;
+      }
+      .paidegua-popup__details summary::-webkit-details-marker { display: none; }
+      .paidegua-popup__details summary::before {
+        content: ""; width: 14px; height: 14px;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231351B4' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 18 15 12 9 6'/></svg>");
+        background-size: contain; background-repeat: no-repeat;
+        transition: transform 200ms ease;
+      }
+      .paidegua-popup__details[open] summary::before { transform: rotate(90deg); }
+
+      .paidegua-popup__terms, .paidegua-popup__credits {
+        margin-top: 8px; padding: 12px;
+        background: rgba(244,247,252,0.85); border: 1px solid var(--border);
+        border-radius: var(--radius-sm); font-size: 11px; line-height: 1.5;
+        color: var(--fg); max-height: 280px; overflow-y: auto;
+      }
+      .paidegua-popup__terms h3 { margin: 0 0 8px; font-size: 12px; color: var(--primary-dark); }
+      .paidegua-popup__terms h4 { margin: 12px 0 4px; font-size: 11px; color: var(--primary); font-weight: 700; }
+      .paidegua-popup__terms p, .paidegua-popup__credits p { margin: 4px 0; }
+      .paidegua-popup__terms ul { margin: 4px 0 4px 16px; padding: 0; }
+      .paidegua-popup__terms li { margin: 3px 0; }
+      .paidegua-popup__credits a { color: var(--primary); text-decoration: none; font-weight: 600; }
+      .paidegua-popup__credits a:hover { text-decoration: underline; }
+
+      .paidegua-popup__footer {
+        padding: 10px 18px 14px; border-top: 1px solid var(--border);
+        color: var(--muted); text-align: center;
+        background: linear-gradient(0deg, rgba(244,247,252,0.6), transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="paidegua-popup__header">
+      <span class="paidegua-popup__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>pAIdegua</h1>
+        <p class="paidegua-popup__subtitle">Assistente com IA para o PJe &#8212; JFCE</p>
+      </div>
+    </header>
+
+    <main class="paidegua-popup__main">
+      <div class="paidegua-popup__grid">
+        <div class="paidegua-popup__col">
+          <section class="paidegua-popup__section" id="lgpd-section">
+            <h2>Aviso de Privacidade (LGPD)</h2>
+            <p class="paidegua-popup__lgpd-text">
+              Esta extens&#227;o envia o conte&#250;do dos documentos selecionados para a API do
+              provedor de IA escolhido (Anthropic, OpenAI ou Google Gemini). Essas APIs
+              s&#227;o servi&#231;os externos, hospedados fora da infraestrutura da Justi&#231;a Federal.
+              O servidor &#233; respons&#225;vel por confirmar a pol&#237;tica de privacidade do
+              provedor e a adequa&#231;&#227;o do uso conforme a LGPD e as normas do CNJ
+              antes de enviar dados sens&#237;veis dos autos.
+            </p>
+            <label class="paidegua-popup__checkbox">
+              <input type="checkbox" id="lgpd-accept" />
+              <span>Li e estou ciente das condi&#231;&#245;es acima.</span>
+            </label>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <h2>Provedor e modelo</h2>
+            <div class="paidegua-popup__row">
+              <div style="flex:1;min-width:0">
+                <label class="paidegua-popup__hint" for="provider-select" style="margin:0 0 4px;display:block">Provedor</label>
+                <select id="provider-select" class="paidegua-popup__input"></select>
+              </div>
+              <div style="flex:1;min-width:0">
+                <label class="paidegua-popup__hint" for="model-select" style="margin:0 0 4px;display:block">Modelo</label>
+                <select id="model-select" class="paidegua-popup__input"></select>
+              </div>
+            </div>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <h2>Chave de API</h2>
+            <p class="paidegua-popup__hint" id="key-status">Verificando...</p>
+            <div class="paidegua-popup__row">
+              <input
+                type="password"
+                id="api-key-input"
+                class="paidegua-popup__input"
+                placeholder="cole a chave do provedor selecionado"
+                autocomplete="off"
+              />
+            </div>
+            <div class="paidegua-popup__row paidegua-popup__row--buttons">
+              <button type="button" id="save-key-btn" class="paidegua-popup__btn paidegua-popup__btn--primary">Salvar</button>
+              <button type="button" id="test-key-btn" class="paidegua-popup__btn">Testar</button>
+              <button type="button" id="remove-key-btn" class="paidegua-popup__btn paidegua-popup__btn--danger">Remover</button>
+            </div>
+            <p class="paidegua-popup__hint paidegua-popup__hint--small">
+              A chave fica salva apenas neste navegador, com prote&#231;&#227;o b&#225;sica.
+              Por seguran&#231;a, use somente em esta&#231;&#245;es de trabalho da Justi&#231;a Federal.
+            </p>
+            <p id="popup-status" class="paidegua-popup__status"></p>
+          </section>
+        </div>
+
+        <div class="paidegua-popup__col">
+          <section class="paidegua-popup__section">
+            <h2>OCR de digitalizados</h2>
+            <label class="paidegua-popup__checkbox">
+              <input type="checkbox" id="ocr-auto-run" />
+              <span>Rodar OCR automaticamente ap&#243;s extrair documentos digitalizados.</span>
+            </label>
+            <div class="paidegua-popup__row">
+              <label for="ocr-max-pages" style="font-size:12px;color:#5B6B82;">
+                M&#225;ximo de p&#225;ginas por documento:
+              </label>
+              <input
+                type="number"
+                id="ocr-max-pages"
+                class="paidegua-popup__input"
+                min="1"
+                max="200"
+                step="1"
+              />
+            </div>
+            <p class="paidegua-popup__hint paidegua-popup__hint--small">
+              O OCR roda localmente, sem enviar p&#225;ginas ao provedor de IA.
+              Documentos muito longos podem deixar o navegador lento, por isso
+              p&#225;ginas acima do limite s&#227;o ignoradas.
+            </p>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <h2>Modelos de minuta</h2>
+            <p class="paidegua-popup__hint">
+              Configure uma pasta com seus modelos para que a IA possa redigir
+              minutas no estilo que voc&#234; j&#225; adota. O uso &#233; opcional &#8212; voc&#234;
+              decide a cada minuta se quer usar um modelo similar ou gerar do zero.
+            </p>
+            <div class="paidegua-popup__row paidegua-popup__row--buttons">
+              <button type="button" id="open-options-btn" class="paidegua-popup__btn">
+                Gerenciar modelos
+              </button>
+            </div>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <details class="paidegua-popup__details">
+              <summary>Termos de uso e Governan&#231;a (Res. CNJ 615/2025)</summary>
+              <div class="paidegua-popup__terms">
+                <h3>Governan&#231;a, &#201;tica e Conformidade Normativa</h3>
+                <p>
+                  O Gerador de Minutas pAIdegua foi desenvolvido com estrita observ&#226;ncia
+                  &#224;s diretrizes de &#233;tica, transpar&#234;ncia e governan&#231;a estabelecidas pela
+                  Resolu&#231;&#227;o n&#186; 615, de 11 de mar&#231;o de 2025, do Conselho Nacional de
+                  Justi&#231;a (CNJ), que regulamenta o uso de Intelig&#234;ncia Artificial no
+                  Poder Judici&#225;rio.
+                </p>
+                <h4>1. Classifica&#231;&#227;o e Natureza da Ferramenta</h4>
+                <p>
+                  A aplica&#231;&#227;o enquadra-se como ferramenta de Baixo Risco, destinada &#224;
+                  &#8220;produ&#231;&#227;o de textos de apoio para facilitar a confec&#231;&#227;o de atos
+                  judiciais&#8221; (Anexo, Item BR4) e &#8220;anonimiza&#231;&#227;o de documentos&#8221; (Item BR8).
+                  Trata-se de um sistema de suporte, sem qualquer autonomia decis&#243;ria.
+                </p>
+                <h4>2. Supervis&#227;o Humana Obrigat&#243;ria (Art. 19, IV e Art. 34)</h4>
+                <p>
+                  Em conformidade com o princ&#237;pio da &#8220;IA como suporte&#8221;, todas as minutas
+                  geradas devem obrigatoriamente passar por revis&#227;o, edi&#231;&#227;o e valida&#231;&#227;o
+                  por um magistrado ou servidor autorizado. A decis&#227;o final sobre o
+                  conte&#250;do jur&#237;dico e o m&#233;rito das causas &#233; exclusivamente humana.
+                </p>
+                <h4>3. Privacidade e Prote&#231;&#227;o de Dados (Art. 30)</h4>
+                <p>O sistema prioriza a seguran&#231;a das informa&#231;&#245;es atrav&#233;s de:</p>
+                <ul>
+                  <li>
+                    <strong>M&#243;dulo de Anonimiza&#231;&#227;o:</strong> Processamento pr&#233;vio de
+                    textos para oculta&#231;&#227;o de dados sens&#237;veis (CPFs, RGs e dados
+                    banc&#225;rios) antes do envio aos modelos de linguagem.
+                  </li>
+                  <li>
+                    <strong>Restri&#231;&#227;o de Treinamento:</strong> Conforme o Art. 19, II, a
+                    aplica&#231;&#227;o &#233; configurada para uso exclusivo de chaves API vinculadas
+                    a planos Enterprise ou Business, garantindo contratualmente que os
+                    dados trafegados n&#227;o sejam utilizados para treinamento de modelos
+                    comerciais de terceiros.
+                  </li>
+                </ul>
+                <h4>4. Rastreabilidade e Auditoria (Art. 19, &#167;6&#186; e Art. 27) <em>(em desenvolvimento)</em></h4>
+                <p>
+                  <strong>Aviso:</strong> esta funcionalidade ainda n&#227;o est&#225; dispon&#237;vel
+                  na vers&#227;o atual da extens&#227;o. A arquitetura prevista contempla o
+                  registro autom&#225;tico (logs) das intera&#231;&#245;es de gera&#231;&#227;o, com:
+                </p>
+                <ul>
+                  <li>Identifica&#231;&#227;o do usu&#225;rio e unidade organizacional (tenant);</li>
+                  <li>Tipo de ato judicial gerado;</li>
+                  <li>Provedores e modelos de IA utilizados;</li>
+                  <li>Data e hora da opera&#231;&#227;o.</li>
+                </ul>
+                <p>
+                  A implementa&#231;&#227;o depende de infraestrutura de back-end institucional
+                  (autentica&#231;&#227;o corporativa e banco com controle de acesso por linha),
+                  de modo que cada unidade visualize apenas sua pr&#243;pria trilha de
+                  auditoria. At&#233; a libera&#231;&#227;o do recurso, n&#227;o h&#225; registro persistente
+                  das gera&#231;&#245;es fora do navegador local do usu&#225;rio.
+                </p>
+                <h4>5. Identifica&#231;&#227;o de Conte&#250;do (Art. 21)</h4>
+                <p>
+                  O sistema adota a pr&#225;tica de transpar&#234;ncia informativa. Todo documento
+                  gerado com o aux&#237;lio desta ferramenta cont&#233;m a indica&#231;&#227;o de que foi
+                  produzido com o apoio de intelig&#234;ncia artificial generativa sob
+                  supervis&#227;o humana.
+                </p>
+              </div>
+            </details>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <details class="paidegua-popup__details">
+              <summary>Cr&#233;ditos</summary>
+              <div class="paidegua-popup__credits">
+                <p>
+                  Feito pela equipe do Laborat&#243;rio de Inova&#231;&#227;o da Justi&#231;a Federal do
+                  Cear&#225; &#8212; Inovajus.
+                </p>
+                <p>
+                  Colabora&#231;&#227;o do Dr. George Marmelstein Lima, com o prompt FIRAC+ na
+                  etapa de resumo do processo.
+                </p>
+                <p>Vers&#227;o 1.0.0</p>
+                <p>Contato: <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
+              </div>
+            </details>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="paidegua-popup__footer">
+      <small>v1.0.0 - Inovajus / JFCE</small>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

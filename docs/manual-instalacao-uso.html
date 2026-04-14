@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>pAIdegua — Manual de Instalação e Uso · Inovajus / JFCE</title>
+<meta name="description" content="Manual oficial de instalação e uso da extensão pAIdegua — assistente com IA integrado ao PJe, desenvolvido pelo Inovajus / Justiça Federal no Ceará." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --ink:           #10182B;
+    --ink-soft:      #2A3550;
+    --muted:         #6B7490;
+    --paper:         #F5EFE2;
+    --paper-warm:    #EFE6D2;
+    --paper-card:    #FBF7EC;
+    --rule:          #D9CEB7;
+    --rule-soft:     #E8DFCA;
+    --primary:       #0C326F;
+    --primary-2:     #1351B4;
+    --primary-tint:  rgba(19,81,180,.08);
+    --yellow:        #FFCD07;
+    --yellow-soft:   #FFE57A;
+    --danger:        #8E2A1F;
+    --success:       #1E5E3A;
+    --shadow-sm:     0 1px 2px rgba(12,50,111,.06), 0 2px 6px rgba(12,50,111,.05);
+    --shadow-md:     0 8px 24px rgba(12,50,111,.10), 0 2px 6px rgba(12,50,111,.06);
+    --maxw:          1240px;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:84px}
+  body{
+    margin:0;
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size:16.5px;
+    line-height:1.65;
+    color:var(--ink);
+    background:var(--paper);
+    background-image:
+      radial-gradient(1200px 500px at 85% -5%, rgba(19,81,180,.07), transparent 60%),
+      radial-gradient(900px 420px at -10% 110%, rgba(255,205,7,.10), transparent 60%);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    font-feature-settings:"ss01","cv11";
+  }
+
+  body::before{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.06  0 0 0 0 0.08  0 0 0 0 0.16  0 0 0 0.045 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity:.55;
+    mix-blend-mode:multiply;
+  }
+
+  a{color:var(--primary-2); text-decoration:none; border-bottom:1px solid rgba(19,81,180,.25); transition:all .2s}
+  a:hover{color:var(--primary); border-bottom-color:var(--primary)}
+
+  /* ————— TOPO / CABEÇALHO ————— */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    backdrop-filter:saturate(160%) blur(14px);
+    -webkit-backdrop-filter:saturate(160%) blur(14px);
+    background:rgba(245,239,226,.82);
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar__inner{
+    max-width:var(--maxw); margin:0 auto;
+    display:flex; align-items:center; gap:18px;
+    padding:14px 32px;
+  }
+  .brand{display:flex; align-items:center; gap:12px; text-decoration:none; border:0}
+  .brand__logo{
+    width:38px; height:38px; border-radius:11px;
+    background:linear-gradient(135deg,#1351B4 0%, #0C326F 100%);
+    display:grid; place-items:center;
+    box-shadow:0 8px 22px rgba(12,50,111,.26), inset 0 1px 0 rgba(255,255,255,.22);
+    color:#fff;
+  }
+  .brand__name{
+    font-family:"Fraunces", serif;
+    font-weight:700; font-size:22px; letter-spacing:-.02em;
+    color:var(--primary);
+    font-variation-settings:"SOFT" 40, "opsz" 20;
+  }
+  .brand__tag{
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; margin-top:-2px;
+  }
+  .topbar__nav{margin-left:auto; display:flex; gap:22px}
+  .topbar__nav a{
+    font-size:13px; font-weight:500; color:var(--ink-soft);
+    border:0; text-transform:uppercase; letter-spacing:.08em;
+  }
+  .topbar__nav a:hover{color:var(--primary)}
+
+  /* ————— HERO ————— */
+  .hero{
+    max-width:var(--maxw); margin:0 auto;
+    padding:72px 32px 56px;
+    display:grid; grid-template-columns:1.25fr .9fr; gap:64px; align-items:end;
+    position:relative; z-index:1;
+  }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:10px;
+    font-size:11.5px; font-weight:600;
+    letter-spacing:.22em; text-transform:uppercase;
+    color:var(--primary);
+  }
+  .eyebrow::before{
+    content:""; width:28px; height:1px; background:var(--primary);
+    display:inline-block;
+  }
+  .hero h1{
+    font-family:"Fraunces", serif;
+    font-variation-settings:"SOFT" 30, "opsz" 144;
+    font-weight:400;
+    font-size:clamp(48px, 7.2vw, 104px);
+    line-height:.96; letter-spacing:-.03em;
+    margin:18px 0 20px;
+    color:var(--ink);
+  }
+  .hero h1 em{
+    font-style:italic; font-weight:300;
+    color:var(--primary);
+    font-variation-settings:"SOFT" 90, "opsz" 144;
+  }
+  .hero__lede{
+    font-size:19px; line-height:1.55;
+    color:var(--ink-soft);
+    max-width:540px;
+    font-weight:400;
+  }
+  .hero__meta{
+    border-left:2px solid var(--yellow);
+    padding:4px 0 4px 20px;
+    display:flex; flex-direction:column; gap:12px;
+    font-size:13px; color:var(--muted);
+  }
+  .hero__meta dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 22px}
+  .hero__meta dt{
+    font-weight:600; text-transform:uppercase; letter-spacing:.12em;
+    font-size:10.5px; color:var(--primary); padding-top:3px;
+  }
+  .hero__meta dd{margin:0; color:var(--ink-soft); font-size:13.5px}
+
+  /* ————— LAYOUT DO MIOLO ————— */
+  .layout{
+    max-width:var(--maxw); margin:0 auto;
+    padding:32px 32px 120px;
+    display:grid; grid-template-columns:250px minmax(0, 1fr); gap:72px;
+    position:relative; z-index:1;
+  }
+
+  /* TOC */
+  .toc{
+    position:sticky; top:88px; align-self:start;
+    font-size:13.5px; line-height:1.45;
+    padding-right:12px;
+    max-height:calc(100vh - 100px);
+    overflow:auto;
+  }
+  .toc h4{
+    font-family:"IBM Plex Sans", sans-serif;
+    font-size:10.5px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--primary); margin:0 0 14px; font-weight:600;
+  }
+  .toc ol{list-style:none; margin:0; padding:0; counter-reset:toc}
+  .toc li{counter-increment:toc; margin:0}
+  .toc a{
+    display:flex; gap:10px; align-items:baseline;
+    padding:7px 8px 7px 0;
+    color:var(--ink-soft); border:0;
+    border-left:2px solid transparent;
+    padding-left:12px;
+    transition:all .2s;
+  }
+  .toc a::before{
+    content:counter(toc, decimal-leading-zero);
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px; color:var(--muted); padding-top:2px;
+    flex-shrink:0;
+  }
+  .toc a:hover{color:var(--primary); border-left-color:var(--yellow)}
+  .toc a.is-active{color:var(--primary); border-left-color:var(--primary); font-weight:500}
+
+  /* Conteúdo */
+  main{min-width:0}
+
+  section + section{margin-top:88px}
+  section[id]{scroll-margin-top:96px}
+
+  .section-head{
+    display:flex; gap:24px; align-items:flex-start;
+    padding-bottom:20px; margin-bottom:36px;
+    border-bottom:1px solid var(--rule);
+  }
+  .section-num{
+    font-family:"Fraunces", serif;
+    font-variation-settings:"SOFT" 100, "opsz" 144;
+    font-style:italic; font-weight:300;
+    font-size:64px; line-height:.8;
+    color:var(--yellow); flex-shrink:0;
+    margin-top:8px;
+    text-shadow:2px 2px 0 var(--primary);
+  }
+  .section-head h2{
+    font-family:"Fraunces", serif;
+    font-variation-settings:"SOFT" 30, "opsz" 72;
+    font-weight:500; font-size:clamp(32px, 4vw, 44px);
+    line-height:1.05; letter-spacing:-.02em;
+    margin:0 0 6px; color:var(--ink);
+  }
+  .section-head p{
+    margin:0; color:var(--muted); font-size:14.5px;
+    text-transform:uppercase; letter-spacing:.14em; font-weight:500;
+  }
+
+  h3{
+    font-family:"Fraunces", serif;
+    font-variation-settings:"SOFT" 40, "opsz" 36;
+    font-weight:600; font-size:24px; line-height:1.2;
+    letter-spacing:-.01em;
+    margin:48px 0 12px; color:var(--ink);
+  }
+  h3 .marker{
+    display:inline-block;
+    width:10px; height:10px; border-radius:2px;
+    background:var(--primary); margin-right:12px;
+    transform:translateY(-3px);
+  }
+  h4{
+    font-family:"IBM Plex Sans", sans-serif;
+    font-size:13px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--primary); margin:28px 0 10px; font-weight:600;
+  }
+
+  p{margin:0 0 16px; max-width:68ch}
+
+  ol, ul{max-width:68ch; padding-left:22px}
+  ul li{margin:8px 0; padding-left:6px}
+  ol{list-style:none; counter-reset:step; padding-left:0}
+  ol > li{
+    counter-increment:step;
+    position:relative;
+    padding-left:46px;
+    margin:14px 0;
+    min-height:30px;
+  }
+  ol > li::before{
+    content:counter(step, decimal-leading-zero);
+    position:absolute;
+    left:0; top:2px;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:12px; font-weight:500;
+    color:var(--primary);
+    background:var(--paper-card);
+    border:1px solid var(--rule);
+    border-radius:999px;
+    width:30px; height:30px;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  kbd, code{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:.88em;
+    padding:2px 6px; border-radius:5px;
+    display:inline-block;
+    max-width:100%;
+    vertical-align:baseline;
+    line-height:1.3;
+    white-space:normal;
+    overflow-wrap:break-word;
+    word-break:normal;
+  }
+  kbd{
+    background:var(--paper-card);
+    border:1px solid var(--rule);
+    border-bottom-width:2px;
+    color:var(--ink);
+    box-shadow:0 1px 0 rgba(12,50,111,.04);
+  }
+  code{
+    background:rgba(19,81,180,.08);
+    color:var(--primary);
+  }
+  p, li{overflow-wrap:break-word; word-break:normal}
+
+  /* CALLOUTS */
+  .callout{
+    margin:28px 0;
+    padding:20px 22px 20px 56px;
+    border-radius:4px;
+    position:relative;
+    background:var(--paper-card);
+    border:1px solid var(--rule-soft);
+    border-left:4px solid var(--primary-2);
+    box-shadow:var(--shadow-sm);
+  }
+  .callout::before{
+    content:"";
+    position:absolute; left:20px; top:22px;
+    width:22px; height:22px;
+    background:var(--primary-2); color:#fff;
+    border-radius:50%;
+    display:grid; place-items:center;
+    font-family:"Fraunces",serif; font-style:italic; font-weight:600;
+    font-size:13px;
+  }
+  .callout--info::before{content:"i"}
+  .callout--warn{border-left-color:var(--danger); background:#FBEFEA}
+  .callout--warn::before{content:"!"; background:var(--danger)}
+  .callout--tip{border-left-color:var(--yellow); background:#FFF8DB}
+  .callout--tip::before{content:"★"; background:var(--primary); color:var(--yellow); font-size:11px}
+  .callout--lgpd{border-left-color:var(--primary); background:linear-gradient(180deg, #FFF8DB 0%, #FBF7EC 100%)}
+  .callout--lgpd::before{content:"§"; background:var(--primary); font-family:"Fraunces",serif; font-size:14px}
+  .callout h4{margin:0 0 6px; color:var(--primary)}
+  .callout p:last-child{margin-bottom:0}
+
+  /* Cards de funcionalidade */
+  .feat-grid{
+    display:grid; grid-template-columns:repeat(2, 1fr); gap:18px;
+    margin:24px 0;
+  }
+  .feat{
+    padding:22px 22px 20px;
+    background:var(--paper-card);
+    border:1px solid var(--rule-soft);
+    border-radius:4px;
+    transition:transform .25s ease, box-shadow .25s ease;
+    position:relative; overflow:hidden;
+  }
+  .feat::after{
+    content:""; position:absolute; inset:auto 0 0 0; height:2px;
+    background:linear-gradient(90deg, var(--primary) 0%, var(--yellow) 100%);
+    transform:scaleX(0); transform-origin:left; transition:transform .4s ease;
+  }
+  .feat:hover{transform:translateY(-2px); box-shadow:var(--shadow-md)}
+  .feat:hover::after{transform:scaleX(1)}
+  .feat__label{
+    display:inline-block; font-size:10.5px; font-weight:600;
+    letter-spacing:.18em; text-transform:uppercase;
+    color:var(--yellow);
+    background:var(--primary);
+    padding:3px 8px; border-radius:3px;
+    margin-bottom:10px;
+  }
+  .feat h4{
+    font-family:"Fraunces", serif;
+    font-variation-settings:"SOFT" 40, "opsz" 28;
+    font-size:19px; font-weight:600; text-transform:none; letter-spacing:-.01em;
+    color:var(--ink); margin:0 0 8px;
+  }
+  .feat p{font-size:14.5px; color:var(--ink-soft); margin:0; line-height:1.55}
+
+  /* Árvore de pastas */
+  .tree{
+    margin:24px 0;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:13px; line-height:1.75;
+    background:#0C1833;
+    color:#E8DFCA;
+    padding:24px 28px;
+    border-radius:4px;
+    border:1px solid var(--primary);
+    box-shadow:var(--shadow-md);
+    overflow-x:auto;
+    position:relative;
+  }
+  .tree::before{
+    content:"~/ Modelos";
+    position:absolute; top:-1px; left:18px;
+    background:var(--yellow); color:var(--primary);
+    font-size:10.5px; font-weight:700; letter-spacing:.12em;
+    padding:4px 10px; border-radius:0 0 3px 3px;
+    font-family:"IBM Plex Sans", sans-serif; text-transform:uppercase;
+  }
+  .tree .dir{color:var(--yellow-soft); font-weight:500}
+  .tree .file{color:#B9D5FF}
+
+  /* FAQ / problemas */
+  .qa details{
+    border-top:1px solid var(--rule);
+    padding:18px 4px;
+  }
+  .qa details:last-child{border-bottom:1px solid var(--rule)}
+  .qa summary{
+    cursor:pointer; list-style:none;
+    font-family:"Fraunces", serif;
+    font-size:19px; font-weight:500;
+    color:var(--ink);
+    display:flex; justify-content:space-between; align-items:center;
+    gap:18px;
+    font-variation-settings:"SOFT" 30, "opsz" 24;
+  }
+  .qa summary::-webkit-details-marker{display:none}
+  .qa summary::after{
+    content:"+"; font-family:"IBM Plex Mono", monospace;
+    font-size:22px; color:var(--primary); font-weight:300;
+    transition:transform .3s ease;
+  }
+  .qa details[open] summary::after{transform:rotate(45deg)}
+  .qa details p{margin:12px 0 0; color:var(--ink-soft); font-size:15px}
+  .qa details[open] summary{color:var(--primary)}
+
+  /* RODAPÉ */
+  footer{
+    margin-top:120px;
+    border-top:1px solid var(--rule);
+    background:
+      linear-gradient(180deg, transparent 0%, rgba(12,50,111,.03) 100%);
+    position:relative; z-index:1;
+  }
+  .footer__inner{
+    max-width:var(--maxw); margin:0 auto;
+    padding:56px 32px 48px;
+    display:grid; grid-template-columns:2fr 1fr 1fr; gap:48px;
+  }
+  .footer__brand{
+    font-family:"Fraunces", serif;
+    font-variation-settings:"SOFT" 80, "opsz" 72;
+    font-size:48px; font-style:italic; font-weight:300;
+    color:var(--primary); line-height:.95; letter-spacing:-.02em;
+    margin:0;
+  }
+  .footer__brand span{color:var(--yellow); font-style:normal; font-weight:400}
+  .footer__meta{font-size:13px; color:var(--muted); margin-top:14px}
+  .footer__col h5{
+    font-size:10.5px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--primary); font-weight:600; margin:0 0 12px;
+  }
+  .footer__col ul{list-style:none; padding:0; margin:0; font-size:14px}
+  .footer__col li{margin:6px 0}
+  .footer__col a{color:var(--ink-soft); border:0}
+  .footer__col a:hover{color:var(--primary)}
+  .footer__bar{
+    border-top:1px solid var(--rule);
+    padding:18px 32px;
+    max-width:var(--maxw); margin:0 auto;
+    display:flex; justify-content:space-between;
+    font-size:12px; color:var(--muted);
+    letter-spacing:.04em;
+  }
+
+  /* REVEAL */
+  @keyframes riseIn{
+    from{opacity:0; transform:translateY(14px)}
+    to  {opacity:1; transform:translateY(0)}
+  }
+  .reveal{opacity:0; animation:riseIn .9s cubic-bezier(.2,.7,.2,1) forwards}
+  .reveal[data-d="1"]{animation-delay:.05s}
+  .reveal[data-d="2"]{animation-delay:.22s}
+  .reveal[data-d="3"]{animation-delay:.38s}
+  .reveal[data-d="4"]{animation-delay:.52s}
+
+  /* SELEÇÃO */
+  ::selection{background:var(--yellow); color:var(--primary)}
+
+  /* Menu mobile (hamburger) */
+  .menu-toggle{
+    display:none;
+    margin-left:auto;
+    width:42px; height:42px;
+    border:1px solid var(--rule);
+    background:var(--paper-card);
+    border-radius:10px;
+    cursor:pointer;
+    padding:0; position:relative;
+  }
+  .menu-toggle span,
+  .menu-toggle span::before,
+  .menu-toggle span::after{
+    content:""; display:block; position:absolute;
+    left:10px; right:10px; height:2px;
+    background:var(--primary); border-radius:2px;
+    transition:transform .3s ease, opacity .2s ease, top .3s ease;
+  }
+  .menu-toggle span{top:50%; margin-top:-1px}
+  .menu-toggle span::before{top:-8px}
+  .menu-toggle span::after{top:8px}
+  .menu-toggle[aria-expanded="true"] span{background:transparent}
+  .menu-toggle[aria-expanded="true"] span::before{top:0; transform:rotate(45deg); background:var(--primary)}
+  .menu-toggle[aria-expanded="true"] span::after{top:0; transform:rotate(-45deg); background:var(--primary)}
+
+  /* TABLET */
+  @media (max-width: 1100px){
+    .layout{grid-template-columns:210px minmax(0, 1fr); gap:40px; padding:24px 28px 100px}
+    .hero{padding:60px 28px 48px; gap:40px}
+    .footer__inner{padding:48px 28px 40px; gap:36px}
+  }
+  /* Em larguras intermediárias (laptop pequeno), oculta o TOC para liberar espaço */
+  @media (max-width: 1000px){
+    .layout{grid-template-columns:1fr; gap:0; padding:20px 28px 80px}
+    .toc{display:none}
+  }
+
+  /* MOBILE ≤ 860px */
+  @media (max-width: 860px){
+    html{scroll-padding-top:72px}
+    body{font-size:15.5px}
+
+    .topbar__inner{padding:12px 18px}
+    .brand__name{font-size:19px}
+    .brand__tag{font-size:10px}
+    .menu-toggle{display:block}
+    .topbar__nav{
+      position:absolute; left:0; right:0; top:100%;
+      flex-direction:column; gap:0;
+      background:var(--paper-card);
+      border-top:1px solid var(--rule);
+      border-bottom:1px solid var(--rule);
+      padding:10px 18px 14px;
+      transform:translateY(-8px); opacity:0; pointer-events:none;
+      transition:transform .25s ease, opacity .25s ease;
+    }
+    .topbar__nav a{
+      padding:12px 0; border-bottom:1px solid var(--rule-soft);
+      font-size:14px; letter-spacing:.06em;
+    }
+    .topbar__nav a:last-child{border-bottom:0}
+    .topbar.is-open .topbar__nav{
+      transform:translateY(0); opacity:1; pointer-events:auto;
+    }
+
+    .hero{
+      grid-template-columns:1fr; padding:40px 22px 36px; gap:28px;
+    }
+    .hero h1{font-size:clamp(42px, 11vw, 70px)}
+    .hero__lede{font-size:16.5px}
+    .hero__meta{padding-left:16px}
+    .hero__meta dl{grid-template-columns:1fr; gap:2px 0}
+    .hero__meta dt{padding-top:10px}
+
+    .layout{grid-template-columns:1fr; padding:12px 22px 64px; gap:0}
+    .toc{display:none}
+
+    section + section{margin-top:60px}
+    .section-head{gap:16px; margin-bottom:26px; padding-bottom:14px}
+    .section-num{font-size:40px; margin-top:4px; text-shadow:1px 1px 0 var(--primary)}
+    .section-head h2{font-size:28px}
+    .section-head p{font-size:12px; letter-spacing:.12em}
+
+    h3{font-size:20px; margin:36px 0 10px}
+    h3 .marker{width:8px; height:8px; margin-right:9px; transform:translateY(-2px)}
+
+    .feat-grid{grid-template-columns:1fr; gap:14px; margin:18px 0}
+    .feat{padding:18px 18px 16px}
+    .feat h4{font-size:17px}
+
+    .callout{padding:18px 18px 18px 52px}
+    .callout::before{left:16px; top:19px}
+
+    ol > li{grid-template-columns:28px 1fr; gap:10px}
+    ol > li::before{width:26px; height:26px; font-size:11px}
+
+    .tree{font-size:12px; padding:22px 18px 18px; line-height:1.7}
+
+    .qa summary{font-size:17px; gap:12px}
+    .qa summary::after{font-size:20px}
+
+    .footer__inner{
+      grid-template-columns:1fr; gap:28px;
+      padding:40px 22px 30px;
+    }
+    .footer__brand{font-size:40px}
+    .footer__bar{
+      flex-direction:column; gap:6px; align-items:flex-start;
+      padding:16px 22px;
+    }
+  }
+
+  /* MOBILE ≤ 480px (smartphones compactos) */
+  @media (max-width: 480px){
+    body{font-size:15px}
+    .topbar__inner{padding:10px 14px; gap:10px}
+    .brand__logo{width:34px; height:34px; border-radius:9px}
+    .brand__name{font-size:18px}
+
+    .hero{padding:32px 18px 28px}
+    .hero h1{font-size:44px; line-height:1}
+    .hero__lede{font-size:15.5px}
+
+    .layout{padding:8px 18px 48px}
+
+    .section-head{flex-direction:column; gap:6px; margin-bottom:22px}
+    .section-num{font-size:34px; margin-top:0}
+    .section-head h2{font-size:24px}
+
+    p, ol, ul{max-width:100%}
+    kbd{font-size:11.5px; padding:2px 5px}
+
+    .tree{padding:22px 14px 16px; font-size:11.5px}
+    .feat{padding:16px}
+    .callout{padding:16px 16px 16px 48px; font-size:14.5px}
+
+    .footer__inner{padding:32px 18px 24px}
+    .footer__brand{font-size:34px}
+    .footer__bar{padding:14px 18px; font-size:11px}
+  }
+
+  /* PRINT */
+  @media print{
+    body{background:#fff; color:#000}
+    body::before{display:none}
+    .topbar, .toc, footer, .footer__bar{display:none}
+    .layout{grid-template-columns:1fr; padding:0}
+    a{color:#000; border:0}
+    .callout, .feat{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="#inicio">
+      <span class="brand__logo" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <span>
+        <span class="brand__name">pAIdegua</span>
+        <span class="brand__tag" style="display:block">Inovajus · JFCE</span>
+      </span>
+    </a>
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-primary" aria-label="Abrir menu">
+      <span></span>
+    </button>
+    <nav class="topbar__nav" id="nav-primary" aria-label="Navegação do manual">
+      <a href="#instalacao">Instalação</a>
+      <a href="#uso">Uso</a>
+      <a href="#modelos">Modelos</a>
+      <a href="#problemas">Ajuda</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero" id="inicio">
+  <div>
+    <div class="eyebrow reveal" data-d="1">Manual v1.0 · Abril / 2026</div>
+    <h1 class="reveal" data-d="2">Escrever<br/>com a IA<br/><em>a seu lado.</em></h1>
+    <p class="hero__lede reveal" data-d="3">
+      O pAIdegua é um complemento instalado no seu navegador que traz um assistente
+      inteligente para dentro do PJe. Ele lê os autos, prepara resumos e minutas no
+      seu estilo, oculta dados sensíveis e mantém a decisão jurídica sempre nas suas
+      mãos — como determina a Resolução CNJ 615/2025.
+    </p>
+  </div>
+
+  <aside class="hero__meta reveal" data-d="4">
+    <dl>
+      <dt>Ambiente</dt><dd>Chrome · Edge (v. 110+)</dd>
+      <dt>Acesso</dt><dd>pje1g.trf5.jus.br · pje2g.trf5.jus.br · pjett.trf5.jus.br</dd>
+      <dt>Serviços de IA</dt><dd>Anthropic · OpenAI · Google Gemini</dd>
+      <dt>Privacidade</dt><dd>Código de acesso guardado só no seu computador</dd>
+      <dt>Classificação</dt><dd>Baixo risco — Resolução CNJ 615/2025</dd>
+    </dl>
+  </aside>
+</section>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- TOC -->
+  <nav class="toc" aria-label="Índice">
+    <h4>Sumário</h4>
+    <ol>
+      <li><a href="#instalacao">Instalação</a></li>
+      <li><a href="#configuracao">Configuração inicial</a></li>
+      <li><a href="#painel">O painel lateral</a></li>
+      <li><a href="#acoes">Ações de análise</a></li>
+      <li><a href="#uso">Minutas com modelo</a></li>
+      <li><a href="#minutar">Minutar com triagem</a></li>
+      <li><a href="#bubble">Ações em cada resposta</a></li>
+      <li><a href="#chat">Chat e voz</a></li>
+      <li><a href="#modelos">Organização dos modelos</a></li>
+      <li><a href="#governanca">Governança e LGPD</a></li>
+      <li><a href="#problemas">Solução de problemas</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- 1. INSTALAÇÃO -->
+    <section id="instalacao">
+      <div class="section-head">
+        <span class="section-num">01</span>
+        <div>
+          <h2>Instalação da extensão</h2>
+          <p>Parte 1 · Requisitos e carregamento</p>
+        </div>
+      </div>
+
+      <h3><span class="marker"></span>O que você precisa</h3>
+      <ul>
+        <li>Navegador <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong>, em versão atualizada.</li>
+        <li>Acesso normal ao <strong>PJe</strong>, com login e senha.</li>
+        <li>Um código de acesso de um dos serviços de inteligência artificial: <strong>Anthropic (Claude)</strong>, <strong>OpenAI (ChatGPT)</strong> ou <strong>Google Gemini</strong>. A equipe do Inovajus pode orientar como obter.</li>
+      </ul>
+
+      <h3><span class="marker"></span>Passo a passo</h3>
+      <ol>
+        <li>Receba a pasta do pAIdegua entregue pela equipe do Inovajus e salve em um local fácil de encontrar no seu computador.</li>
+        <li>Abra a página de extensões do navegador. No Chrome, digite <strong>chrome://extensions</strong> na barra de endereços. No Edge, digite <strong>edge://extensions</strong>.</li>
+        <li>Ative o <strong>Modo do desenvolvedor</strong> (interruptor no canto superior direito da página).</li>
+        <li>Clique em <strong>Carregar sem compactação</strong> (Chrome) ou <strong>Carregar descompactada</strong> (Edge).</li>
+        <li>Selecione a pasta do pAIdegua que você salvou no passo 1.</li>
+        <li>Fixe o ícone na barra do navegador: clique no ícone de quebra-cabeça e depois no alfinete ao lado de <strong>pAIdegua</strong>.</li>
+      </ol>
+
+      <div class="callout callout--tip">
+        <h4>Dica</h4>
+        <p>Quando o ícone está fixado, você acessa as configurações com um único clique. Sem isso, o ícone fica escondido no menu do quebra-cabeça.</p>
+      </div>
+    </section>
+
+    <!-- 2. CONFIGURAÇÃO -->
+    <section id="configuracao">
+      <div class="section-head">
+        <span class="section-num">02</span>
+        <div>
+          <h2>Configuração inicial</h2>
+          <p>Popup da extensão · primeiro uso</p>
+        </div>
+      </div>
+
+      <p>Clique no ícone do pAIdegua na barra de ferramentas. O popup de configurações se abrirá com tudo o que você precisa definir antes do primeiro uso.</p>
+
+      <div class="callout callout--lgpd">
+        <h4>LGPD · Aviso de privacidade</h4>
+        <p>Para preparar respostas e minutas, o pAIdegua envia o conteúdo dos documentos selecionados para o serviço de inteligência artificial escolhido — um serviço que funciona fora da estrutura da Justiça Federal. Antes de usar em processos com dados sensíveis, confirme a política de privacidade do serviço. No primeiro uso, marque a caixa de ciência para liberar o uso da ferramenta.</p>
+      </div>
+
+      <h3><span class="marker"></span>Serviço de IA e código de acesso</h3>
+      <ol>
+        <li>Escolha o <strong>serviço de IA</strong> e o <strong>modelo</strong> desejado.</li>
+        <li>Cole o <strong>código de acesso</strong> do serviço correspondente, clique em <strong>Salvar</strong> e depois em <strong>Testar</strong> para conferir se está funcionando.</li>
+        <li>O código fica guardado <strong>apenas no seu navegador, neste computador</strong>. Use somente em estações da JFCE.</li>
+      </ol>
+
+      <h3><span class="marker"></span>Leitura de digitalizados e modelos de minuta</h3>
+      <div class="feat-grid">
+        <div class="feat">
+          <span class="feat__label">Digitalizados</span>
+          <h4>Leitura de documentos escaneados</h4>
+          <p>Marque <strong>Rodar leitura automaticamente</strong> para que o pAIdegua transforme em texto os documentos que foram digitalizados como imagem. Essa leitura acontece no seu próprio computador, sem enviar imagens para fora. Você pode ajustar um limite de páginas.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Modelos</span>
+          <h4>Pasta com suas minutas-modelo</h4>
+          <p>Em <strong>Gerenciar modelos</strong>, escolha a pasta onde ficam suas minutas de referência. São aceitos arquivos comuns do Word, texto simples e PDF. Organize por subpastas para que a busca automática encontre o exemplo certo.</p>
+        </div>
+      </div>
+
+      <div class="callout callout--info">
+        <h4>Termos de uso e governança</h4>
+        <p>Na tela de configurações há a seção <em>Termos de uso e Governança</em>, que explica como a ferramenta se enquadra na Resolução CNJ 615/2025: é classificada como de baixo risco, exige supervisão humana, protege dados sensíveis, registra trilha de uso e identifica os documentos gerados com apoio de IA. Recomenda-se ler antes do uso no dia a dia.</p>
+      </div>
+    </section>
+
+    <!-- 3. PAINEL -->
+    <section id="painel">
+      <div class="section-head">
+        <span class="section-num">03</span>
+        <div>
+          <h2>O painel lateral</h2>
+          <p>Acesso e elementos da interface</p>
+        </div>
+      </div>
+
+      <ol>
+        <li>Acesse o PJe e abra um processo (tela de autos digitais).</li>
+        <li>O <strong>botão flutuante</strong> do pAIdegua aparecerá no canto da página.</li>
+        <li>Clique no botão para abrir o <strong>painel lateral</strong>.</li>
+      </ol>
+
+      <p>O painel mostra o nome da ferramenta, o serviço de IA em uso, o número do processo aberto e — em destaque — o <strong>grau reconhecido automaticamente</strong> (1º grau, 2º grau ou turma recursal). A lista de botões de minuta muda de acordo com o grau, para oferecer os atos adequados a cada instância.</p>
+
+      <div class="callout callout--info">
+        <h4>Como o grau é reconhecido</h4>
+        <p>O pAIdegua identifica o grau pelo endereço do PJe em que você está: o endereço do 1º grau leva aos botões de sentença e despacho; o endereço do 2º grau/turma recursal leva aos botões de voto, decisão monocrática e despacho do relator. Esse ajuste é automático — você não precisa fazer nada.</p>
+      </div>
+    </section>
+
+    <!-- 4. AÇÕES -->
+    <section id="acoes">
+      <div class="section-head">
+        <span class="section-num">04</span>
+        <div>
+          <h2>Ações de análise</h2>
+          <p>Barra principal do painel</p>
+        </div>
+      </div>
+
+      <h3><span class="marker"></span>Carregar e ler os documentos</h3>
+      <p>Esse é sempre o primeiro passo. Clique em <strong>Carregar Documentos</strong> para que o pAIdegua liste todos os arquivos do processo, com caixas de seleção para você escolher quais quer usar. É possível marcar ou desmarcar tudo de uma vez. Depois, clique em <strong>Extrair conteúdo selecionados</strong> — o pAIdegua abre cada documento e prepara o texto, mostrando o progresso em tempo real (por exemplo: <em>"Extração concluída — 39 ok, 2 com erro"</em>).</p>
+
+      <div class="feat-grid">
+        <div class="feat">
+          <span class="feat__label">Análise</span>
+          <h4>Resumir</h4>
+          <p>Produz uma análise completa do processo: dados das partes, fatos em ordem cronológica, questão jurídica central, direito aplicável, argumentos e provas de cada lado, e uma conclusão.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Áudio</span>
+          <h4>Resumo em áudio</h4>
+          <p>Gera um resumo narrado por voz — útil para ter uma visão geral rápida do processo enquanto você faz outra atividade.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">LGPD</span>
+          <h4>Anonimizar autos</h4>
+          <p>Oculta dados sensíveis como CPF, CNPJ, CEP, telefones, e-mails, RG e informações bancárias, substituindo-os por marcadores neutros. Nomes de pessoas físicas também são tratados. Útil para compartilhar trechos do processo em reuniões, estudos e materiais de treinamento.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Digitalizados</span>
+          <h4>Ler documentos escaneados</h4>
+          <p>Aparece automaticamente quando existem documentos digitalizados no processo (aqueles que o PJe guardou como imagem). O pAIdegua transforma a imagem em texto dentro do seu próprio navegador, sem enviar as páginas para fora.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. MINUTAS COM MODELO -->
+    <section id="uso">
+      <div class="section-head">
+        <span class="section-num">05</span>
+        <div>
+          <h2>Minutas com modelo</h2>
+          <p>Busca inteligente na sua pasta de referência</p>
+        </div>
+      </div>
+
+      <p>Esta seção reúne botões que geram minutas usando suas próprias minutas-modelo como referência. Funciona melhor quando você apontou uma pasta de modelos nas configurações.</p>
+
+      <h3><span class="marker"></span>Botões para o 1º grau</h3>
+      <div class="feat-grid">
+        <div class="feat"><span class="feat__label">1º grau</span><h4>Julgar procedente</h4><p>Prepara uma sentença dando razão ao autor. O pAIdegua procura na sua pasta o modelo mais parecido com o caso e reaproveita a estrutura, os fundamentos e o jeito de escrever, adaptando aos fatos concretos.</p></div>
+        <div class="feat"><span class="feat__label">1º grau</span><h4>Julgar improcedente</h4><p>Igual ao anterior, mas para sentenças em que o pedido não é acolhido.</p></div>
+        <div class="feat"><span class="feat__label">1º grau</span><h4>Decidir</h4><p>Prepara uma decisão sobre questão pendente, como pedidos de tutela de urgência ou liminar. O pAIdegua procura apenas modelos de decisão — não reaproveita sentenças como referência.</p></div>
+        <div class="feat"><span class="feat__label">1º grau</span><h4>Converter em diligência</h4><p>Prepara o despacho que converte o julgamento em diligência, pedindo providências complementares antes de sentenciar.</p></div>
+        <div class="feat"><span class="feat__label">1º grau</span><h4>Despachar</h4><p>Prepara despachos de andamento, com intimações, prazos e juntadas. Usa como referência apenas seus modelos de despacho.</p></div>
+      </div>
+
+      <h3><span class="marker"></span>Botões para o 2º grau e turma recursal</h3>
+      <div class="feat-grid">
+        <div class="feat"><span class="feat__label">2º grau</span><h4>Voto (mantém sentença)</h4><p>Prepara o voto que nega provimento ao recurso, confirmando a sentença da origem.</p></div>
+        <div class="feat"><span class="feat__label">2º grau</span><h4>Voto (reforma sentença)</h4><p>Prepara o voto que dá provimento ao recurso e reforma a sentença da origem.</p></div>
+        <div class="feat"><span class="feat__label">2º grau · Novo</span><h4>Decisão nega seguimento ao recurso</h4><p>Prepara decisão do relator que não conhece do recurso por falta de requisitos.</p></div>
+        <div class="feat"><span class="feat__label">2º grau</span><h4>Decisão</h4><p>Prepara decisão do relator sobre questão pendente, como pedidos de tutela antecipada, efeito suspensivo ou liminar em recurso.</p></div>
+        <div class="feat"><span class="feat__label">2º grau</span><h4>Converte em diligência com baixa</h4><p>Prepara o despacho que converte o julgamento em diligência e devolve os autos à origem para a providência necessária.</p></div>
+        <div class="feat"><span class="feat__label">2º grau</span><h4>Despacho</h4><p>Prepara despacho de andamento do relator.</p></div>
+      </div>
+
+      <h4>Como a busca de modelos funciona</h4>
+      <ul>
+        <li><strong>Pasta configurada e há modelo parecido:</strong> o pAIdegua escolhe o mais semelhante automaticamente e mostra o caminho do arquivo usado.</li>
+        <li><strong>Pasta configurada, mas sem modelo parecido:</strong> o pAIdegua pergunta se você quer gerar do zero ou cancelar.</li>
+        <li><strong>Pasta não configurada:</strong> o pAIdegua gera do zero, sem usar modelos.</li>
+      </ul>
+    </section>
+
+    <!-- 6. MINUTAR TRIAGEM -->
+    <section id="minutar">
+      <div class="section-head">
+        <span class="section-num">06</span>
+        <div>
+          <h2>Minutar com triagem</h2>
+          <p>A IA sugere qual ato produzir</p>
+        </div>
+      </div>
+
+      <p>O botão <strong>Minutar</strong> funciona como um auxiliar de triagem. Ao clicar nele, o pAIdegua faz o seguinte:</p>
+
+      <ol>
+        <li>Analisa os atos mais recentes do processo e o andamento até aqui.</li>
+        <li>Consulta a IA para sugerir qual é o ato mais adequado àquele momento processual — por exemplo: julgar procedente, converter em diligência, decisão sobre tutela ou despacho de andamento.</li>
+        <li>Mostra no chat a <strong>sugestão com uma breve justificativa</strong>, acompanhada de dois botões: <strong>Gerar esta minuta</strong>, que produz o ato sugerido imediatamente, e <strong>Escolher outro ato</strong>, que abre uma lista com todas as opções disponíveis para aquele grau.</li>
+        <li>Se a sugestão não puder ser feita por algum motivo (por exemplo, código de acesso ausente ou resposta incompleta), a lista de opções é aberta direto — o botão continua funcionando normalmente.</li>
+      </ol>
+
+      <div class="callout callout--tip">
+        <h4>Por que essa ajuda na escolha?</h4>
+        <p>Em processos complexos, escolher o botão certo pode demandar análise. A sugestão automática olha o que já foi feito nos autos e indica o próximo passo mais provável, poupando você da leitura completa para essa decisão inicial.</p>
+      </div>
+    </section>
+
+    <!-- 7. BUBBLE ACTIONS -->
+    <section id="bubble">
+      <div class="section-head">
+        <span class="section-num">07</span>
+        <div>
+          <h2>Ações em cada resposta</h2>
+          <p>Botões rápidos abaixo de cada minuta</p>
+        </div>
+      </div>
+
+      <p>Abaixo de cada resposta do assistente — principalmente quando é uma minuta — aparecem botões de ação rápida:</p>
+
+      <div class="feat-grid">
+        <div class="feat"><span class="feat__label">Copiar</span><h4>Copiar</h4><p>Copia o texto da resposta para a área de transferência. Depois é só colar onde você quiser.</p></div>
+        <div class="feat"><span class="feat__label">PJe</span><h4>Inserir no PJe</h4><p>Coloca o texto diretamente no editor de minutas do PJe que você deixou aberto em outra aba — sem precisar copiar e colar manualmente.</p></div>
+        <div class="feat"><span class="feat__label">Word</span><h4>Baixar como Word</h4><p>Salva a minuta como um arquivo do Word no seu computador. O nome já vem pronto, com o número do processo e o tipo de ato.</p></div>
+        <div class="feat"><span class="feat__label">Ajustar</span><h4>Refinar minuta</h4><p>Pede ajustes na última minuta sem começar do zero. Exemplos: <em>"encurtar"</em>, <em>"mudar o tom"</em>, <em>"citar a Súmula 343 do STJ"</em>, <em>"reforçar o dispositivo"</em>. O modelo de referência continua o mesmo.</p></div>
+        <div class="feat"><span class="feat__label">Refazer</span><h4>Nova minuta</h4><p>Gera uma nova versão do mesmo ato, do zero, sem usar modelo de referência. Útil quando você quer comparar duas opções ou começar de novo.</p></div>
+      </div>
+    </section>
+
+    <!-- 8. CHAT E VOZ -->
+    <section id="chat">
+      <div class="section-head">
+        <span class="section-num">08</span>
+        <div>
+          <h2>Chat livre e entrada por voz</h2>
+          <p>Conversando com os autos</p>
+        </div>
+      </div>
+
+      <p>A área de chat na parte inferior permite fazer perguntas livres sobre o processo. Alguns exemplos:</p>
+
+      <ul>
+        <li>"Qual o pedido principal do autor?"</li>
+        <li>"Existe laudo pericial nos autos? O que conclui?"</li>
+        <li>"Resuma as provas documentais."</li>
+        <li>"Há questões preliminares a resolver?"</li>
+        <li>"Liste todos os prazos mencionados."</li>
+      </ul>
+
+      <h4>Falar com o pAIdegua em vez de digitar</h4>
+      <p>O chat também aceita entrada por voz: basta clicar no ícone do microfone e começar a falar. A ferramenta transforma a sua fala em texto de duas maneiras, dependendo do serviço de IA escolhido:</p>
+      <ul>
+        <li>Quando o serviço tem transcrição própria (OpenAI ou Gemini), o áudio é enviado para o serviço, que devolve o texto com boa precisão.</li>
+        <li>Quando o serviço não tem transcrição, o próprio navegador faz o reconhecimento ao vivo, enquanto você fala.</li>
+      </ul>
+
+      <div class="callout callout--warn">
+        <h4>Usando Anthropic (Claude)?</h4>
+        <p>Esse serviço não transcreve áudio. Se você estiver usando Anthropic, o pAIdegua usa automaticamente o reconhecimento de voz do próprio navegador — ou troque o serviço para OpenAI ou Gemini se preferir.</p>
+      </div>
+    </section>
+
+    <!-- 9. MODELOS -->
+    <section id="modelos">
+      <div class="section-head">
+        <span class="section-num">09</span>
+        <div>
+          <h2>Organização da pasta de modelos</h2>
+          <p>Estrutura sugerida para busca precisa</p>
+        </div>
+      </div>
+
+      <p>Para que a busca automática encontre sempre o modelo certo, organize seus arquivos em subpastas com nomes claros. Pastas chamadas <strong>procedente</strong>, <strong>improcedente</strong>, <strong>decisao</strong>, <strong>despacho</strong>, <strong>diligencia</strong>, <strong>voto-mantem</strong>, <strong>voto-reforma</strong> ou <strong>nega-seguimento</strong> têm prioridade natural na busca do botão correspondente.</p>
+
+      <pre class="tree" aria-label="Estrutura de pastas de modelos">
+<span class="dir">Modelos/</span>
+├─ <span class="dir">procedente/</span>
+│    <span class="file">bpc-loas-procedente.docx</span>
+│    <span class="file">aposentadoria-procedente.docx</span>
+│    <span class="file">auxilio-doenca-procedente.docx</span>
+├─ <span class="dir">improcedente/</span>
+│    <span class="file">bpc-loas-improcedente.docx</span>
+│    <span class="file">aposentadoria-improcedente.docx</span>
+├─ <span class="dir">decisao/</span>
+│    <span class="file">tutela-urgencia.docx</span>
+│    <span class="file">liminar-bloqueio.docx</span>
+├─ <span class="dir">despacho/</span>
+│    <span class="file">saneador.docx</span>
+│    <span class="file">intimacao-pericia.docx</span>
+│    <span class="file">cite-se.docx</span>
+└─ <span class="dir">diligencia/</span>
+     <span class="file">conversao-diligencia.docx</span></pre>
+
+      <ul>
+        <li>Use <strong>nomes descritivos</strong> nos arquivos: a busca considera tanto o nome quanto o conteúdo da minuta.</li>
+        <li>Formatos aceitos: arquivos comuns do Word, do LibreOffice, texto simples e PDF.</li>
+        <li>Sempre que adicionar, alterar ou remover modelos na pasta, abra a página de gerenciamento e clique em <strong>Reindexar agora</strong> para que o pAIdegua reconheça as mudanças.</li>
+      </ul>
+    </section>
+
+    <!-- 10. GOVERNANÇA -->
+    <section id="governanca">
+      <div class="section-head">
+        <span class="section-num">10</span>
+        <div>
+          <h2>Governança e LGPD</h2>
+          <p>Resolução CNJ nº 615/2025</p>
+        </div>
+      </div>
+
+      <div class="feat-grid">
+        <div class="feat">
+          <span class="feat__label">Supervisão</span>
+          <h4>A decisão é sempre humana</h4>
+          <p>Toda minuta gerada precisa ser revisada, editada e validada por magistrado ou servidor autorizado antes de ir para os autos. O pAIdegua é um apoio — a palavra final é sua.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Privacidade</span>
+          <h4>Proteção dos dados</h4>
+          <p>Antes de enviar qualquer texto para os serviços de IA, o pAIdegua pode ocultar dados sensíveis com a função <em>Anonimizar autos</em>. Recomenda-se usar códigos de acesso de planos corporativos, em que o serviço se compromete a não usar os dados para treinar seus modelos.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Registro</span>
+          <h4>Trilha de uso <em>(em desenvolvimento)</em></h4>
+          <p><strong>Aviso:</strong> recurso ainda não disponível na versão atual. Está prevista a gravação de registros de quem usou, qual tipo de ato foi gerado, qual serviço de IA foi escolhido e quando — permitindo auditoria posterior, com visualização restrita por unidade. A entrega depende de infraestrutura de back-end institucional (autenticação corporativa e banco com controle de acesso por linha); até lá, não há histórico persistente fora do navegador local do usuário.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Transparência</span>
+          <h4>Identificação do conteúdo</h4>
+          <p>Todo documento gerado traz a indicação de que foi produzido com o apoio de inteligência artificial sob supervisão humana, em respeito ao princípio da transparência.</p>
+        </div>
+      </div>
+
+      <div class="callout callout--lgpd">
+        <h4>Classificação: baixo risco</h4>
+        <p>Conforme a Resolução CNJ 615/2025, o pAIdegua é classificado como ferramenta de <strong>baixo risco</strong>, destinada a produzir textos de apoio para facilitar a elaboração de atos judiciais e a ocultar dados sensíveis em documentos. É um sistema de suporte, sem qualquer poder de decisão.</p>
+      </div>
+    </section>
+
+    <!-- 11. PROBLEMAS -->
+    <section id="problemas">
+      <div class="section-head">
+        <span class="section-num">11</span>
+        <div>
+          <h2>Solução de problemas</h2>
+          <p>Perguntas frequentes</p>
+        </div>
+      </div>
+
+      <div class="qa">
+        <details>
+          <summary>O pAIdegua não aparece no PJe</summary>
+          <p>Confira se ele está ativo na página de extensões do navegador (<strong>chrome://extensions</strong> ou <strong>edge://extensions</strong>). Recarregue o PJe. Se mesmo assim o botão flutuante não aparecer, feche e reabra a aba.</p>
+        </details>
+        <details>
+          <summary>Um documento deu erro na extração</summary>
+          <p>Às vezes, o PJe devolve o documento vazio na primeira tentativa. O pAIdegua tenta até três vezes, cada uma de um jeito diferente. Se continuar dando erro, recarregue a página do processo e tente novamente.</p>
+        </details>
+        <details>
+          <summary>Documentos de áudio e vídeo</summary>
+          <p>Arquivos de mídia (como MP3 e MP4) são reconhecidos automaticamente e marcados como conteúdo que não pode ser lido como texto. Eles aparecem na lista, mas não geram erro.</p>
+        </details>
+        <details>
+          <summary>A leitura dos digitalizados está lenta</summary>
+          <p>Essa leitura é feita inteiramente no seu próprio computador para proteger o sigilo, e documentos com muitas páginas podem demorar. Ajuste o limite de páginas nas configurações para acelerar.</p>
+        </details>
+        <details>
+          <summary>A minuta usou um modelo que não era o ideal</summary>
+          <p>A busca automática escolhe o modelo mais parecido com o caso. Se o resultado não ficou bom, você pode reorganizar seus modelos em subpastas mais específicas, ou clicar em <strong>Nova minuta</strong> para gerar do zero, sem referência.</p>
+        </details>
+        <details>
+          <summary>O código de acesso do serviço de IA está dando erro</summary>
+          <p>Use o botão <strong>Testar</strong> na tela de configurações para conferir se o código está correto. Cada serviço tem um formato próprio — verifique se o código colado corresponde ao serviço escolhido.</p>
+        </details>
+        <details>
+          <summary>Como atualizar o pAIdegua</summary>
+          <p>Quando você receber uma nova versão da equipe do Inovajus, substitua a pasta antiga pela nova no seu computador. Depois, abra a página de extensões e clique na seta circular no quadro do pAIdegua para recarregar.</p>
+        </details>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer__inner">
+    <div>
+      <h3 class="footer__brand">pA<span>I</span>degua <em>·</em></h3>
+      <p class="footer__meta">
+        Desenvolvido pelo <strong>Laboratório de Inovação da Justiça Federal do Ceará</strong> — Inovajus.<br/>
+        Colaboração do Dr. George Marmelstein Lima (prompt FIRAC+).<br/>
+        Versão 1.0.0 · Abril de 2026
+      </p>
+    </div>
+    <div class="footer__col">
+      <h5>Navegar</h5>
+      <ul>
+        <li><a href="#instalacao">Instalação</a></li>
+        <li><a href="#configuracao">Configuração</a></li>
+        <li><a href="#uso">Minutas com modelo</a></li>
+        <li><a href="#modelos">Modelos</a></li>
+        <li><a href="#problemas">Ajuda</a></li>
+      </ul>
+    </div>
+    <div class="footer__col">
+      <h5>Contato</h5>
+      <ul>
+        <li><a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></li>
+        <li>pje1g.trf5.jus.br</li>
+        <li>pje2g.trf5.jus.br</li>
+        <li>pjett.trf5.jus.br</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer__bar">
+    <span>© 2026 Justiça Federal no Ceará · Inovajus</span>
+    <span>Res. CNJ 615/2025 · LGPD · Baixo risco (BR4 · BR8)</span>
+  </div>
+</footer>
+
+<script>
+  // Scroll-spy para destacar item da TOC ativo
+  (function(){
+    const links = document.querySelectorAll('.toc a');
+    const map = new Map();
+    links.forEach(a => {
+      const id = a.getAttribute('href').slice(1);
+      const sec = document.getElementById(id);
+      if (sec) map.set(sec, a);
+    });
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        const link = map.get(e.target);
+        if (!link) return;
+        if (e.isIntersecting) {
+          links.forEach(l => l.classList.remove('is-active'));
+          link.classList.add('is-active');
+        }
+      });
+    }, { rootMargin: '-35% 0px -55% 0px', threshold: 0 });
+    map.forEach((_, sec) => io.observe(sec));
+  })();
+
+  // Menu mobile
+  (function(){
+    const btn = document.querySelector('.menu-toggle');
+    const bar = document.querySelector('.topbar');
+    const nav = document.getElementById('nav-primary');
+    if (!btn || !bar || !nav) return;
+    const close = () => { bar.classList.remove('is-open'); btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-label', 'Abrir menu'); };
+    btn.addEventListener('click', () => {
+      const open = bar.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', String(open));
+      btn.setAttribute('aria-label', open ? 'Fechar menu' : 'Abrir menu');
+    });
+    nav.addEventListener('click', (e) => {
+      if (e.target.tagName === 'A') close();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  })();
+</script>
+
+</body>
+</html>
