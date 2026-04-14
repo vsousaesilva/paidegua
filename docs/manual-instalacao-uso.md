@@ -14,21 +14,25 @@ Assistente de IA integrado ao PJe para analise de processos, geracao de minutas 
 
 ### Passo a passo
 
-1. Obtenha a pasta "dist" da extensao (fornecida pelo desenvolvedor ou gerada via build).
+1. Obtenha o arquivo "dist.zip" da extensao (fornecido pelo desenvolvedor ou gerado via build).
 
-2. Abra a pagina de extensoes do navegador:
+2. IMPORTANTE - Extraia o arquivo antes de instalar: clique com o botao direito sobre "dist.zip" e escolha "Extrair tudo" (Windows) ou use o descompactador de sua preferencia. O resultado sera uma pasta chamada "dist" com todos os arquivos da extensao. O navegador NAO aceita carregar a extensao a partir do arquivo compactado - e obrigatorio descompactar primeiro.
+
+3. Guarde a pasta "dist" extraida em um local permanente (ex.: Documentos\pAIdegua\dist). Se a pasta for apagada ou movida apos a instalacao, a extensao deixara de funcionar.
+
+4. Abra a pagina de extensoes do navegador:
    - Chrome: digite chrome://extensions na barra de endereco
    - Edge: digite edge://extensions na barra de endereco
 
-3. Ative o "Modo do desenvolvedor" (interruptor no canto superior direito da pagina).
+5. Ative o "Modo do desenvolvedor" (interruptor no canto superior direito da pagina).
 
-4. Clique em "Carregar sem compactacao" (Chrome) ou "Carregar descompactada" (Edge).
+6. Clique em "Carregar sem compactacao" (Chrome) ou "Carregar descompactada" (Edge).
 
-5. Selecione a pasta "dist" do pAIdegua.
+7. Selecione a pasta "dist" extraida do pAIdegua (nao selecione o arquivo .zip).
 
-6. A extensao aparecera na barra de ferramentas do navegador com o icone do pAIdegua.
+8. A extensao aparecera na barra de ferramentas do navegador com o icone do pAIdegua.
 
-7. Fixe a extensao na barra (clique no icone de quebra-cabeca e depois no alfinete ao lado de "pAIdegua").
+9. Fixe a extensao na barra (clique no icone de quebra-cabeca e depois no alfinete ao lado de "pAIdegua").
 
 ### Configuracao inicial
 
@@ -216,4 +220,4 @@ Dicas:
 
 - Chave de API invalida: Use o botao "Testar" nas configuracoes para verificar. Cada provedor tem seu formato de chave. Certifique-se de que a chave corresponde ao provedor selecionado.
 
-- Atualizacao da extensao: Quando receber uma nova versao da pasta "dist", va em chrome://extensions ou edge://extensions e clique no botao de atualizar (seta circular) no card da extensao.
+- Atualizacao da extensao: Quando receber uma nova versao do "dist.zip", extraia o arquivo sobrescrevendo a pasta "dist" ja existente e depois va em chrome://extensions ou edge://extensions e clique no botao de atualizar (seta circular) no card da extensao.
