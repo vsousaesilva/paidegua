@@ -3,6 +3,12 @@
   "name": "pAIdegua",
   "version": "1.0.0",
   "description": "Inteligência Artificial integrada ao PJe — análise de processos, geração de minutas e extração de informações com IA.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "paidegua@jfce.jus.br",
+      "strict_min_version": "115.0"
+    }
+  },
   "permissions": [
     "activeTab",
     "storage",
@@ -40,6 +46,7 @@
   ],
   "background": {
     "service_worker": "background.js",
+    "scripts": ["background.js"],
     "type": "module"
   },
   "icons": {
