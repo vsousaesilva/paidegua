@@ -8,12 +8,12 @@ Assistente de IA integrado ao PJe para analise de processos, geracao de minutas 
 
 ### Navegadores suportados
 
-O pAIdegua e distribuido em duas versoes, mantidas em repositorios separados:
+O pAIdegua e oferecido em duas versoes:
 
-- **pAIdegua para Chrome/Edge** (versao estavel e homologada) - producao. Recomendada para o uso diario.
-- **pAIdegua para Firefox** (EM DESENVOLVIMENTO) - versao experimental. Algumas funcionalidades ainda apresentam instabilidades devido a diferencas de APIs do Firefox (File System Access, compartilhamento de buffers com pdf.js, etc.). Disponivel no repositorio "paidegua-firefox" para testes e contribuicoes.
+- **pAIdegua para Chrome/Edge** - versao oficial, indicada para uso diario nas unidades judiciarias.
+- **pAIdegua para Firefox** - versao em desenvolvimento, disponibilizada separadamente para testes.
 
-RECOMENDACAO: para uso em producao nas unidades judiciarias, utilize a versao para Google Chrome ou Microsoft Edge. A versao Firefox encontra-se em fase de estabilizacao e nao deve ser usada para elaboracao de minutas oficiais ate a conclusao dos testes.
+RECOMENDACAO: para a elaboracao de minutas no dia a dia, utilize a versao para Google Chrome ou Microsoft Edge. A versao para Firefox ainda esta em ajustes e nao deve ser utilizada em producao.
 
 ### Requisitos
 
