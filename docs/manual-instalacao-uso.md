@@ -6,10 +6,19 @@ Assistente de IA integrado ao PJe para analise de processos, geracao de minutas 
 
 ## PARTE 1 - INSTALACAO
 
+### Navegadores suportados
+
+O pAIdegua e distribuido em duas versoes, mantidas em repositorios separados:
+
+- **pAIdegua para Chrome/Edge** (versao estavel e homologada) - producao. Recomendada para o uso diario.
+- **pAIdegua para Firefox** (EM DESENVOLVIMENTO) - versao experimental. Algumas funcionalidades ainda apresentam instabilidades devido a diferencas de APIs do Firefox (File System Access, compartilhamento de buffers com pdf.js, etc.). Disponivel no repositorio "paidegua-firefox" para testes e contribuicoes.
+
+RECOMENDACAO: para uso em producao nas unidades judiciarias, utilize a versao para Google Chrome ou Microsoft Edge. A versao Firefox encontra-se em fase de estabilizacao e nao deve ser usada para elaboracao de minutas oficiais ate a conclusao dos testes.
+
 ### Requisitos
 
-- Navegador: Google Chrome ou Microsoft Edge (versao 110 ou superior)
-- Acesso ao PJe (pje1g.trf5.jus.br ou pje2g.trf5.jus.br)
+- Navegador: Google Chrome ou Microsoft Edge (versao 110 ou superior) - ou Mozilla Firefox 115+ para a versao experimental
+- Acesso ao PJe (pje1g.trf5.jus.br, pje2g.trf5.jus.br ou pjett.trf5.jus.br)
 - Chave de API de um dos provedores: Google Gemini, Anthropic (Claude) ou OpenAI (GPT)
 
 ### Passo a passo
@@ -23,12 +32,13 @@ Assistente de IA integrado ao PJe para analise de processos, geracao de minutas 
 4. Abra a pagina de extensoes do navegador:
    - Chrome: digite chrome://extensions na barra de endereco
    - Edge: digite edge://extensions na barra de endereco
+   - Firefox (versao experimental): digite about:debugging#/runtime/this-firefox
 
-5. Ative o "Modo do desenvolvedor" (interruptor no canto superior direito da pagina).
+5. Ative o "Modo do desenvolvedor" (interruptor no canto superior direito da pagina). No Firefox, este passo nao e necessario.
 
-6. Clique em "Carregar sem compactacao" (Chrome) ou "Carregar descompactada" (Edge).
+6. Clique em "Carregar sem compactacao" (Chrome) ou "Carregar descompactada" (Edge). No Firefox, clique em "Carregar extensao temporaria..." e selecione o arquivo manifest.json dentro da pasta "dist".
 
-7. Selecione a pasta "dist" extraida do pAIdegua (nao selecione o arquivo .zip).
+7. Selecione a pasta "dist" extraida do pAIdegua (nao selecione o arquivo .zip). No Firefox, selecione o manifest.json dentro da pasta.
 
 8. A extensao aparecera na barra de ferramentas do navegador com o icone do pAIdegua.
 

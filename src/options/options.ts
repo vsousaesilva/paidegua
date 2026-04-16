@@ -216,11 +216,7 @@ async function pickDirectory(): Promise<void> {
 
   if (!picker) {
     setStatus(
-      'Recurso indisponível no Firefox. A indexação de modelos de minuta ' +
-      'requer a File System Access API, que atualmente só é suportada no ' +
-      'Google Chrome e no Microsoft Edge. As demais funcionalidades do ' +
-      'pAIdegua (geração de minutas, anonimização, extração de documentos) ' +
-      'continuam funcionando normalmente no Firefox.',
+      'Este navegador não suporta File System Access API. Use Chrome/Edge atualizado.',
       'error'
     );
     return;
@@ -296,19 +292,8 @@ function bindEvents(): void {
   });
 }
 
-function checkBrowserCompatibility(): void {
-  const hasPicker = 'showDirectoryPicker' in window;
-  if (!hasPicker) {
-    const warning = document.getElementById('firefox-warning');
-    if (warning) warning.hidden = false;
-    const btnPick = document.getElementById('btn-pick') as HTMLButtonElement | null;
-    if (btnPick) btnPick.disabled = true;
-  }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
-  checkBrowserCompatibility();
   void loadInitial();
 });
 

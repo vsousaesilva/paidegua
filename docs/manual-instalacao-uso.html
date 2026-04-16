@@ -700,9 +700,20 @@
         </div>
       </div>
 
+      <h3><span class="marker"></span>Navegadores suportados</h3>
+      <p>O pAIdegua é distribuído em duas versões, mantidas em repositórios separados:</p>
+      <ul>
+        <li><strong>pAIdegua para Chrome/Edge</strong> (versão estável e homologada) — produção. Recomendada para o uso diário.</li>
+        <li><strong>pAIdegua para Firefox</strong> (<em>em desenvolvimento</em>) — versão experimental. Algumas funcionalidades ainda apresentam instabilidades devido a diferenças de APIs do Firefox (File System Access, compartilhamento de buffers com pdf.js, etc.). Disponível no repositório <code>paidegua-firefox</code> para testes e contribuições.</li>
+      </ul>
+      <div class="callout callout--warn">
+        <h4>Recomendação</h4>
+        <p>Para uso em produção nas unidades judiciárias, utilize a versão para <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong>. A versão Firefox encontra-se em fase de estabilização e não deve ser usada para elaboração de minutas oficiais até a conclusão dos testes.</p>
+      </div>
+
       <h3><span class="marker"></span>O que você precisa</h3>
       <ul>
-        <li>Navegador <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong>, em versão atualizada.</li>
+        <li>Navegador <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong>, em versão atualizada (ou <strong>Mozilla Firefox</strong> 115+ para a versão experimental).</li>
         <li>Acesso normal ao <strong>PJe</strong>, com login e senha.</li>
         <li>Um código de acesso de um dos serviços de inteligência artificial: <strong>Anthropic (Claude)</strong>, <strong>OpenAI (ChatGPT)</strong> ou <strong>Google Gemini</strong>. A equipe do Inovajus pode orientar como obter.</li>
       </ul>
@@ -711,7 +722,7 @@
       <ol>
         <li>Receba o arquivo <strong>dist.zip</strong> do pAIdegua entregue pela equipe do Inovajus e salve em um local fácil de encontrar no seu computador.</li>
         <li><strong>Extraia o arquivo antes de instalar.</strong> Clique com o botão direito sobre <strong>dist.zip</strong> e escolha <em>Extrair tudo</em> (Windows) ou utilize o descompactador de sua preferência. O resultado será uma pasta chamada <strong>dist</strong> com todos os arquivos da extensão. Guarde-a em um local permanente (ex.: <code>Documentos\pAIdegua\dist</code>), pois se ela for apagada ou movida a extensão deixará de funcionar.</li>
-        <li>Abra a página de extensões do navegador. No Chrome, digite <strong>chrome://extensions</strong> na barra de endereços. No Edge, digite <strong>edge://extensions</strong>.</li>
+        <li>Abra a página de extensões do navegador. No Chrome, digite <strong>chrome://extensions</strong> na barra de endereços. No Edge, digite <strong>edge://extensions</strong>. No Firefox (versão experimental), digite <strong>about:debugging#/runtime/this-firefox</strong>.</li>
         <li>Ative o <strong>Modo do desenvolvedor</strong> (interruptor no canto superior direito da página).</li>
         <li>Clique em <strong>Carregar sem compactação</strong> (Chrome) ou <strong>Carregar descompactada</strong> (Edge).</li>
         <li>Selecione a pasta <strong>dist</strong> extraída no passo 2 (não selecione o arquivo .zip).</li>
