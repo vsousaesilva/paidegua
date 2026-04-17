@@ -226,9 +226,13 @@ export const TRIAGEM_CRITERIOS = [
     label: 'Procuração',
     defaultText:
       'Procuração pública ou particular, emitida há no máximo um ano do ' +
-      'ajuizamento da ação. No caso de autor analfabeto, procuração lavrada ' +
-      'a rogo, com duas testemunhas e cópias dos documentos do rogante, ' +
-      'rogado e testemunhas.'
+      'ajuizamento da ação. No caso de autor analfabeto ou impossibilitado ' +
+      'de assinar, é válida a procuração particular lavrada a rogo, ' +
+      'contendo (i) marcador textual de rogo (expressões como "a rogo", ' +
+      '"assina o rogado", "a pedido de", "por não saber/poder assinar"), ' +
+      '(ii) identificação do rogado (nome e CPF ou RG) e (iii) assinatura ' +
+      'de ao menos duas testemunhas com nome e CPF ou RG, dispensado o ' +
+      'instrumento público.'
   },
   {
     id: 'documentos-pessoais',
