@@ -863,16 +863,28 @@ const DATA_RUIDO_REGEX =
  * procurações. Datas em contexto de norma/ato citado (PORTARIA, LEI,
  * DECRETO etc.) ou de identificação pessoal (RG, CPF, DN) são
  * descartadas, pois não representam a data de emissão do documento.
+ *
+ * A janela para detecção de ruído (±120) é maior que a janela de
+ * exibição (±40) — citações longas como "PORTARIA CONJUNTA
+ * Nº3/DIRAT/DIRBEN/INSS, de 08 de dezembro de 2017" deixam o
+ * marker "PORTARIA" ~44 chars antes da data, fora da janela curta.
  */
+const DATA_TRECHO_WINDOW = 40;
+const DATA_RUIDO_WINDOW = 120;
+
 function extrairDatasComContexto(texto: string): DataCandidata[] {
   if (!texto) return [];
   const out: DataCandidata[] = [];
   const vistos = new Set<string>();
   const push = (raw: string, idx: number, len: number): void => {
-    const ini = Math.max(0, idx - 40);
-    const fim = Math.min(texto.length, idx + len + 40);
+    const ruidoIni = Math.max(0, idx - DATA_RUIDO_WINDOW);
+    const ruidoFim = Math.min(texto.length, idx + len + DATA_RUIDO_WINDOW);
+    const janelaRuido = texto.slice(ruidoIni, ruidoFim);
+    if (DATA_RUIDO_REGEX.test(janelaRuido)) return;
+
+    const ini = Math.max(0, idx - DATA_TRECHO_WINDOW);
+    const fim = Math.min(texto.length, idx + len + DATA_TRECHO_WINDOW);
     const trecho = texto.slice(ini, fim).replace(/\s+/g, ' ').trim();
-    if (DATA_RUIDO_REGEX.test(trecho)) return;
     const key = `${raw}|${trecho}`;
     if (vistos.has(key)) return;
     vistos.add(key);
