@@ -810,6 +810,178 @@ function buildTriagemContextText(): string {
 }
 
 /**
+ * Regex de datas encontradas no texto OCR/PDF dos documentos. Captura
+ * datas numéricas (DD/MM/AAAA, DD-MM-AAAA, DD.MM.AAAA, com ano de 2 ou
+ * 4 dígitos) e extensas ("DD de MÊS de AAAA"). Usada para montar a
+ * lista de "DATAS CANDIDATAS" enviada ao LLM em "Analisar o processo".
+ */
+const DATAS_NUM_REGEX = /\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b/g;
+const DATAS_EXT_REGEX =
+  /\b(\d{1,2})\s+de\s+(janeiro|fevereiro|mar[çc]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+(\d{4})\b/gi;
+
+/**
+ * Rótulos de documentos para os quais a data de emissão é decisiva na
+ * análise de admissibilidade (procuração — prazo de 1 ano; comprovante
+ * de endereço — prazo de 1 ano; e variações comuns). Tipo e descrição
+ * são checados juntos.
+ */
+const DOCS_DATA_SENSIVEIS: RegExp[] = [
+  /procura[çc][aã]o/i,
+  /substabelec/i,
+  /comprovante.*endere[çc]o/i,
+  /comprovante.*resid[eê]ncia/i,
+  /declara[çc][aã]o\s+de\s+(moradia|resid[eê]ncia)/i,
+  /conta\s+de\s+(luz|[áa]gua|energia|g[áa]s|telefone|internet)/i,
+  /fatura/i,
+  /boleto/i
+];
+
+function isDocDataSensivel(d: ProcessoDocumento): boolean {
+  const hay = `${d.tipo || ''} ${d.descricao || ''}`;
+  return DOCS_DATA_SENSIVEIS.some((r) => r.test(hay));
+}
+
+interface DataCandidata {
+  raw: string;
+  trecho: string;
+}
+
+/**
+ * Extrai as datas aparentes no texto com ±40 chars de contexto. Cap de
+ * 12 entradas por documento para manter o prompt enxuto — números e
+ * datas extensas juntos raramente superam isso em comprovantes e
+ * procurações.
+ */
+function extrairDatasComContexto(texto: string): DataCandidata[] {
+  if (!texto) return [];
+  const out: DataCandidata[] = [];
+  const vistos = new Set<string>();
+  const push = (raw: string, idx: number, len: number): void => {
+    const ini = Math.max(0, idx - 40);
+    const fim = Math.min(texto.length, idx + len + 40);
+    const trecho = texto.slice(ini, fim).replace(/\s+/g, ' ').trim();
+    const key = `${raw}|${trecho}`;
+    if (vistos.has(key)) return;
+    vistos.add(key);
+    out.push({ raw, trecho });
+  };
+
+  DATAS_NUM_REGEX.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = DATAS_NUM_REGEX.exec(texto)) !== null) {
+    push(m[0], m.index, m[0].length);
+    if (out.length >= 12) return out;
+  }
+  DATAS_EXT_REGEX.lastIndex = 0;
+  while ((m = DATAS_EXT_REGEX.exec(texto)) !== null) {
+    push(m[0], m.index, m[0].length);
+    if (out.length >= 12) return out;
+  }
+  return out;
+}
+
+/**
+ * Monta o bloco "DATAS CANDIDATAS" para os documentos data-sensíveis.
+ * Documentos sem nenhuma data legível são listados explicitamente com
+ * "nenhuma data encontrada" — sinal para o LLM marcar o critério como
+ * não atendido sem tentar inferir.
+ */
+function buildDatasCandidatasBlock(docs: ProcessoDocumento[]): string {
+  const alvo = docs.filter(isDocDataSensivel);
+  if (alvo.length === 0) return '';
+
+  const lines: string[] = [
+    '=== DATAS CANDIDATAS (extração automática do texto extraído) ===',
+    'Use SOMENTE estas datas como base factual ao avaliar prazos em documentos data-sensíveis (procuração, comprovante de endereço e congêneres). Não invente datas ausentes.'
+  ];
+  for (const d of alvo) {
+    const desc = d.descricao && d.descricao !== d.tipo ? ` — "${d.descricao}"` : '';
+    lines.push('');
+    lines.push(`(id ${d.id}) ${d.tipo || '(sem tipo)'}${desc}`);
+    const datas = extrairDatasComContexto(d.textoExtraido ?? '');
+    if (datas.length === 0) {
+      lines.push('  - nenhuma data encontrada no texto extraído');
+      continue;
+    }
+    for (const { raw, trecho } of datas) {
+      lines.push(`  - ${raw}  ←  "…${trecho}…"`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Descobre a data de ajuizamento a partir dos documentos já extraídos.
+ * Prefere um documento cujo tipo/descrição sinalize "Petição inicial";
+ * na ausência, cai na menor `dataMovimentacao` do feed (o primeiro doc
+ * cronológico é quase sempre a inicial no PJe legacy).
+ */
+function descobrirDataAjuizamento(docs: ProcessoDocumento[]): string | null {
+  const inicial = docs.find(
+    (d) =>
+      /peti[çc][aã]o\s+inicial/i.test(d.tipo || '') ||
+      /peti[çc][aã]o\s+inicial/i.test(d.descricao || '')
+  );
+  const fonte = inicial ?? docs[0];
+  const m = (fonte?.dataMovimentacao ?? '').match(/^(\d{2}\/\d{2}\/\d{4})/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Monta o bloco "METADADOS DO PROCESSO" (data de ajuizamento e data de
+ * hoje) que ancora o LLM no prazo de 1 ano para procuração e
+ * comprovante de endereço, evitando que ele calcule o prazo a partir
+ * da data errada.
+ */
+function buildAnaliseMetadadosBlock(
+  docs: ProcessoDocumento[],
+  numeroProcesso: string | null
+): string {
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const anoCNJ = numeroProcesso?.match(/\d{7}-\d{2}\.(\d{4})\./)?.[1] ?? null;
+  const dataAjuiz = descobrirDataAjuizamento(docs);
+
+  const lines: string[] = ['=== METADADOS DO PROCESSO ==='];
+  if (numeroProcesso) lines.push(`Número: ${numeroProcesso}`);
+  if (dataAjuiz) {
+    lines.push(
+      `Data de ajuizamento (data de juntada da petição inicial): ${dataAjuiz}`
+    );
+  } else if (anoCNJ) {
+    lines.push(`Ano de ajuizamento (extraído do número CNJ): ${anoCNJ}`);
+  }
+  lines.push(`Data de hoje: ${hoje}`);
+  return lines.join('\n');
+}
+
+/**
+ * Contexto específico do botão "Analisar o processo". Prefixa ao
+ * contexto padrão de triagem dois blocos que o LLM precisa para avaliar
+ * prazos sem alucinar:
+ *
+ *  1. METADADOS DO PROCESSO — data de ajuizamento e data de hoje.
+ *  2. DATAS CANDIDATAS — para cada documento data-sensível, as datas
+ *     aparentes no texto com trecho de contexto. Quando o extractor
+ *     não acha data, declara "nenhuma data encontrada", convidando o
+ *     LLM a reprovar o critério sem inventar.
+ *
+ * Os blocos ficam no INÍCIO do contexto, de modo que sobrevivem ao
+ * truncamento aplicado em `buildAnaliseProcessoPrompt`.
+ */
+function buildAnaliseProcessoContextText(
+  numeroProcesso: string | null
+): string {
+  const docs = getDocumentosOrdenadosCronologicamente();
+  if (docs.length === 0) return '';
+
+  const metadados = buildAnaliseMetadadosBlock(docs, numeroProcesso);
+  const datas = buildDatasCandidatasBlock(docs);
+  const base = buildTriagemContextText();
+
+  return [metadados, datas, base].filter((s) => s.length > 0).join('\n\n');
+}
+
+/**
  * Monta um trecho do processo (a partir da petição inicial cronológica)
  * para alimentar a busca BM25 de modelos similares. Sem esse contexto a
  * busca usa apenas a `queryHints` fixa da ação (ex.: "sentença julga
@@ -2291,7 +2463,9 @@ async function handleAnalisarProcesso(
     return;
   }
 
-  const caseContext = buildTriagemContextText();
+  const caseContext = buildAnaliseProcessoContextText(
+    memory.detection?.numeroProcesso ?? null
+  );
   if (!caseContext) {
     notice(
       'Nenhum conteúdo textual disponível nos documentos extraídos.',

@@ -705,10 +705,12 @@ export function resolveTriagemCriterios(
 }
 
 /**
- * Limite de contexto enviado ao LLM de análise. Mesma escala da triagem
- * de minuta: cabe linha do tempo + últimos documentos integrais.
+ * Limite de contexto enviado ao LLM de análise. Maior que o da triagem
+ * de minuta porque precisa absorver, além da linha do tempo + últimos
+ * documentos integrais, os blocos "METADADOS DO PROCESSO" e "DATAS
+ * CANDIDATAS" prefixados pelo content em `buildAnaliseProcessoContextText`.
  */
-const ANALISE_CASE_CONTEXT_LIMIT = 18_000;
+const ANALISE_CASE_CONTEXT_LIMIT = 22_000;
 
 /**
  * Monta o prompt de análise do processo contra o checklist de critérios.
@@ -734,6 +736,14 @@ export function buildAnaliseProcessoPrompt(
     `- TIPO é a categoria canônica do PJe (frequentemente genérica, ex.: "Outros Documentos", "Petição").\n` +
     `- DESCRIÇÃO é o nome do arquivo atribuído pelo advogado (ex.: "CNIS completo", "Indeferimento administrativo").\n` +
     `Para o critério de nomeação correta, considere ATENDIDO quando TIPO **ou** DESCRIÇÃO permita identificar imediatamente o conteúdo da peça. Só marque como NÃO atendido se AMBOS forem genéricos ao ponto de impedir a identificação do conteúdo.\n\n` +
+    `METADADOS E DATAS (blocos prefixados ao contexto):\n` +
+    `- O bloco "METADADOS DO PROCESSO" traz a data de ajuizamento e a data de hoje. Use a data de ajuizamento (ou, na falta, o ano do número CNJ) como MARCO INICIAL para qualquer prazo de 1 ano (procuração, comprovante de endereço). Nunca use a data de juntada ao PJe (aquela do cabeçalho "{data} — TIPO —") como data de emissão do documento — são coisas distintas.\n` +
+    `- O bloco "DATAS CANDIDATAS", quando presente, lista todas as datas aparentes no texto extraído de documentos data-sensíveis (procuração, comprovante de endereço, faturas, boletos, declarações de moradia). Ao avaliar esses critérios, escolha a data de emissão APENAS entre as datas dessa lista. Não invente nem transcreva datas fora dela.\n` +
+    `- Se um documento aparecer em "DATAS CANDIDATAS" com "nenhuma data encontrada", considere o critério correspondente como NÃO atendido e solicite novo documento com data legível.\n\n` +
+    `REGRAS ESPECÍFICAS PARA DATAS:\n` +
+    `- Procuração: a data relevante é a que acompanha a assinatura do outorgante (padrões "Cidade, DD/MM/AAAA" ou "DD de mês de AAAA"). Não use datas de documentos pessoais (RG, CPF) citados no corpo. Se houver substabelecimento, a procuração de referência é a do outorgante originário, não a do substabelecimento.\n` +
+    `- Comprovante de endereço: use a data de EMISSÃO, LEITURA ou COMPETÊNCIA do serviço. NUNCA use a data de vencimento. Se houver várias datas desses tipos, prefira a mais recente (que é a mais favorável à parte).\n` +
+    `- Em qualquer caso, cite na justificativa a data escolhida e o id do documento (ex.: "procuração firmada em 10/10/2025 — id 154216406").\n\n` +
     `REGRAS DE AVALIAÇÃO:\n` +
     `- Se um critério depende de tipo específico de causa (ex.: "Salário-maternidade" só se aplica em ação de salário-maternidade) e a causa concreta é OUTRA, considere o critério como ATENDIDO (campo "atendido": true) e justifique com "critério não aplicável a esta causa".\n` +
     `- Se um critério é aplicável e os autos demonstram a documentação exigida, marque como atendido e cite o documento.\n` +
