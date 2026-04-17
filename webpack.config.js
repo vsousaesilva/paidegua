@@ -21,7 +21,8 @@ module.exports = (_env, argv) => {
       background: './src/background/background.ts',
       content: './src/content/content.ts',
       'popup/popup': './src/popup/popup.ts',
-      'options/options': './src/options/options.ts'
+      'options/options': './src/options/options.ts',
+      'dashboard/dashboard': './src/dashboard/dashboard.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -55,6 +56,8 @@ module.exports = (_env, argv) => {
           { from: 'src/popup/popup.css', to: 'popup/popup.css' },
           { from: 'src/options/options.html', to: 'options/options.html' },
           { from: 'src/options/options.css', to: 'options/options.css' },
+          { from: 'src/dashboard/dashboard.html', to: 'dashboard/dashboard.html' },
+          { from: 'src/dashboard/dashboard.css', to: 'dashboard/dashboard.css' },
           { from: 'src/content/content.css', to: 'content.css' },
           // PDF.js worker precisa ser servido como arquivo acessivel via
           // chrome.runtime.getURL. Listado em web_accessible_resources

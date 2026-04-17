@@ -66,19 +66,31 @@ Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes se
 
 ### Acessando o pAIdegua
 
-1. Acesse o PJe e abra um processo (tela de autos digitais).
-2. O botao flutuante do pAIdegua aparecera no canto da pagina.
-3. Clique no botao para abrir o painel lateral.
+1. Acesse o PJe. O pAIdegua agora pode ser aberto em qualquer tela do sistema (painel do usuario, lista de tarefas, autos de um processo etc.), nao apenas quando houver processo aberto.
+2. Ha duas formas de abrir o painel lateral:
+   - Clicando no botao "PAIDEGUA" que a extensao injeta na barra superior do proprio PJe.
+   - Clicando no botao flutuante do pAIdegua, que aparece no canto da pagina.
+3. As funcionalidades que dependem de autos abertos (Carregar Documentos, Resumir, Resumir em audio, Anonimizar, Minutar e a secao "Minutas com modelo") ficam automaticamente ocultas enquanto voce nao estiver em uma tela de processo — reaparecem assim que os autos forem abertos.
 
 ### Painel lateral
 
 O painel exibe:
 - Nome da extensao e provedor/modelo em uso
-- Numero do processo detectado e o grau identificado automaticamente (1G, 2G ou turma recursal)
-- Barra de ferramentas com os botoes de acao, ja adaptados ao grau do processo
+- Numero do processo detectado e o grau identificado automaticamente (1G, 2G ou turma recursal), quando aplicavel
+- Seletor de perfil (Gabinete / Secretaria) no 1o grau, no canto superior do painel
+- Barra de ferramentas com os botoes de acao, ja adaptados ao perfil em uso e ao grau do processo
 - Area de chat para interacao livre com a IA
 
 A deteccao de grau e feita pelo dominio do PJe (pje1g.trf5.jus.br = 1o grau; pje2g.trf5.jus.br = turma recursal/2o grau) e altera automaticamente o conjunto de botoes de minuta exibidos.
+
+### Perfis de trabalho (Gabinete / Secretaria)
+
+O pAIdegua apresenta conjuntos diferentes de ferramentas conforme o perfil:
+
+- Gabinete (padrao): foco em analise dos autos e producao de minutas — mostra os botoes de Resumir, Resumir em audio, Anonimizar, Minutar e a secao "Minutas com modelo" (quando ha processo aberto).
+- Secretaria: foco em triagem e organizacao de tarefas — mostra a secao "Acoes da secretaria" com o botao "Triagem Inteligente" (ver secao propria adiante).
+
+O perfil padrao e definido nas configuracoes (popup da extensao); a troca na sessao corrente e feita pelo seletor no cabecalho do painel. Em instancias de 2o grau e turma recursal, o perfil Secretaria nao esta disponivel e o seletor e omitido.
 
 ### Carregar Documentos
 
@@ -156,6 +168,18 @@ Comportamento da busca de modelos:
 - Se ha pasta mas nenhum modelo compativel: pergunta se deseja gerar do zero ou cancelar.
 - Se nao ha pasta configurada: gera do zero silenciosamente.
 
+### Triagem Inteligente (perfil Secretaria)
+
+Funcionalidade dedicada ao trabalho de secretaria no 1o grau. Aparece como botao "Triagem Inteligente" na secao "Acoes da secretaria" do painel quando o perfil Secretaria esta ativo. Abre um painel proprio que permite:
+
+1. Analisar tarefas: le a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providencia necessaria e apresenta um quadro resumo para orientar a priorizacao do dia.
+
+2. Analisar o processo: dentro de um processo aberto, executa uma analise guiada pelos criterios configurados (por padrao, os criterios da NT 1/2025 do TRF5 — emenda a inicial, gratuidade, representacao processual, interesse de agir, competencia, prevencao e outros). O status exibido durante a execucao e "Analisando o processo pelos criterios configurados...".
+
+3. Gerar ato de emenda a inicial: quando a analise indicar necessidade de emenda, a extensao oferece a geracao da minuta de ato de emenda a inicial diretamente no chat, ja contemplando os pontos identificados na triagem.
+
+O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz apenas o botao "Encaminhar e inserir no PJe", que faz o encaminhamento da tarefa e insere o texto da minuta no editor CKEditor correspondente, em uma unica acao.
+
 ### Chat livre
 
 A area de chat na parte inferior permite fazer perguntas livres sobre o processo. Exemplos:
@@ -174,10 +198,16 @@ Com Anthropic, a transcricao via API nao esta disponivel; nesse caso use o Web S
 
 ### Acoes disponiveis em cada resposta/minuta
 
-Abaixo de cada resposta da IA (em especial minutas) aparecem botoes de acao rapida:
+Abaixo de cada resposta da IA (em especial minutas) aparecem botoes de acao rapida. O conjunto de botoes e praticamente o mesmo em todas as bolhas; o que muda e apenas qual botao de insercao no PJe aparece, conforme o contexto:
+
+- Em minutas produzidas pelos botoes de "Minutas com modelo" e pelo "Minutar" (triagem automatica), o rodape traz o botao "Inserir no PJe".
+- Em minutas de ato de emenda a inicial geradas pela Triagem Inteligente, o botao "Inserir no PJe" e substituido por "Encaminhar e inserir no PJe" — apropriado para o fluxo de emenda, em que o editor da nova tarefa ainda nao foi criado no momento da geracao.
+
+Os demais botoes seguem disponiveis em ambos os casos:
 
 - Copiar: copia a resposta (markdown) para a area de transferencia.
 - Inserir no PJe: insere o texto diretamente no editor CKEditor do PJe aberto em outra aba, sem copiar e colar manualmente.
+- Encaminhar e inserir no PJe: presente apenas no fluxo de emenda a inicial da Triagem Inteligente — encaminha a tarefa e insere a minuta no editor em uma mesma acao.
 - Baixar .doc: salva a resposta como arquivo do Word (.doc), ja com nome sugerido a partir do numero do processo e do tipo de ato.
 - Refinar minuta: reaproveita a ultima minuta gerada com uma instrucao adicional digitada pelo usuario (ex.: "encurtar", "mudar o tom", "citar a Sumula 343 do STJ", "reforcar o dispositivo"), preservando o template usado.
 - Nova minuta: gera uma nova versao da mesma acao, do zero, sem modelo de referencia.

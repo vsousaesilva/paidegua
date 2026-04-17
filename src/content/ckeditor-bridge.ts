@@ -54,7 +54,10 @@ const ACTION_TO_TIPO_DOC: Record<string, PJeTipoDocumentoValue> = {
   'decisao-nega-seguimento': '0',
   'decisao-2g': '0',
   'converter-diligencia-baixa': '1',
-  'despachar-2g': '1'
+  'despachar-2g': '1',
+  // Triagem inteligente (Secretaria) — emenda à inicial é ato judicial
+  // de impulsionamento, vai como Despacho.
+  'emenda-inicial': '1'
 };
 
 /**

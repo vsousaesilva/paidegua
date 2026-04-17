@@ -11,12 +11,17 @@
 
 import {
   DEFAULT_MAX_TOKENS,
+  DEFAULT_PROFILE,
   DEFAULT_PROVIDER,
   DEFAULT_TEMPERATURE,
+  PROFILE_IDS,
   PROVIDER_IDS,
   PROVIDER_MODELS,
   STORAGE_KEYS,
-  type ProviderId
+  TRIAGEM_CRITERIOS,
+  type ProviderId,
+  type TriagemCriterioId,
+  type TriagemCriterioSetting
 } from '../shared/constants';
 import type { PAIdeguaSettings } from '../shared/types';
 import { decryptString, encryptString, type EncryptedBlob } from './crypto';
@@ -25,6 +30,14 @@ function defaultModelFor(provider: ProviderId): string {
   const models = PROVIDER_MODELS[provider];
   const recommended = models.find((m) => m.recommended);
   return (recommended ?? models[0]!).id;
+}
+
+function defaultTriagemCriterios(): Record<TriagemCriterioId, TriagemCriterioSetting> {
+  const map = {} as Record<TriagemCriterioId, TriagemCriterioSetting>;
+  for (const c of TRIAGEM_CRITERIOS) {
+    map[c.id] = { adopted: true, customText: '' };
+  }
+  return map;
 }
 
 export function defaultSettings(): PAIdeguaSettings {
@@ -41,7 +54,10 @@ export function defaultSettings(): PAIdeguaSettings {
     ttsVoice: '',
     lgpdAccepted: false,
     ocrAutoRun: false,
-    ocrMaxPages: 30
+    ocrMaxPages: 30,
+    defaultProfile: DEFAULT_PROFILE,
+    triagemCriterios: defaultTriagemCriterios(),
+    triagemCriteriosCustom: []
   };
 }
 
@@ -71,11 +87,60 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
       ? stored.maxTokens
       : DEFAULT_MAX_TOKENS;
 
+  // Defensivo: instalações pré-perfis não têm `defaultProfile`; valida
+  // também contra valores inesperados vindos de storage corrompido.
+  const storedProfile =
+    typeof stored.defaultProfile === 'string' &&
+    (PROFILE_IDS as readonly string[]).includes(stored.defaultProfile)
+      ? stored.defaultProfile
+      : DEFAULT_PROFILE;
+
+  // Critérios de triagem: instalações antigas não têm o campo. Garante todos
+  // os ids da NT atual com default `adopted=true` e preserva escolhas já
+  // feitas. Critérios desconhecidos vindos do storage são descartados.
+  const mergedCriterios = base.triagemCriterios;
+  const storedCriterios = stored.triagemCriterios;
+  if (storedCriterios && typeof storedCriterios === 'object') {
+    for (const c of TRIAGEM_CRITERIOS) {
+      const v = (storedCriterios as Record<string, unknown>)[c.id];
+      if (v && typeof v === 'object') {
+        const adopted =
+          typeof (v as TriagemCriterioSetting).adopted === 'boolean'
+            ? (v as TriagemCriterioSetting).adopted
+            : true;
+        const customText =
+          typeof (v as TriagemCriterioSetting).customText === 'string'
+            ? (v as TriagemCriterioSetting).customText
+            : '';
+        mergedCriterios[c.id] = { adopted, customText };
+      }
+    }
+  }
+
+  // Critérios livres: aceita apenas itens com id e texto string. Itens
+  // sem id estável recebem um derivado do índice para sobreviver a
+  // re-renderizações do popup.
+  const storedCustom = Array.isArray(stored.triagemCriteriosCustom)
+    ? stored.triagemCriteriosCustom
+        .map((item, i) => {
+          if (!item || typeof item !== 'object') return null;
+          const obj = item as { id?: unknown; text?: unknown };
+          const text = typeof obj.text === 'string' ? obj.text : '';
+          const id =
+            typeof obj.id === 'string' && obj.id.length > 0 ? obj.id : `custom-${i}-${Date.now()}`;
+          return { id, text };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+    : [];
+
   return {
     ...base,
     ...stored,
     models: mergedModels,
-    maxTokens: storedMaxTokens
+    maxTokens: storedMaxTokens,
+    defaultProfile: storedProfile,
+    triagemCriterios: mergedCriterios,
+    triagemCriteriosCustom: storedCustom
   };
 }
 

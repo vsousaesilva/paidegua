@@ -178,6 +178,157 @@
         color: var(--muted); text-align: center;
         background: linear-gradient(0deg, rgba(244,247,252,0.6), transparent);
       }
+
+      /* Abas */
+      .paidegua-popup__tabs {
+        display: flex; gap: 2px; padding: 0 18px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(244,247,252,0.4));
+      }
+      .paidegua-popup__tab {
+        background: transparent; border: 0; padding: 10px 16px 11px;
+        font-size: 12.5px; font-weight: 600; color: var(--muted);
+        font-family: inherit; cursor: pointer; position: relative;
+        border-radius: 6px 6px 0 0;
+        transition: color 160ms ease, background-color 160ms ease;
+      }
+      .paidegua-popup__tab:hover { color: var(--primary-dark); background: rgba(19,81,180,0.06); }
+      .paidegua-popup__tab[aria-selected="true"] {
+        color: var(--primary-dark);
+        background: rgba(255,255,255,0.85);
+      }
+      .paidegua-popup__tab[aria-selected="true"]::after {
+        content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px;
+        height: 2px; background: var(--primary); border-radius: 2px;
+      }
+      .paidegua-popup__tabpanel { display: none; }
+      .paidegua-popup__tabpanel.is-active { display: block; }
+
+      /* Triagem Inteligente — lista de critérios */
+      .paidegua-triagem-intro {
+        margin: 0 0 12px; padding: 10px 12px; line-height: 1.5;
+        font-size: 11.5px; color: var(--fg);
+        background: rgba(19,81,180,0.06);
+        border: 1px solid var(--border); border-radius: var(--radius-sm);
+      }
+      .paidegua-triagem-intro strong { color: var(--primary-dark); }
+      .paidegua-triagem-list {
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      .paidegua-triagem-card {
+        padding: 12px 14px;
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--radius); box-shadow: 0 2px 8px rgba(12,50,111,0.04);
+      }
+      .paidegua-triagem-card__header {
+        display: flex; align-items: flex-start; justify-content: space-between;
+        gap: 12px; margin-bottom: 8px;
+      }
+      .paidegua-triagem-card__title {
+        margin: 0; font-size: 13px; font-weight: 700; color: var(--primary-dark);
+        line-height: 1.3;
+      }
+      .paidegua-triagem-card__toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11px; font-weight: 600; color: var(--muted);
+        cursor: pointer; user-select: none; flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .paidegua-triagem-card__toggle input { accent-color: var(--primary); margin: 0; }
+      .paidegua-triagem-card__default {
+        margin: 0; padding: 9px 11px; font-size: 11.5px; line-height: 1.5;
+        color: var(--fg); background: rgba(244,247,252,0.7);
+        border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+      }
+      .paidegua-triagem-card__default-label {
+        display: block; font-size: 9.5px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.6px;
+        color: var(--primary); margin-bottom: 4px;
+      }
+      .paidegua-triagem-card__custom { margin-top: 10px; }
+      .paidegua-triagem-card__custom-label {
+        display: block; font-size: 11px; font-weight: 600;
+        color: var(--primary-dark); margin-bottom: 5px;
+      }
+      .paidegua-triagem-card__custom textarea {
+        width: 100%; min-height: 84px; resize: vertical;
+        background: rgba(255,255,255,0.95); color: var(--fg);
+        border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        padding: 9px 11px; font-size: 12px; font-family: inherit; outline: none;
+        line-height: 1.45;
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+      .paidegua-triagem-card__custom textarea:focus {
+        border-color: var(--primary); box-shadow: 0 0 0 4px rgba(19,81,180,0.14);
+      }
+      .paidegua-triagem-card.is-custom .paidegua-triagem-card__default { opacity: 0.55; }
+      .paidegua-triagem-status {
+        margin: 10px 2px 0; font-size: 11px; color: var(--muted); min-height: 14px;
+      }
+      .paidegua-triagem-status.is-ok { color: var(--success); }
+      .paidegua-triagem-status.is-error { color: var(--danger); }
+
+      /* Critérios livres (customizados pelo usuário) */
+      .paidegua-triagem-extras {
+        margin-top: 14px; padding: 12px 14px;
+        background: rgba(255,205,7,0.08); border: 1px solid rgba(255,205,7,0.35);
+        border-radius: var(--radius);
+      }
+      .paidegua-triagem-extras__cta {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; flex-wrap: wrap;
+      }
+      .paidegua-triagem-extras__title {
+        margin: 0; font-size: 12.5px; font-weight: 700; color: var(--primary-dark);
+        line-height: 1.35;
+      }
+      .paidegua-triagem-extras__hint {
+        margin: 3px 0 0; font-size: 11px; color: var(--muted); line-height: 1.4;
+      }
+      .paidegua-triagem-extras__toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11.5px; font-weight: 600; color: var(--primary-dark);
+        cursor: pointer; user-select: none;
+      }
+      .paidegua-triagem-extras__toggle input { accent-color: var(--primary); }
+      .paidegua-triagem-extras__body {
+        margin-top: 12px; display: flex; flex-direction: column; gap: 10px;
+      }
+      .paidegua-triagem-extras__item {
+        display: flex; gap: 8px; align-items: stretch;
+      }
+      .paidegua-triagem-extras__item textarea {
+        flex: 1; min-height: 64px; resize: vertical;
+        background: rgba(255,255,255,0.95); color: var(--fg);
+        border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        padding: 9px 11px; font-size: 12px; font-family: inherit; outline: none;
+        line-height: 1.45;
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+      .paidegua-triagem-extras__item textarea:focus {
+        border-color: var(--primary); box-shadow: 0 0 0 4px rgba(19,81,180,0.14);
+      }
+      .paidegua-triagem-extras__remove {
+        flex-shrink: 0; width: 32px;
+        background: rgba(255,255,255,0.85); color: var(--danger);
+        border: 1px solid rgba(192,57,43,0.32); border-radius: var(--radius-sm);
+        font-size: 16px; line-height: 1; cursor: pointer; font-weight: 700;
+        transition: background-color 160ms ease, transform 160ms ease;
+      }
+      .paidegua-triagem-extras__remove:hover { background: rgba(192,57,43,0.10); transform: translateY(-1px); }
+      .paidegua-triagem-extras__add {
+        margin-top: 4px; align-self: flex-start;
+        display: inline-flex; align-items: center; gap: 6px;
+        background: var(--gradient); color: #fff; border: 0;
+        padding: 8px 14px; border-radius: var(--radius-sm);
+        font-size: 12px; font-weight: 600; cursor: pointer;
+        box-shadow: 0 4px 12px rgba(19,81,180,0.2);
+        transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+      .paidegua-triagem-extras__add:hover {
+        transform: translateY(-1px); box-shadow: 0 6px 16px rgba(19,81,180,0.28);
+      }
+      .paidegua-triagem-extras__add-icon { font-size: 16px; line-height: 1; font-weight: 700; }
     </style>
   </head>
   <body>
@@ -195,7 +346,17 @@
       </div>
     </header>
 
+    <nav class="paidegua-popup__tabs" role="tablist" aria-label="Configura&#231;&#245;es">
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-geral" aria-controls="panel-geral" aria-selected="true">
+        Geral
+      </button>
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-triagem" aria-controls="panel-triagem" aria-selected="false">
+        Triagem Inteligente
+      </button>
+    </nav>
+
     <main class="paidegua-popup__main">
+      <div class="paidegua-popup__tabpanel is-active" role="tabpanel" id="panel-geral" aria-labelledby="tab-geral">
       <div class="paidegua-popup__grid">
         <div class="paidegua-popup__col">
           <section class="paidegua-popup__section" id="lgpd-section">
@@ -212,6 +373,20 @@
               <input type="checkbox" id="lgpd-accept" />
               <span>Li e estou ciente das condi&#231;&#245;es acima.</span>
             </label>
+          </section>
+
+          <section class="paidegua-popup__section" id="profile-section">
+            <h2>Perfil de trabalho</h2>
+            <div class="paidegua-popup__row">
+              <div style="flex:1;min-width:0">
+                <label class="paidegua-popup__hint" for="default-profile-select" style="margin:0 0 4px;display:block">Perfil padrão ao abrir</label>
+                <select id="default-profile-select" class="paidegua-popup__input"></select>
+              </div>
+            </div>
+            <p class="paidegua-popup__hint paidegua-popup__hint--small">
+              O sidebar permite alternar o perfil na sess&#227;o, mas ao reabrir volta
+              para o escolhido aqui.
+            </p>
           </section>
 
           <section class="paidegua-popup__section">
@@ -384,6 +559,39 @@
             </details>
           </section>
         </div>
+      </div>
+      </div>
+
+      <div class="paidegua-popup__tabpanel" role="tabpanel" id="panel-triagem" aria-labelledby="tab-triagem" hidden>
+        <p class="paidegua-triagem-intro">
+          Defina aqui os <strong>crit&#233;rios de an&#225;lise inicial</strong> que voc&#234; adota nos
+          processos previdenci&#225;rios e assistenciais. A base &#233; a
+          <strong>Nota T&#233;cnica n&#186; 1/2025 do CLI-JFCE</strong>, que uniformizou as
+          exig&#234;ncias entre os 16 Juizados Especiais Federais do Cear&#225;. Para cada
+          crit&#233;rio, mantenha a reda&#231;&#227;o padr&#227;o ou descreva seu pr&#243;prio entendimento &#8212;
+          os crit&#233;rios escolhidos s&#227;o injetados nos prompts da Triagem Inteligente.
+        </p>
+        <div class="paidegua-triagem-list" id="triagem-criterios-list"></div>
+
+        <section class="paidegua-triagem-extras" id="triagem-extras">
+          <div class="paidegua-triagem-extras__cta">
+            <div>
+              <p class="paidegua-triagem-extras__title">
+                Deseja incluir outros crit&#233;rios customizados? Insira manualmente.
+              </p>
+              <p class="paidegua-triagem-extras__hint">
+                &#218;til para exig&#234;ncias pr&#243;prias da sua unidade que n&#227;o constam da NT 1/2025.
+              </p>
+            </div>
+            <label class="paidegua-triagem-extras__toggle" for="triagem-extras-enable">
+              <input type="checkbox" id="triagem-extras-enable" />
+              <span>Sim</span>
+            </label>
+          </div>
+          <div class="paidegua-triagem-extras__body" id="triagem-extras-body" hidden></div>
+        </section>
+
+        <p class="paidegua-triagem-status" id="triagem-status"></p>
       </div>
     </main>
 

@@ -47,6 +47,13 @@ export function mountShell(): ShellController {
   host.style.zIndex = '2147483647'; // máximo int32 — acima de tudo no PJe
   host.style.pointerEvents = 'none'; // filhos reativam pointerEvents quando precisarem
 
+  // Captura a família tipográfica efetiva do PJe para reduzir fricção visual.
+  // NÃO herdamos o font-size do PJe: o tema gov.br usa valores grandes em
+  // body (>=16px) que quebram a proporção entre o chrome (botões, paddings
+  // fixos em px) e o texto do sidebar. Mantemos a escala interna calibrada.
+  const pjeFont = capturePJeTypography();
+  host.style.setProperty('--paidegua-font', pjeFont.family);
+
   const shadow = host.attachShadow({ mode: 'closed' });
 
   // CSS base comum ao FAB e ao sidebar, injetado diretamente no shadow root.
@@ -96,7 +103,13 @@ const SHELL_BASE_CSS = `
   --paidegua-border-strong: rgba(19, 81, 180, 0.26);
   --paidegua-radius: 14px;
   --paidegua-radius-sm: 10px;
-  --paidegua-font: "Inter", "Rawline", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Fallback: quando mountShell não conseguir ler o body do PJe em tempo,
+   * caímos para a pilha gov.br (Rawline) com system-ui atrás. O valor real
+   * é sobrescrito inline no host a partir de getComputedStyle(document.body). */
+  --paidegua-font: "Rawline", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Tamanho base interno calibrado — NÃO deriva do PJe para preservar a
+   * proporção entre texto e chrome (ver mountShell). */
+  --paidegua-font-size-base: 14px;
   --paidegua-shadow: 0 18px 52px rgba(12, 50, 111, 0.22), 0 2px 6px rgba(12, 50, 111, 0.08);
   --paidegua-blur: saturate(180%) blur(18px);
   --paidegua-gradient: linear-gradient(135deg, #1351B4 0%, #0C326F 100%);
@@ -114,3 +127,27 @@ button {
   color: #0C326F;
 }
 `;
+
+/**
+ * Lê a família tipográfica efetiva do corpo da página do PJe para usarmos
+ * a mesma no shell do pAIdegua. Só capturamos `font-family` — o `font-size`
+ * do gov.br é grande demais e quebraria a proporção com o chrome fixo
+ * (paddings e sizes hardcoded em px) do sidebar.
+ */
+function capturePJeTypography(): { family: string } {
+  const fallbackFamily =
+    '"Rawline", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  try {
+    const source = document.body ?? document.documentElement;
+    if (!source) {
+      return { family: fallbackFamily };
+    }
+    const computed = window.getComputedStyle(source);
+    const family = computed.fontFamily?.trim();
+    return {
+      family: family && family.length > 0 ? family : fallbackFamily
+    };
+  } catch {
+    return { family: fallbackFamily };
+  }
+}

@@ -17,14 +17,22 @@ import {
   LOG_PREFIX,
   MESSAGE_CHANNELS,
   PORT_NAMES,
+  STORAGE_KEYS,
   type ProviderId
 } from '../shared/constants';
 import {
+  TRIAGEM_LLM_ANON_NOTICE,
+  type TriagemPayloadAnon
+} from '../shared/triagem-anonymize';
+import {
   SYSTEM_PROMPT,
+  buildAnaliseProcessoPrompt,
   buildDocumentContext,
   buildTriagemPrompt,
+  parseAnaliseProcessoResponse,
   parseTriagemResponse,
   getTemplateActionsForGrau,
+  type CriterioResolvido,
   type TemplateAction,
   type TriagemResult
 } from '../shared/prompts';
@@ -41,6 +49,7 @@ import {
   type SearchOptions
 } from '../shared/templates-search';
 import type {
+  AnaliseProcessoResult,
   ChatMessage,
   ChatStartPayload,
   ExtensionMessage,
@@ -48,7 +57,10 @@ import type {
   SynthesizeSpeechPayload,
   SynthesizeSpeechResult,
   TestConnectionResult,
-  TranscribeAudioPayload
+  TranscribeAudioPayload,
+  TriagemDashboardPayload,
+  TriagemInsightsLLM,
+  TriagemSugestao
 } from '../shared/types';
 import { getProvider } from './providers';
 import {
@@ -170,6 +182,34 @@ chrome.runtime.onMessage.addListener(
       case MESSAGE_CHANNELS.MINUTAR_TRIAGEM:
         void handleMinutarTriagem(
           message.payload as TriagemRequest,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.TRIAGEM_OPEN_DASHBOARD:
+        void handleOpenTriagemDashboard(
+          message.payload as TriagemDashboardPayload,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.TRIAGEM_INSIGHTS:
+        void handleTriagemInsights(
+          message.payload as TriagemPayloadAnon,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
+        void handleAnalisarProcesso(
+          message.payload as AnalisarProcessoRequest,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.ENCAMINHAR_EMENDA:
+        void handleEncaminharEmenda(
+          message.payload as EncaminharEmendaRequest,
           sendResponse
         );
         return true;
@@ -461,6 +501,577 @@ async function handleMinutarTriagem(
   }
 }
 
+// =====================================================================
+// Analisar o processo — checklist dos critérios de admissibilidade
+// =====================================================================
+
+interface AnalisarProcessoRequest {
+  /** Critérios já resolvidos (NT padrão ou entendimento próprio + livres). */
+  criterios: CriterioResolvido[];
+  /** Trecho consolidado dos autos (já truncado pelo content). */
+  caseContext: string;
+}
+
+interface AnalisarProcessoResponse {
+  ok: boolean;
+  result?: AnaliseProcessoResult;
+  error?: string;
+}
+
+async function handleAnalisarProcesso(
+  payload: AnalisarProcessoRequest,
+  sendResponse: (response: AnalisarProcessoResponse) => void
+): Promise<void> {
+  try {
+    if (!payload?.caseContext || !payload.caseContext.trim()) {
+      sendResponse({
+        ok: false,
+        error: 'Sem contexto dos autos — carregue e extraia os documentos antes.'
+      });
+      return;
+    }
+    const criterios = Array.isArray(payload.criterios) ? payload.criterios : [];
+    if (criterios.length === 0) {
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhum critério configurado. Acesse a aba "Triagem Inteligente" do popup para adotar ou descrever critérios.'
+      });
+      return;
+    }
+
+    const settings = await getSettings();
+    const providerId = settings.activeProvider;
+    const apiKey = await getApiKey(providerId);
+    if (!apiKey) {
+      sendResponse({
+        ok: false,
+        error: `API key não cadastrada para ${providerId}.`
+      });
+      return;
+    }
+
+    const provider = getProvider(providerId);
+    const prompt = buildAnaliseProcessoPrompt(criterios, payload.caseContext);
+
+    const controller = new AbortController();
+    const generator = provider.sendMessage({
+      apiKey,
+      model: settings.models[providerId],
+      systemPrompt:
+        'Você é um assistente que auxilia a Secretaria de uma Vara Federal a verificar se uma petição inicial atende aos critérios de admissibilidade adotados pelo magistrado. ' +
+        'Responda SEMPRE em JSON puro, sem texto adicional, sem markdown.',
+      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      temperature: 0,
+      // Resposta carrega justificativa para cada critério da NT (até 11) +
+      // critérios livres. 4096 cobre com folga sem desperdício.
+      maxTokens: 4096,
+      signal: controller.signal
+    });
+
+    let raw = '';
+    for await (const chunk of generator) {
+      raw += chunk.delta;
+    }
+
+    const parsed = parseAnaliseProcessoResponse(raw, criterios);
+    if (!parsed) {
+      sendResponse({
+        ok: false,
+        error: 'Resposta do LLM não pôde ser interpretada como JSON de análise.'
+      });
+      return;
+    }
+
+    sendResponse({ ok: true, result: parsed });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleAnalisarProcesso falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// =====================================================================
+// Encaminhar e inserir emenda — automação na aba do processo
+// =====================================================================
+
+interface EncaminharEmendaRequest {
+  /** HTML renderizado da minuta de emenda (bolha do chat). */
+  html: string;
+  /** Número do processo detectado no sidebar (CNJ, qualquer formatação). */
+  numeroProcesso: string;
+}
+
+type EncaminharEmendaStage =
+  | 'find-tab'
+  | 'click-transition'
+  | 'wait-editor'
+  | 'inject';
+
+interface EncaminharEmendaResponse {
+  ok: boolean;
+  error?: string;
+  stage?: EncaminharEmendaStage;
+}
+
+/**
+ * Nome público da transição, como aparece na linha do item no dropdown
+ * (`<a>...texto...</a>`). O atributo `title` do anchor costuma vir com o
+ * prefixo "Encaminhar para " + quebra de linha, então a identificação
+ * robusta passa pelo texto visível.
+ */
+const TRANSICAO_EMENDA_NOME = 'Comunicação - Elaborar (emenda automática)';
+
+async function handleEncaminharEmenda(
+  payload: EncaminharEmendaRequest,
+  sendResponse: (response: EncaminharEmendaResponse) => void
+): Promise<void> {
+  try {
+    const html = (payload?.html ?? '').trim();
+    const numeroProcesso = (payload?.numeroProcesso ?? '').trim();
+    if (!html) {
+      sendResponse({ ok: false, error: 'Conteúdo da minuta está vazio.' });
+      return;
+    }
+    if (!numeroProcesso) {
+      sendResponse({ ok: false, error: 'Número do processo não informado.' });
+      return;
+    }
+    const numeroDigits = numeroProcesso.replace(/\D+/g, '');
+    if (!numeroDigits || numeroDigits.length < 10) {
+      sendResponse({ ok: false, error: 'Número do processo inválido.' });
+      return;
+    }
+
+    // Passo 1 — localiza a aba do PJe com a tarefa do processo aberta.
+    const target = await encontrarAbaComTransicao(numeroDigits);
+    if (!target) {
+      sendResponse({
+        ok: false,
+        stage: 'find-tab',
+        error:
+          `Não localizei a tarefa do processo ${numeroProcesso} aberta em outra aba do navegador. ` +
+          'Abra a tarefa no PJe (com o botão de transições visível) e tente de novo.'
+      });
+      return;
+    }
+
+    // Passo 2 — clica no item de transição (título exato).
+    const clickResult = await clickTransicaoNoFrame(target.tabId, target.frameId);
+    if (!clickResult.ok) {
+      sendResponse({
+        ok: false,
+        stage: 'click-transition',
+        error:
+          clickResult.error ??
+          `Transição "${TRANSICAO_EMENDA_NOME}" não encontrada na tarefa.`
+      });
+      return;
+    }
+
+    // Passo 3 — aguarda o editor Badon (iframe appEditorAreaIframe) carregar.
+    const editorFrameId = await aguardarEditorBadon(target.tabId, 20000);
+    if (editorFrameId === null) {
+      sendResponse({
+        ok: false,
+        stage: 'wait-editor',
+        error:
+          'Transição acionada, mas o editor Badon não apareceu em 20s. ' +
+          'Verifique a aba do PJe e, se o editor estiver aberto, use o ' +
+          'botão "Inserir no PJe" manualmente.'
+      });
+      return;
+    }
+
+    // Passo 4 — injeta o HTML no ProseMirror dentro do iframe.
+    const injectResult = await injetarMinutaNoBadon(
+      target.tabId,
+      editorFrameId,
+      html
+    );
+    if (!injectResult.ok) {
+      sendResponse({
+        ok: false,
+        stage: 'inject',
+        error: injectResult.error ?? 'Falha ao inserir a minuta no editor.'
+      });
+      return;
+    }
+
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleEncaminharEmenda falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Varre todas as abas jus.br procurando a frame que:
+ *   (a) tem o botão `#btnTransicoesTarefa` (só existe em visão de tarefa); e
+ *   (b) menciona, em qualquer parte do texto visível, o número do processo.
+ *
+ * Devolve o primeiro casamento, incluindo o `frameId` para que os passos
+ * seguintes se prendam àquele frame específico (mais confiável do que
+ * re-buscar em allFrames entre passos).
+ */
+async function encontrarAbaComTransicao(
+  numeroDigits: string
+): Promise<{ tabId: number; frameId: number } | null> {
+  const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+  for (const tab of tabs) {
+    if (tab.id === undefined) continue;
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        func: probeTransicaoFrame,
+        args: [numeroDigits]
+      });
+      for (const r of results) {
+        if (r.result === true && r.frameId !== undefined) {
+          return { tabId: tab.id, frameId: r.frameId };
+        }
+      }
+    } catch {
+      /* aba sem permissão — ignora */
+    }
+  }
+  return null;
+}
+
+function probeTransicaoFrame(numeroDigits: string): boolean {
+  if (!document.querySelector('#btnTransicoesTarefa')) return false;
+  const text = (document.body?.innerText ?? '') + ' ' + (document.title ?? '');
+  const normalized = text.replace(/\D+/g, '');
+  return normalized.includes(numeroDigits);
+}
+
+async function clickTransicaoNoFrame(
+  tabId: number,
+  frameId: number
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [frameId] },
+      func: clickTransicaoProbe,
+      args: [TRANSICAO_EMENDA_NOME]
+    });
+    const first = results[0]?.result as
+      | { ok: boolean; error?: string }
+      | undefined;
+    return first ?? { ok: false, error: 'Frame não respondeu.' };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/**
+ * Probe injetada na frame da tarefa. Identifica o anchor da transição
+ * pelo **texto visível** (nome público da transição). Algumas versões do
+ * PJe/Angular carregam os itens do dropdown depois do clique no toggle,
+ * então o probe é assíncrono e faz poll por até ~2 s antes de desistir.
+ */
+async function clickTransicaoProbe(
+  nomeTransicao: string
+): Promise<{ ok: boolean; error?: string }> {
+  const norm = (s: string | null | undefined): string =>
+    (s ?? '').replace(/\s+/g, ' ').trim();
+  const alvo = norm(nomeTransicao);
+
+  const findMatch = (): HTMLAnchorElement | null => {
+    const anchors = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>(
+        'ul.dropdown-transicoes a, ul[aria-labelledby="btnTransicoesTarefa"] a, a[title]'
+      )
+    );
+    for (const a of anchors) {
+      const txt = norm(a.textContent);
+      const tit = norm(a.getAttribute('title'));
+      if (
+        txt === alvo ||
+        tit === alvo ||
+        tit === `Encaminhar para ${alvo}`
+      ) {
+        return a;
+      }
+    }
+    return null;
+  };
+
+  let anchor = findMatch();
+  if (!anchor) {
+    // Abre o dropdown para forçar a renderização dos itens.
+    try {
+      document.querySelector<HTMLElement>('#btnTransicoesTarefa')?.click();
+    } catch {
+      /* ignore */
+    }
+    // Poll de ~2 s (10 × 200 ms) — Angular pode inserir os <a> em ciclos
+    // posteriores ao clique síncrono.
+    for (let i = 0; i < 10 && !anchor; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      anchor = findMatch();
+    }
+  }
+  if (!anchor) {
+    return {
+      ok: false,
+      error: `Transição "${nomeTransicao}" não encontrada no dropdown desta tarefa.`
+    };
+  }
+  try {
+    anchor.click();
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
+async function aguardarEditorBadon(
+  tabId: number,
+  timeoutMs: number
+): Promise<number | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 400));
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        func: probeEditorDisponivel
+      });
+      for (const r of results) {
+        if (r.result === true && r.frameId !== undefined) {
+          return r.frameId;
+        }
+      }
+    } catch {
+      /* aba em navegação — segue polling */
+    }
+  }
+  return null;
+}
+
+/**
+ * Detecta se esta frame tem algum editor conhecido do PJe (Badon/ProseMirror
+ * direto, ProseMirror dentro de `#appEditorAreaIframe`, CKEditor 4 ou
+ * contenteditable genérico com área útil).
+ */
+function probeEditorDisponivel(): boolean {
+  // 1. ProseMirror direto na própria frame.
+  if (document.querySelector('.ProseMirror[contenteditable="true"]')) {
+    return true;
+  }
+  // 2. ProseMirror dentro de appEditorAreaIframe (about:blank same-origin).
+  const iframeBadon = document.querySelector<HTMLIFrameElement>(
+    '#appEditorAreaIframe'
+  );
+  if (iframeBadon) {
+    try {
+      const doc =
+        iframeBadon.contentDocument ??
+        iframeBadon.contentWindow?.document ??
+        null;
+      if (doc?.querySelector('.ProseMirror[contenteditable="true"]')) {
+        return true;
+      }
+    } catch {
+      /* iframe bloqueado — segue */
+    }
+  }
+  // 3. CKEditor 4 (iframe.cke_wysiwyg_frame).
+  const cke = document.querySelector<HTMLIFrameElement>(
+    'iframe.cke_wysiwyg_frame'
+  );
+  if (cke) {
+    try {
+      if (cke.contentDocument?.body) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  // 4. Contenteditable genérico com área útil.
+  const ce = document.querySelector<HTMLElement>('[contenteditable="true"]');
+  if (ce) {
+    const r = ce.getBoundingClientRect();
+    if (r.width > 200 && r.height > 80) return true;
+  }
+  return false;
+}
+
+async function injetarMinutaNoBadon(
+  tabId: number,
+  frameId: number,
+  html: string
+): Promise<{ ok: boolean; error?: string }> {
+  // Texto cru para fallback do paste (text/plain).
+  const plain = html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [frameId] },
+      func: injetarBadonProbe,
+      args: [html, plain]
+    });
+    const first = results[0]?.result as
+      | { ok: boolean; error?: string }
+      | undefined;
+    return first ?? { ok: false, error: 'Frame não respondeu.' };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+function injetarBadonProbe(
+  html: string,
+  plain: string
+): { ok: boolean; error?: string; kind?: string } {
+  /** Paste sintético com limpeza prévia em um ProseMirror identificado. */
+  const injectIntoProseMirror = (
+    pm: HTMLElement,
+    pmDoc: Document,
+    pmWin: Window
+  ): { ok: boolean; error?: string } => {
+    try {
+      pm.focus();
+      const sel = pmWin.getSelection();
+      if (sel) {
+        const range = pmDoc.createRange();
+        range.selectNodeContents(pm);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      // Limpa template pré-preenchido da transição antes de colar.
+      try {
+        pmDoc.execCommand('delete', false);
+      } catch {
+        /* fallback cai no paste substituindo a seleção */
+      }
+      if (sel && sel.rangeCount === 0) {
+        const r = pmDoc.createRange();
+        r.selectNodeContents(pm);
+        r.collapse(false);
+        sel.addRange(r);
+      }
+      const dt = new DataTransfer();
+      dt.setData('text/html', html);
+      dt.setData('text/plain', plain);
+      const ev = new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt
+      });
+      if (!ev.clipboardData) {
+        try {
+          Object.defineProperty(ev, 'clipboardData', { value: dt });
+        } catch {
+          /* ignore */
+        }
+      }
+      pm.dispatchEvent(ev);
+      pm.dispatchEvent(new Event('input', { bubbles: true }));
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  };
+
+  // 1. ProseMirror direto na frame.
+  const pmDirect = document.querySelector<HTMLElement>(
+    '.ProseMirror[contenteditable="true"]'
+  );
+  if (pmDirect) {
+    const r = injectIntoProseMirror(pmDirect, document, window);
+    return r.ok ? { ok: true, kind: 'prosemirror-direct' } : r;
+  }
+
+  // 2. ProseMirror dentro de appEditorAreaIframe (about:blank).
+  const iframe = document.querySelector<HTMLIFrameElement>(
+    '#appEditorAreaIframe'
+  );
+  if (iframe) {
+    let idoc: Document | null = null;
+    let iwin: Window | null = null;
+    try {
+      idoc = iframe.contentDocument ?? iframe.contentWindow?.document ?? null;
+      iwin = iframe.contentWindow;
+    } catch {
+      return { ok: false, error: 'Iframe do editor bloqueado (cross-origin).' };
+    }
+    if (idoc && iwin) {
+      const pm = idoc.querySelector<HTMLElement>(
+        '.ProseMirror[contenteditable="true"]'
+      );
+      if (pm) {
+        const r = injectIntoProseMirror(pm, idoc, iwin);
+        return r.ok ? { ok: true, kind: 'prosemirror-iframe' } : r;
+      }
+    }
+  }
+
+  // 3. CKEditor 4 (iframe.cke_wysiwyg_frame) — substitui via execCommand.
+  const cke = document.querySelector<HTMLIFrameElement>(
+    'iframe.cke_wysiwyg_frame'
+  );
+  if (cke) {
+    try {
+      const doc = cke.contentDocument;
+      const win = cke.contentWindow;
+      if (doc && win && doc.body) {
+        doc.body.focus();
+        const range = doc.createRange();
+        range.selectNodeContents(doc.body);
+        const sel = win.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        doc.execCommand('delete', false);
+        const ok = doc.execCommand('insertHTML', false, html);
+        doc.body.dispatchEvent(new Event('input', { bubbles: true }));
+        if (ok) return { ok: true, kind: 'ckeditor4' };
+      }
+    } catch {
+      /* ignore e cai no próximo */
+    }
+  }
+
+  // 4. Contenteditable genérico com área útil.
+  const editables = Array.from(
+    document.querySelectorAll<HTMLElement>('[contenteditable="true"]')
+  );
+  for (const el of editables) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 200 && r.height > 80) {
+      try {
+        el.focus();
+        const sel = window.getSelection();
+        if (sel) {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        document.execCommand('delete', false);
+        document.execCommand('insertHTML', false, html);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return { ok: true, kind: 'contenteditable' };
+      } catch {
+        /* tenta o próximo */
+      }
+    }
+  }
+
+  return { ok: false, error: 'Nenhum editor reconhecido nesta frame.' };
+}
+
 async function handleTemplatesRerank(
   payload: RerankRequest,
   sendResponse: (response: RerankResponse) => void
@@ -617,18 +1228,22 @@ async function handleInsertInPJeEditor(
           });
           if (results.some((r) => r.result === true)) {
             tipoSelecionado = true;
-            // Aguarda o AJAX do PJe carregar o editor (até 6s).
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-            const retryResult = await tryInsertInTabs([tabId], payload.html, payload.plain);
-            if (retryResult) {
-              sendResponse(retryResult);
-              return;
+            // Aguarda o AJAX do PJe carregar o editor, com poll de ~300 ms
+            // por até 6 s. Cada tentativa é uma chamada chrome.* (via
+            // tryInsertInTabs -> executeScript), o que mantém o service
+            // worker vivo. Uma espera única de 3 s com setTimeout puro não
+            // conta como trabalho ativo no MV3 e permitia o SW ser
+            // suspenso no meio da operação — fechando o canal do
+            // sendMessage do sidebar antes da resposta.
+            const deadline = Date.now() + 6000;
+            let inserted: Awaited<ReturnType<typeof tryInsertInTabs>> = null;
+            while (Date.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              inserted = await tryInsertInTabs([tabId], payload.html, payload.plain);
+              if (inserted) break;
             }
-            // Editor ainda não apareceu — tenta mais uma vez após mais delay.
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-            const retryResult2 = await tryInsertInTabs([tabId], payload.html, payload.plain);
-            if (retryResult2) {
-              sendResponse(retryResult2);
+            if (inserted) {
+              sendResponse(inserted);
               return;
             }
             break;
@@ -1149,6 +1764,217 @@ async function handleChatStart(
     });
   } finally {
     activeChats.delete(port);
+  }
+}
+
+// =====================================================================
+// "Analisar tarefas" — abertura do dashboard e geração de insights LLM
+// =====================================================================
+
+/**
+ * Recebe o payload completo (com PII) do content script, grava em
+ * `chrome.storage.session` (volátil — apagada ao fechar o navegador) e
+ * abre uma nova aba apontando para a página estática do dashboard.
+ *
+ * O payload completo NÃO sai da máquina: a chamada à LLM acontece em uma
+ * segunda etapa (canal TRIAGEM_INSIGHTS), e a versão sanitizada é
+ * preparada pelo dashboard antes do envio.
+ */
+async function handleOpenTriagemDashboard(
+  payload: TriagemDashboardPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload de triagem inválido.' });
+      return;
+    }
+    await chrome.storage.session.set({
+      [STORAGE_KEYS.TRIAGEM_DASHBOARD_PAYLOAD]: payload
+    });
+    const url = chrome.runtime.getURL('dashboard/dashboard.html');
+    await chrome.tabs.create({ url });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenTriagemDashboard falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Recebe o payload JÁ SANITIZADO (sanitizePayloadForLLM) do dashboard
+ * e pede à LLM ativa um panorama + sugestões de próximos passos.
+ *
+ * REGRA DE PRIVACIDADE: este handler valida que o payload não contém PII
+ * no claro — polo ativo deve estar mascarado e o texto das movimentações
+ * não pode conter CNJ de OUTROS processos (apenas o do próprio, no campo
+ * `ref`, é permitido). Se a verificação falhar, recusa o envio.
+ */
+async function handleTriagemInsights(
+  payload: TriagemPayloadAnon,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload anonimizado inválido.' });
+      return;
+    }
+    const piiAlert = detectPiiInAnonPayload(payload);
+    if (piiAlert) {
+      console.warn(`${LOG_PREFIX} PII detectada no payload anonimizado:`, piiAlert);
+      sendResponse({
+        ok: false,
+        error:
+          'Falha de segurança: o payload contém dados sensíveis no claro. ' +
+          'A chamada à IA foi bloqueada. (' + piiAlert + ')'
+      });
+      return;
+    }
+
+    const settings = await getSettings();
+    const providerId = settings.activeProvider;
+    const apiKey = await getApiKey(providerId);
+    if (!apiKey) {
+      sendResponse({
+        ok: false,
+        error: `API key não cadastrada para ${providerId}.`
+      });
+      return;
+    }
+
+    const provider = getProvider(providerId);
+    const prompt = buildTriagemInsightsPrompt(payload);
+
+    const controller = new AbortController();
+    const generator = provider.sendMessage({
+      apiKey,
+      model: settings.models[providerId],
+      systemPrompt:
+        'Você é um assistente que ajuda secretarias de varas judiciais a ' +
+        'priorizar tarefas de análise inicial e triagem de processos. ' +
+        TRIAGEM_LLM_ANON_NOTICE + ' ' +
+        'Responda SEMPRE em JSON puro, sem texto adicional, sem markdown.',
+      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      temperature: 0.2,
+      maxTokens: 1500,
+      signal: controller.signal
+    });
+
+    let raw = '';
+    for await (const chunk of generator) {
+      raw += chunk.delta;
+    }
+
+    const insights = parseTriagemInsightsResponse(raw);
+    if (!insights) {
+      sendResponse({
+        ok: false,
+        error: 'Resposta da IA não pôde ser interpretada como JSON de insights.'
+      });
+      return;
+    }
+
+    sendResponse({ ok: true, insights });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleTriagemInsights falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Verifica se o payload sanitizado não contém — por bug — PII no claro.
+ * O polo ativo DEVE estar mascarado; o texto das movimentações pode conter
+ * o CNJ do próprio processo (permitido, informação pública), mas NÃO pode
+ * conter CNJ de outros processos (substituídos por "[OUTRO PROC]").
+ */
+function detectPiiInAnonPayload(payload: TriagemPayloadAnon): string | null {
+  const cnjRe = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/g;
+  for (const t of payload.tarefas) {
+    for (const p of t.processos) {
+      if (p.poloAtivo !== '[POLO ATIVO]') {
+        return `polo ativo não anonimizado em ${p.ref}`;
+      }
+      if (p.ultimaMovimentacaoTexto) {
+        const own = p.ref.match(cnjRe)?.[0] ?? '';
+        const matches = p.ultimaMovimentacaoTexto.match(cnjRe) ?? [];
+        for (const m of matches) {
+          if (m !== own) {
+            return `CNJ de outro processo no claro na movimentação de ${p.ref}`;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function buildTriagemInsightsPrompt(payload: TriagemPayloadAnon): string {
+  return (
+    `Você está analisando o painel de tarefas de uma secretaria de Vara Federal.\n\n` +
+    `Há ${payload.totalProcessos} processos distribuídos em ${payload.tarefas.length} tarefa(s) ` +
+    `de "Analisar inicial" / "Triagem". Os dados abaixo estão em JSON; o campo "ref" ` +
+    `contém o número CNJ real do processo (informação pública), o polo ativo foi ` +
+    `mascarado como "[POLO ATIVO]" e o polo passivo só foi mantido para entes ` +
+    `públicos.\n\n` +
+    `=== DADOS ===\n` +
+    '```json\n' +
+    JSON.stringify(payload, null, 2) +
+    '\n```\n\n' +
+    `Sua tarefa: produzir (a) um PANORAMA curto (2 a 4 frases) ` +
+    `descrevendo o estado geral; (b) entre 3 e 6 SUGESTÕES de próximos passos ` +
+    `priorizadas, cada uma com título curto, detalhe (1-3 frases) e prioridade ` +
+    `("alta", "media" ou "baixa").\n\n` +
+    `Critérios para sugerir prioridade alta:\n` +
+    `- processos com mais de 60 dias na tarefa;\n` +
+    `- processos prioritários (campo "prioritario": true);\n` +
+    `- presença de etiquetas indicando ação pendente (ex: "+30 dias", "Tutela");\n` +
+    `- volume concentrado num assunto que permita despacho em lote.\n\n` +
+    `Pode citar os números CNJ (campo "ref") nas sugestões quando ajudar a ` +
+    `localizar os autos. NÃO invente dados que não estejam no JSON.\n\n` +
+    `Responda APENAS o JSON no formato exato:\n` +
+    `{"panorama":"<texto>","sugestoes":[{"titulo":"<curto>","detalhe":"<1-3 frases>","prioridade":"alta|media|baixa"}, ...]}`
+  );
+}
+
+/**
+ * Aceita o JSON pode vir cercado por ```json ... ``` (alguns provedores
+ * insistem em markdown). Faz parse defensivo e valida o shape mínimo.
+ */
+function parseTriagemInsightsResponse(raw: string): TriagemInsightsLLM | null {
+  if (!raw) return null;
+  let cleaned = raw.trim();
+  // Remove markdown fences se vierem.
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  }
+  // Procura o primeiro { até o último } caso o LLM tenha narrado antes.
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace < 0) return null;
+  const slice = cleaned.slice(firstBrace, lastBrace + 1);
+  try {
+    const obj = JSON.parse(slice) as Partial<TriagemInsightsLLM>;
+    if (typeof obj.panorama !== 'string') return null;
+    if (!Array.isArray(obj.sugestoes)) return null;
+    const sugestoes: TriagemSugestao[] = [];
+    for (const s of obj.sugestoes) {
+      if (
+        s &&
+        typeof s.titulo === 'string' &&
+        typeof s.detalhe === 'string' &&
+        (s.prioridade === 'alta' || s.prioridade === 'media' || s.prioridade === 'baixa')
+      ) {
+        sugestoes.push({
+          titulo: s.titulo,
+          detalhe: s.detalhe,
+          prioridade: s.prioridade
+        });
+      }
+    }
+    return { panorama: obj.panorama, sugestoes };
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} parseTriagemInsightsResponse: JSON inválido`, err);
+    return null;
   }
 }
 

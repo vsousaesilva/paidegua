@@ -13,7 +13,14 @@
  */
 
 import type { PJeDetection } from '../../shared/types';
+import {
+  DEFAULT_PROFILE,
+  PROFILE_IDS,
+  PROFILE_LABELS,
+  type ProfileId
+} from '../../shared/constants';
 import { getTemplateActionsForGrau } from '../../shared/prompts';
+import { isSecretariaProfileAvailable } from '../../shared/pje-host';
 
 export interface SidebarElements {
   body: HTMLElement;
@@ -28,6 +35,8 @@ export interface SidebarElements {
   anonimizarButton: HTMLButtonElement;
   /** Mapa actionId → botão. Para os 5 botões de minuta com modelos. */
   templateActionButtons: Map<string, HTMLButtonElement>;
+  /** Botão "Triagem Inteligente" — visível apenas no perfil Secretaria. */
+  triagemInteligenteButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -52,6 +61,13 @@ export interface SidebarController {
   setOcrPending(count: number, running?: boolean): void;
   setProviderLabel(label: string): void;
   setGlobalNotice(text: string, kind?: 'info' | 'warn' | 'error'): void;
+  /**
+   * Troca o perfil ativo na sessão corrente. Muda o estado visual do
+   * seletor e alterna quais botões aparecem na toolbar. Não persiste —
+   * o perfil padrão vem das configurações.
+   */
+  setProfile(profile: ProfileId): void;
+  getProfile(): ProfileId;
   /** Retorna referências aos elementos para o orquestrador conectar. */
   readonly elements: SidebarElements;
   destroy(): void;
@@ -60,6 +76,10 @@ export interface SidebarController {
 export interface SidebarOptions {
   onLoadDocuments: () => void;
   onClose?: () => void;
+  /** Perfil inicial (vindo das configurações). Default = 'gabinete'. */
+  initialProfile?: ProfileId;
+  /** Disparado quando o usuário alterna o perfil no seletor. */
+  onProfileChange?: (profile: ProfileId) => void;
 }
 
 const SIDEBAR_CSS = `
@@ -78,7 +98,7 @@ const SIDEBAR_CSS = `
   -webkit-backdrop-filter: var(--paidegua-blur);
   color: var(--paidegua-text);
   font-family: var(--paidegua-font);
-  font-size: 14px;
+  font-size: var(--paidegua-font-size-base);
   box-shadow: var(--paidegua-shadow);
   transform: translateX(100%);
   transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -233,9 +253,70 @@ const SIDEBAR_CSS = `
   transform: rotate(90deg);
 }
 
+/* ---------------------------------------------------------------
+ * Seletor de perfil (Gabinete / Secretaria) — <select> nativo
+ * compacto no header, à esquerda do X de fechar com respiro.
+ * O <aside> carrega o atributo data-profile, que controla a
+ * visibilidade dos botões por perfil via [data-profile-section].
+ * --------------------------------------------------------------- */
+.paidegua-sidebar__profile-mini {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: rgba(255, 255, 255, 0.75);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%231351B4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 5 6 8 9 5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 10px 10px;
+  color: var(--paidegua-primary-dark);
+  border: 1px solid var(--paidegua-border-strong);
+  border-radius: 999px;
+  font-family: var(--paidegua-font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 4px 22px 4px 10px;
+  margin-right: 8px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  flex-shrink: 0;
+}
+
+.paidegua-sidebar__profile-mini:hover {
+  background-color: rgba(19, 81, 180, 0.08);
+  border-color: var(--paidegua-primary);
+}
+
+.paidegua-sidebar__profile-mini:focus-visible {
+  box-shadow: 0 0 0 3px rgba(19, 81, 180, 0.22);
+  border-color: var(--paidegua-primary);
+}
+
+/* Visibilidade condicional por perfil ativo. */
+.paidegua-sidebar[data-profile="gabinete"] [data-profile-section="secretaria"] {
+  display: none !important;
+}
+.paidegua-sidebar[data-profile="secretaria"] [data-profile-section="gabinete"] {
+  display: none !important;
+}
+
+/* Visibilidade condicional por processo aberto. Os botões que exigem
+ * processo aberto (Resumir, Resumir em áudio, Anonimizar, Minutar)
+ * somem quando a detecção indica que não há autos abertos. */
+.paidegua-sidebar[data-processo-aberto="false"] [data-processo-section="processo"] {
+  display: none !important;
+}
+
 .paidegua-sidebar__toolbar {
   display: grid;
   grid-template-columns: 1fr;
+  /* Linhas auto-dimensionadas pelo conteúdo e empilhadas a partir do topo.
+   * Sem isso, o grid (em minmax(0,1fr) do layout-mãe) distribui o espaço
+   * livre entre as linhas visíveis e infla altura dos botões quando há
+   * itens ocultos. */
+  grid-auto-rows: min-content;
+  align-content: start;
   gap: 7px;
   padding: 14px 14px 14px;
 }
@@ -243,7 +324,7 @@ const SIDEBAR_CSS = `
 .paidegua-sidebar__toolbar button {
   background: rgba(255, 255, 255, 0.62);
   color: var(--paidegua-text);
-  padding: 10px 12px;
+  padding: 0 12px;
   border-radius: var(--paidegua-radius-sm);
   font-size: 12px;
   font-weight: 500;
@@ -253,6 +334,9 @@ const SIDEBAR_CSS = `
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Altura fixa para todos os botões da toolbar — garante uniformidade
+   * entre primário, secundários e ações por perfil. */
+  min-height: 40px;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
@@ -276,7 +360,7 @@ const SIDEBAR_CSS = `
   justify-content: center;
   font-weight: 600;
   font-size: 13px;
-  padding: 12px;
+  padding: 0 12px;
   letter-spacing: 0.2px;
   box-shadow: 0 8px 22px rgba(19, 81, 180, 0.28);
 }
@@ -435,6 +519,17 @@ export function mountSidebar(
   aside.setAttribute('role', 'complementary');
   aside.setAttribute('aria-label', 'pAIdegua');
 
+  const secretariaAllowed = isSecretariaProfileAvailable(detection.grau);
+  const requestedProfile: ProfileId = options.initialProfile ?? DEFAULT_PROFILE;
+  // Instâncias de 2º grau / Turma Recursal não têm tarefas de secretaria
+  // no mesmo formato — forçamos Gabinete e omitimos o seletor.
+  const initialProfile: ProfileId = secretariaAllowed ? requestedProfile : 'gabinete';
+  aside.setAttribute('data-profile', initialProfile);
+  aside.setAttribute(
+    'data-processo-aberto',
+    detection.isProcessoPage ? 'true' : 'false'
+  );
+
   aside.innerHTML = `
     <header class="paidegua-sidebar__header">
       <div class="paidegua-sidebar__header-info">
@@ -451,24 +546,41 @@ export function mountSidebar(
         <div class="paidegua-sidebar__processo" data-paidegua="processo-label"></div>
         <div class="paidegua-sidebar__provider" data-paidegua="provider-label"></div>
       </div>
+      <select
+        class="paidegua-sidebar__profile-mini"
+        data-paidegua="profile-select"
+        aria-label="Perfil de trabalho"
+        title="Perfil de trabalho"
+        ${secretariaAllowed ? '' : 'hidden style="display:none"'}
+      >
+        ${PROFILE_IDS
+          .map(
+            (id) =>
+              `<option value="${id}"${id === initialProfile ? ' selected' : ''}>${PROFILE_LABELS[id]}</option>`
+          )
+          .join('')}
+      </select>
       <button type="button" class="paidegua-sidebar__close" aria-label="Fechar pAIdegua">×</button>
     </header>
 
     <div class="paidegua-sidebar__toolbar">
-      <button type="button" class="is-primary" data-paidegua="load-documents">Carregar Documentos</button>
+      <button type="button" class="is-primary" data-processo-section="processo" data-paidegua="load-documents">Carregar Documentos</button>
       <button type="button" disabled style="display:none; grid-column: 1 / -1; justify-content: center;" data-paidegua="ocr-pendentes">Rodar OCR pendente</button>
-      <button type="button" disabled data-paidegua="resumir">Resumir</button>
-      <button type="button" disabled data-paidegua="audio-summary">Resumir em áudio</button>
-      <button type="button" disabled data-paidegua="anonimizar" title="Substitui CPF, CNPJ, e-mails, telefones e nomes de partes por marcadores genéricos">Anonimizar autos</button>
-      <button type="button" disabled data-paidegua="minutar">Minutar</button>
-      <div class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
-      <div class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Minutas com modelo</div>
+      <button type="button" disabled data-processo-section="processo" data-paidegua="resumir">Resumir</button>
+      <button type="button" disabled data-processo-section="processo" data-paidegua="audio-summary">Resumir em áudio</button>
+      <button type="button" disabled data-processo-section="processo" data-paidegua="anonimizar" title="Substitui CPF, CNPJ, e-mails, telefones e nomes de partes por marcadores genéricos">Anonimizar autos</button>
+      <button type="button" disabled data-processo-section="processo" data-paidegua="minutar">Minutar</button>
+      <div data-profile-section="gabinete" data-processo-section="processo" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
+      <div data-profile-section="gabinete" data-processo-section="processo" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Minutas com modelo</div>
       ${getTemplateActionsForGrau(detection.grau)
         .map(
           (a) =>
-            `<button type="button" disabled data-paidegua="template-action" data-action-id="${a.id}" title="${a.description}">${a.label}</button>`
+            `<button type="button" disabled data-profile-section="gabinete" data-processo-section="processo" data-paidegua="template-action" data-action-id="${a.id}" title="${a.description}">${a.label}</button>`
         )
         .join('')}
+      <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
+      <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações da secretaria</div>
+      <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de triagem inteligente">Triagem Inteligente</button>
     </div>
 
     <div class="paidegua-sidebar__notice" data-paidegua="global-notice"></div>
@@ -523,6 +635,8 @@ export function mountSidebar(
     const id = btn.dataset.actionId;
     if (id) templateActionButtons.set(id, btn);
   }
+  const triagemInteligenteButton = q<HTMLButtonElement>('triagem-inteligente');
+  const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
   const sendButton = q<HTMLButtonElement>('send');
@@ -531,12 +645,16 @@ export function mountSidebar(
 
   processoLabel.textContent = formatDetectionLabel(detection);
 
-  // Placeholder inicial até carregar documentos.
-  bodyEl.innerHTML =
-    '<p style="color: var(--paidegua-text-muted); font-size: 13px; text-align:center; margin: auto 0; line-height:1.5;">' +
-    'Clique em <strong>Carregar Documentos</strong> para listar as peças<br/>' +
-    'dos autos digitais.' +
-    '</p>';
+  const renderBodyPlaceholder = (processoAberto: boolean): void => {
+    const msg = processoAberto
+      ? 'Clique em <strong>Carregar Documentos</strong> para listar as peças<br/>dos autos digitais.'
+      : 'Abra os autos de um processo para usar as funcionalidades<br/>que dependem do conteúdo processual.';
+    bodyEl.innerHTML =
+      '<p style="color: var(--paidegua-text-muted); font-size: 13px; text-align:center; margin: auto 0; line-height:1.5;">' +
+      msg +
+      '</p>';
+  };
+  renderBodyPlaceholder(detection.isProcessoPage);
 
   loadDocsButton.addEventListener('click', (event) => {
     event.preventDefault();
@@ -566,9 +684,30 @@ export function mountSidebar(
     audioButton,
     anonimizarButton,
     templateActionButtons,
+    triagemInteligenteButton,
     providerLabel,
     globalNotice
   };
+
+  let currentProfile: ProfileId = initialProfile;
+
+  function applyProfile(next: ProfileId): void {
+    currentProfile = next;
+    aside.setAttribute('data-profile', next);
+    if (profileSelect.value !== next) {
+      profileSelect.value = next;
+    }
+  }
+
+  profileSelect.addEventListener('change', (event) => {
+    event.stopPropagation();
+    const id = profileSelect.value as ProfileId;
+    if (!(PROFILE_IDS as readonly string[]).includes(id) || id === currentProfile) {
+      return;
+    }
+    applyProfile(id);
+    options.onProfileChange?.(id);
+  });
 
   return {
     open(): void {
@@ -585,6 +724,16 @@ export function mountSidebar(
     },
     updateDetection(next: PJeDetection): void {
       processoLabel.textContent = formatDetectionLabel(next);
+      aside.setAttribute(
+        'data-processo-aberto',
+        next.isProcessoPage ? 'true' : 'false'
+      );
+      // Reajusta o placeholder somente enquanto o body ainda mostra o texto
+      // inicial — após montar docList ou chat, não mexemos.
+      const onlyChild = bodyEl.children.length === 1 ? bodyEl.firstElementChild : null;
+      if (onlyChild && onlyChild.tagName === 'P') {
+        renderBodyPlaceholder(next.isProcessoPage);
+      }
     },
     setLoadDocsLabel(label: string): void {
       loadDocsButton.textContent = label;
@@ -629,6 +778,13 @@ export function mountSidebar(
       }
       globalNotice.textContent = text;
       globalNotice.classList.add('is-visible', `is-${kind}`);
+    },
+    setProfile(profile: ProfileId): void {
+      if (profile === currentProfile) return;
+      applyProfile(profile);
+    },
+    getProfile(): ProfileId {
+      return currentProfile;
     },
     get elements(): SidebarElements {
       return elements;

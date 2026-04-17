@@ -3,8 +3,12 @@
  * Centralizados aqui para facilitar iteração sem mexer em UI/lógica.
  */
 
-import type { ProcessoDocumento } from './types';
-import { CONTEXT_LIMITS } from './constants';
+import type {
+  AnaliseProcessoResult,
+  PAIdeguaSettings,
+  ProcessoDocumento
+} from './types';
+import { CONTEXT_LIMITS, TRIAGEM_CRITERIOS } from './constants';
 
 /** System prompt institucional para o assistente da JFCE. */
 export const SYSTEM_PROMPT = `Você é o pAIdegua, um assistente de análise processual para servidores da Justiça Federal no Ceará (JFCE). Atue com rigor técnico, formalidade e precisão jurídica.
@@ -283,6 +287,25 @@ export const TEMPLATE_ACTIONS_2G: readonly TemplateAction[] = [
  * Prefira `getTemplateActionsForGrau` em código novo.
  */
 export const TEMPLATE_ACTIONS: readonly TemplateAction[] = TEMPLATE_ACTIONS_1G;
+
+/**
+ * Ações de minuta exclusivas da Triagem Inteligente (perfil Secretaria).
+ * Não entram no botão "Minutar" do Gabinete nem no menu de escolha manual,
+ * são chamadas diretamente pelo orquestrador de "Analisar o processo".
+ */
+export const TEMPLATE_ACTIONS_TRIAGEM: readonly TemplateAction[] = [
+  {
+    id: 'emenda-inicial',
+    label: 'Emenda à inicial',
+    description:
+      'Ato de emenda à inicial determinando à parte autora que sane os critérios não atendidos identificados na triagem.',
+    folderHints: ['emenda', 'emenda-inicial'],
+    queryHints:
+      'emenda inicial intimação parte autora prazo correção petição inicial indeferimento',
+    natureza: 'despacho',
+    excludeTerms: ['sentença', 'voto', 'julgo procedente', 'julgo improcedente']
+  }
+];
 
 /**
  * Retorna o conjunto de ações de minuta apropriado para o grau detectado.
@@ -565,4 +588,309 @@ export function buildDocumentContext(
   }
 
   return header + blocks.join('') + footer;
+}
+
+/**
+ * Monta o bloco de critérios de análise inicial adotados pelo magistrado,
+ * para injeção dinâmica nos prompts das ações da Triagem Inteligente
+ * (Analisar tarefas, Analisar processo, Inserir etiquetas mágicas).
+ *
+ * Para cada critério da NT 1/2025 do CLI-JFCE, usa a redação padrão se
+ * `adopted=true`, ou o entendimento próprio do magistrado em caso contrário.
+ * Critérios customizados (livres, definidos pelo usuário) entram ao final.
+ *
+ * Devolve string vazia quando não há nada para emitir — o chamador decide
+ * se concatena ao system prompt ou omite.
+ */
+export function buildTriagemCriteriosBlock(settings: PAIdeguaSettings): string {
+  const lines: string[] = [];
+  let idx = 1;
+  for (const criterio of TRIAGEM_CRITERIOS) {
+    const setting = settings.triagemCriterios?.[criterio.id];
+    if (setting && setting.adopted === false) {
+      const custom = (setting.customText ?? '').trim();
+      if (custom) {
+        lines.push(
+          `${idx}. ${criterio.label} (entendimento próprio do magistrado): ${custom}`
+        );
+      } else {
+        // Adoção retirada e sem texto próprio: o magistrado descartou o
+        // critério. Sinalize explicitamente para a IA não voltar a invocá-lo.
+        lines.push(
+          `${idx}. ${criterio.label}: este critério NÃO é adotado por este magistrado.`
+        );
+      }
+    } else {
+      lines.push(`${idx}. ${criterio.label}: ${criterio.defaultText}`);
+    }
+    idx += 1;
+  }
+
+  const customs = (settings.triagemCriteriosCustom ?? [])
+    .map((c) => (c.text ?? '').trim())
+    .filter((t) => t.length > 0);
+  for (const text of customs) {
+    lines.push(`${idx}. (Critério adicional do magistrado): ${text}`);
+    idx += 1;
+  }
+
+  if (lines.length === 0) return '';
+
+  return (
+    `## CRITÉRIOS DE ANÁLISE INICIAL ADOTADOS POR ESTE MAGISTRADO\n` +
+    `(Base: Nota Técnica nº 1/2025 do CLI-JFCE, com personalizações onde indicado)\n\n` +
+    lines.join('\n')
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  ANALISAR O PROCESSO — checklist dos critérios contra os autos
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Critério resolvido na configuração do magistrado: `id` estável,
+ * `label` curto e o `texto` que deve ser usado pelo LLM (NT padrão ou
+ * entendimento próprio). Critérios marcados como descartados (adoção
+ * retirada e sem texto próprio) NÃO entram nesta lista — não há o que
+ * verificar nos autos.
+ */
+export interface CriterioResolvido {
+  id: string;
+  label: string;
+  texto: string;
+}
+
+/**
+ * Devolve a lista plana de critérios efetivamente adotados por este
+ * magistrado, na ordem em que devem aparecer na resposta do LLM.
+ *
+ * - Critérios da NT 1/2025 marcados como adotados → texto padrão.
+ * - Critérios da NT com adoção retirada mas com texto próprio → texto próprio.
+ * - Critérios da NT descartados sem texto próprio → omitidos.
+ * - Critérios livres (não vazios) → adicionados ao final com id `custom-N`.
+ */
+export function resolveTriagemCriterios(
+  settings: PAIdeguaSettings
+): CriterioResolvido[] {
+  const out: CriterioResolvido[] = [];
+  for (const criterio of TRIAGEM_CRITERIOS) {
+    const setting = settings.triagemCriterios?.[criterio.id];
+    if (setting && setting.adopted === false) {
+      const custom = (setting.customText ?? '').trim();
+      if (!custom) continue;
+      out.push({ id: criterio.id, label: criterio.label, texto: custom });
+    } else {
+      out.push({
+        id: criterio.id,
+        label: criterio.label,
+        texto: criterio.defaultText
+      });
+    }
+  }
+  let idx = 1;
+  for (const c of settings.triagemCriteriosCustom ?? []) {
+    const txt = (c.text ?? '').trim();
+    if (!txt) {
+      idx += 1;
+      continue;
+    }
+    out.push({
+      id: `custom-${idx}`,
+      label: `Critério adicional ${idx}`,
+      texto: txt
+    });
+    idx += 1;
+  }
+  return out;
+}
+
+/**
+ * Limite de contexto enviado ao LLM de análise. Mesma escala da triagem
+ * de minuta: cabe linha do tempo + últimos documentos integrais.
+ */
+const ANALISE_CASE_CONTEXT_LIMIT = 18_000;
+
+/**
+ * Monta o prompt de análise do processo contra o checklist de critérios.
+ * Espera resposta JSON puro (sem markdown), validada por
+ * `parseAnaliseProcessoResponse`.
+ */
+export function buildAnaliseProcessoPrompt(
+  criterios: readonly CriterioResolvido[],
+  caseContext: string
+): string {
+  const criteriosFmt = criterios
+    .map(
+      (c) =>
+        `- id: "${c.id}" — **${c.label}**\n  texto do critério: ${c.texto}`
+    )
+    .join('\n');
+
+  return (
+    `Você é um assistente que auxilia a Secretaria de uma Vara Federal a verificar se uma petição inicial atende aos critérios de admissibilidade adotados pelo magistrado.\n\n` +
+    `TAREFA: para CADA um dos critérios listados abaixo, decida se está ou não atendido pelos documentos do processo, citando os ids dos documentos que embasam a conclusão.\n\n` +
+    `REGRAS DE AVALIAÇÃO:\n` +
+    `- Se um critério depende de tipo específico de causa (ex.: "Salário-maternidade" só se aplica em ação de salário-maternidade) e a causa concreta é OUTRA, considere o critério como ATENDIDO (campo "atendido": true) e justifique com "critério não aplicável a esta causa".\n` +
+    `- Se um critério é aplicável e os autos demonstram a documentação exigida, marque como atendido e cite o documento.\n` +
+    `- Se o documento exigido está ausente, ilegível ou desatualizado, marque como NÃO atendido e descreva objetivamente o que falta.\n` +
+    `- Para critérios não atendidos, preencha "providenciaSolicitada" com texto IMPERATIVO formal pronto para entrar como tópico do ato de emenda à inicial (ex.: "apresentar comprovante de endereço emitido nos últimos 12 meses, em nome do(a) autor(a) ou com declaração de moradia"). Não use marcadores nem cabeçalhos — apenas a frase imperativa.\n\n` +
+    `VEREDITO GLOBAL ("veredito"):\n` +
+    `- "atendido" se TODOS os critérios estiverem com "atendido": true.\n` +
+    `- "nao_atendido" se NENHUM critério aplicável estiver atendido.\n` +
+    `- "parcialmente" nos demais casos.\n\n` +
+    `=== CRITÉRIOS A VERIFICAR ===\n${criteriosFmt}\n\n` +
+    `=== CONTEXTO DOS AUTOS ===\n` +
+    '```\n' +
+    caseContext.slice(0, ANALISE_CASE_CONTEXT_LIMIT) +
+    '\n```\n\n' +
+    `Responda SEMPRE em JSON puro, sem markdown, sem comentários, no formato exato:\n` +
+    `{\n` +
+    `  "veredito": "atendido" | "parcialmente" | "nao_atendido",\n` +
+    `  "panorama": "<1-2 frases curtas sobre o estado da inicial, sem citar nomes>",\n` +
+    `  "criterios": [\n` +
+    `    {\n` +
+    `      "id": "<id exato de um critério listado acima>",\n` +
+    `      "label": "<o mesmo label do critério>",\n` +
+    `      "atendido": true | false,\n` +
+    `      "justificativa": "<1-3 linhas, citando ids de documentos como (id 12345678) quando aplicável>",\n` +
+    `      "providenciaSolicitada": "<frase imperativa; obrigatória quando atendido=false; ausente quando atendido=true>"\n` +
+    `    }\n` +
+    `  ]\n` +
+    `}\n\n` +
+    `NÃO inclua mais nada além do JSON. Use os ids EXATAMENTE como aparecem na lista de critérios. Inclua TODOS os critérios da lista no array, na mesma ordem.`
+  );
+}
+
+/**
+ * Extrai o objeto `AnaliseProcessoResult` da resposta crua do LLM.
+ * Tolera markdown ou texto antes/depois do JSON. Filtra entradas com id
+ * desconhecido e normaliza tipos básicos. Retorna null se nada utilizável
+ * puder ser extraído.
+ */
+export function parseAnaliseProcessoResponse(
+  raw: string,
+  criterios: readonly CriterioResolvido[]
+): AnaliseProcessoResult | null {
+  if (!raw) return null;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end < 0 || end <= start) return null;
+
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const allowedIds = new Set(criterios.map((c) => c.id));
+  const labelById = new Map(criterios.map((c) => [c.id, c.label]));
+
+  const veredito = String(obj.veredito ?? '').trim();
+  const vereditoOk =
+    veredito === 'atendido' ||
+    veredito === 'parcialmente' ||
+    veredito === 'nao_atendido';
+
+  const rawCriterios = Array.isArray(obj.criterios) ? obj.criterios : [];
+  const criteriosOut = rawCriterios
+    .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object')
+    .map((c) => {
+      const id = typeof c.id === 'string' ? c.id.trim() : '';
+      if (!allowedIds.has(id)) return null;
+      const atendido = c.atendido === true;
+      const label =
+        (typeof c.label === 'string' && c.label.trim()) || labelById.get(id) || id;
+      const justificativa =
+        typeof c.justificativa === 'string' ? c.justificativa.trim() : '';
+      const providencia =
+        typeof c.providenciaSolicitada === 'string'
+          ? c.providenciaSolicitada.trim()
+          : '';
+      return {
+        id,
+        label,
+        atendido,
+        justificativa,
+        ...(atendido ? {} : { providenciaSolicitada: providencia })
+      };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  if (criteriosOut.length === 0) return null;
+
+  // Recalcula veredito a partir dos critérios para evitar inconsistência:
+  // se o LLM disser "atendido" mas houver algum item com atendido=false,
+  // a UI deve refletir o estado real.
+  const algumNao = criteriosOut.some((c) => !c.atendido);
+  const todosNao = criteriosOut.every((c) => !c.atendido);
+  const vereditoFinal: AnaliseProcessoResult['veredito'] = todosNao
+    ? 'nao_atendido'
+    : algumNao
+    ? 'parcialmente'
+    : 'atendido';
+
+  return {
+    veredito: vereditoOk
+      ? (algumNao && veredito === 'atendido' ? vereditoFinal : (veredito as AnaliseProcessoResult['veredito']))
+      : vereditoFinal,
+    panorama: typeof obj.panorama === 'string' ? obj.panorama.trim() : '',
+    criterios: criteriosOut
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  EMENDA À INICIAL — gabarito fixo + injeção das providências
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Gabarito do ato de emenda à inicial aprovado pela JFCE. Os tópicos a
+ * serem inseridos no marcador `[PREENCHER...]` vêm das providências
+ * sugeridas pelo LLM em "Analisar o processo" — uma por critério não
+ * atendido, em forma imperativa.
+ */
+export const EMENDA_INICIAL_GABARITO =
+  `De ordem do(a) MM.(a) Juiz(a) Federal, e com amparo no art. 93, inc. XIV, ` +
+  `da CF/88, c/c o art. 203, § 4º, do CPC/2015, fica a parte autora ` +
+  `intimada para, no prazo constante no menu "Expedientes":\n\n` +
+  `[PREENCHER COM A PROVIDÊNCIA A SER SOLICITADA PARA CORRIGIR OS CRITÉRIOS QUE NÃO FORAM ATENDIDOS EM TÓPICOS]\n\n` +
+  `O não cumprimento total ou parcial das determinações acima ` +
+  `estabelecidas ensejará o indeferimento liminar da petição inicial.\n\n` +
+  `Em respeito ao princípio da celeridade, esclarece-se que eventual ` +
+  `pedido de prorrogação do prazo somente será deferido excepcionalmente ` +
+  `e desde que acompanhado de justificação objetiva e específica, ` +
+  `comprovada documentalmente. Meros pedidos genéricos de prorrogação de ` +
+  `prazo serão sumariamente indeferidos.\n\n` +
+  `[município sede do juízo], datado eletronicamente.`;
+
+/**
+ * Monta o prompt de geração do ato de emenda à inicial. Diferente das
+ * minutas regulares, o ato tem corpo fixo — a única coisa que o modelo
+ * deve produzir é o bloco de tópicos imperativos que substitui o
+ * marcador `[PREENCHER...]`. Para garantir consistência com as outras
+ * minutas, o resultado segue as mesmas `MINUTA_FORMAT_RULES` (sem
+ * markdown, parágrafos separados por linha em branco, etc.).
+ *
+ * `providencias` é a lista já consolidada pelo orquestrador a partir das
+ * `AnaliseCriterio` cujo `atendido === false`.
+ */
+export function buildEmendaInicialPrompt(
+  providencias: readonly string[]
+): string {
+  const providenciasFmt = providencias.length
+    ? providencias.map((p) => `- ${p}`).join('\n')
+    : '- (nenhuma providência específica identificada)';
+
+  return (
+    `Elabore o ato de emenda à inicial reproduzindo INTEGRALMENTE o gabarito abaixo, substituindo APENAS o marcador "[PREENCHER COM A PROVIDÊNCIA A SER SOLICITADA PARA CORRIGIR OS CRITÉRIOS QUE NÃO FORAM ATENDIDOS EM TÓPICOS]" pelas providências listadas mais adiante.\n\n` +
+    `IMPORTANTE:\n` +
+    `- Mantenha o restante do gabarito EXATAMENTE como está (mesma redação, mesma ordem dos parágrafos, mesma fórmula final).\n` +
+    `- Substitua "[município sede do juízo]" pelo município da vara/seção judiciária responsável pelo processo, identificado a partir dos documentos dos autos (ex.: "Maracanaú/CE", "Fortaleza/CE"). NÃO mantenha o marcador entre colchetes na peça final.\n` +
+    `- O bloco de providências deve ser apresentado em forma de tópicos numerados (1., 2., 3., ...), um tópico por providência, redigidos no IMPERATIVO formal e iniciados por verbo (ex.: "Apresentar...", "Juntar...", "Esclarecer..."). Cada tópico em um parágrafo separado, terminando em ponto-final.\n` +
+    `- NÃO acrescente cabeçalho, número do processo, identificação das partes nem assinatura — esses elementos são preenchidos automaticamente pelo editor do PJe.\n\n` +
+    `EXCEÇÃO DE FORMATO: as regras de formato gerais aplicáveis às demais minutas PROÍBEM marcadores de lista; aqui, os tópicos numerados (1., 2., ...) do bloco de providências são OBRIGATÓRIOS e a única exceção permitida. O restante do texto (cabeçalho, parágrafos do meio e fecho) segue as regras normais de prosa corrida sem marcadores.\n\n` +
+    `=== GABARITO ===\n${EMENDA_INICIAL_GABARITO}\n=== FIM DO GABARITO ===\n\n` +
+    `=== PROVIDÊNCIAS A INCLUIR (uma por tópico, na ordem dada) ===\n${providenciasFmt}\n=== FIM DAS PROVIDÊNCIAS ===\n\n` +
+    `${MINUTA_FORMAT_RULES}`
+  );
 }

@@ -677,9 +677,11 @@
       <li><a href="#instalacao">Instalação</a></li>
       <li><a href="#configuracao">Configuração inicial</a></li>
       <li><a href="#painel">O painel lateral</a></li>
+      <li><a href="#perfis">Perfis de trabalho</a></li>
       <li><a href="#acoes">Ações de análise</a></li>
       <li><a href="#uso">Minutas com modelo</a></li>
       <li><a href="#minutar">Minutar com triagem</a></li>
+      <li><a href="#triagem">Triagem Inteligente (Secretaria)</a></li>
       <li><a href="#bubble">Ações em cada resposta</a></li>
       <li><a href="#chat">Chat e voz</a></li>
       <li><a href="#modelos">Organização dos modelos</a></li>
@@ -795,16 +797,47 @@
       </div>
 
       <ol>
-        <li>Acesse o PJe e abra um processo (tela de autos digitais).</li>
-        <li>O <strong>botão flutuante</strong> do pAIdegua aparecerá no canto da página.</li>
-        <li>Clique no botão para abrir o <strong>painel lateral</strong>.</li>
+        <li>Acesse o PJe. O pAIdegua pode ser aberto em <strong>qualquer tela do sistema</strong> — painel do usuário, lista de tarefas, autos de um processo etc.</li>
+        <li>Há duas formas de abrir o painel lateral: clicando no <strong>botão "PAIDEGUA" injetado na barra superior do próprio PJe</strong> ou no <strong>botão flutuante</strong> que aparece no canto da página.</li>
+        <li>As funcionalidades que dependem de autos abertos (Carregar Documentos, Resumir, Resumir em áudio, Anonimizar, Minutar e a seção "Minutas com modelo") ficam automaticamente ocultas enquanto você não estiver em uma tela de processo — reaparecem assim que os autos forem abertos.</li>
       </ol>
 
-      <p>O painel mostra o nome da ferramenta, o serviço de IA em uso, o número do processo aberto e — em destaque — o <strong>grau reconhecido automaticamente</strong> (1º grau, 2º grau ou turma recursal). A lista de botões de minuta muda de acordo com o grau, para oferecer os atos adequados a cada instância.</p>
+      <p>O painel mostra o nome da ferramenta, o serviço de IA em uso, o número do processo detectado e — em destaque — o <strong>grau reconhecido automaticamente</strong> (1º grau, 2º grau ou turma recursal). No 1º grau há ainda um <strong>seletor de perfil (Gabinete / Secretaria)</strong> no canto superior do painel, que ajusta o conjunto de ferramentas à rotina de trabalho. A lista de botões de minuta muda de acordo com o grau, para oferecer os atos adequados a cada instância.</p>
 
       <div class="callout callout--info">
         <h4>Como o grau é reconhecido</h4>
         <p>O pAIdegua identifica o grau pelo endereço do PJe em que você está: o endereço do 1º grau leva aos botões de sentença e despacho; o endereço do 2º grau/turma recursal leva aos botões de voto, decisão monocrática e despacho do relator. Esse ajuste é automático — você não precisa fazer nada.</p>
+      </div>
+    </section>
+
+    <!-- 3b. PERFIS -->
+    <section id="perfis">
+      <div class="section-head">
+        <span class="section-num">03b</span>
+        <div>
+          <h2>Perfis de trabalho</h2>
+          <p>Gabinete e Secretaria</p>
+        </div>
+      </div>
+
+      <p>O pAIdegua apresenta conjuntos diferentes de ferramentas conforme o perfil escolhido:</p>
+
+      <div class="feat-grid">
+        <div class="feat">
+          <span class="feat__label">Padrão</span>
+          <h4>Gabinete</h4>
+          <p>Foco em análise dos autos e produção de minutas. Mostra os botões <em>Resumir</em>, <em>Resumir em áudio</em>, <em>Anonimizar</em>, <em>Minutar</em> e a seção <em>Minutas com modelo</em> — estes últimos aparecem apenas quando há processo aberto.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Triagem</span>
+          <h4>Secretaria</h4>
+          <p>Foco em triagem e organização de tarefas. Mostra a seção <em>Ações da secretaria</em> com o botão <strong>Triagem Inteligente</strong>, detalhado na seção seguinte.</p>
+        </div>
+      </div>
+
+      <div class="callout callout--info">
+        <h4>Onde o perfil é definido</h4>
+        <p>O perfil padrão é escolhido nas configurações da extensão (popup). A troca na sessão corrente é feita pelo seletor no cabeçalho do painel. Em instâncias de 2º grau e turma recursal, o perfil <em>Secretaria</em> não está disponível — o seletor é omitido e o painel apresenta apenas as ferramentas de gabinete.</p>
       </div>
     </section>
 
@@ -909,6 +942,42 @@
       </div>
     </section>
 
+    <!-- 6b. TRIAGEM INTELIGENTE -->
+    <section id="triagem">
+      <div class="section-head">
+        <span class="section-num">06b</span>
+        <div>
+          <h2>Triagem Inteligente (Secretaria)</h2>
+          <p>Triagem de tarefas e geração de emendas à inicial</p>
+        </div>
+      </div>
+
+      <p>Funcionalidade dedicada ao trabalho de secretaria no 1º grau. Aparece como botão <strong>Triagem Inteligente</strong> na seção <em>Ações da secretaria</em> do painel, quando o perfil Secretaria está ativo. Abre um painel próprio com três ações principais:</p>
+
+      <div class="feat-grid">
+        <div class="feat">
+          <span class="feat__label">Fila</span>
+          <h4>Analisar tarefas</h4>
+          <p>Lê a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providência necessária e apresenta um quadro resumo para orientar a priorização do dia.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Processo</span>
+          <h4>Analisar o processo</h4>
+          <p>Dentro de um processo aberto, executa uma análise guiada pelos critérios configurados (por padrão, os critérios da <strong>NT 1/2025 do TRF5</strong> — emenda à inicial, gratuidade, representação processual, interesse de agir, competência, prevenção e outros). O status exibido durante a execução é: <em>"Analisando o processo pelos critérios configurados..."</em>.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Emenda</span>
+          <h4>Gerar ato de emenda à inicial</h4>
+          <p>Quando a análise indicar necessidade de emenda, o pAIdegua oferece a geração da minuta do ato de emenda diretamente no chat, já contemplando os pontos identificados na triagem.</p>
+        </div>
+      </div>
+
+      <div class="callout callout--info">
+        <h4>Integração com o PJe no fluxo de emenda</h4>
+        <p>A bolha da minuta de emenda traz o botão <strong>"Encaminhar e inserir no PJe"</strong>, que aciona a transição de tarefa correspondente no PJe e injeta o texto da minuta no editor da nova tarefa — tudo em uma única ação, sem saltar entre abas manualmente.</p>
+      </div>
+    </section>
+
     <!-- 7. BUBBLE ACTIONS -->
     <section id="bubble">
       <div class="section-head">
@@ -919,11 +988,17 @@
         </div>
       </div>
 
-      <p>Abaixo de cada resposta do assistente — principalmente quando é uma minuta — aparecem botões de ação rápida:</p>
+      <p>Abaixo de cada resposta do assistente — principalmente quando é uma minuta — aparecem botões de ação rápida. O conjunto é praticamente o mesmo em todas as bolhas; o que muda é apenas <strong>qual botão de inserção no PJe aparece</strong>, conforme o contexto:</p>
+
+      <ul>
+        <li>Em minutas produzidas pelos botões de <em>Minutas com modelo</em> e pelo <em>Minutar</em> (triagem automática), o rodapé traz o botão <strong>Inserir no PJe</strong>.</li>
+        <li>Em minutas de ato de emenda à inicial geradas pela <em>Triagem Inteligente</em>, o <em>Inserir no PJe</em> é substituído por <strong>Encaminhar e inserir no PJe</strong>, apropriado para o fluxo de emenda — no qual o editor da nova tarefa ainda não foi criado no momento da geração.</li>
+      </ul>
 
       <div class="feat-grid">
         <div class="feat"><span class="feat__label">Copiar</span><h4>Copiar</h4><p>Copia o texto da resposta para a área de transferência. Depois é só colar onde você quiser.</p></div>
         <div class="feat"><span class="feat__label">PJe</span><h4>Inserir no PJe</h4><p>Coloca o texto diretamente no editor de minutas do PJe que você deixou aberto em outra aba — sem precisar copiar e colar manualmente.</p></div>
+        <div class="feat"><span class="feat__label">Emenda</span><h4>Encaminhar e inserir no PJe</h4><p>Específico do fluxo de emenda à inicial da Triagem Inteligente: aciona a transição da tarefa no PJe e insere a minuta no editor da nova tarefa em uma única ação.</p></div>
         <div class="feat"><span class="feat__label">Word</span><h4>Baixar como Word</h4><p>Salva a minuta como um arquivo do Word no seu computador. O nome já vem pronto, com o número do processo e o tipo de ato.</p></div>
         <div class="feat"><span class="feat__label">Ajustar</span><h4>Refinar minuta</h4><p>Pede ajustes na última minuta sem começar do zero. Exemplos: <em>"encurtar"</em>, <em>"mudar o tom"</em>, <em>"citar a Súmula 343 do STJ"</em>, <em>"reforçar o dispositivo"</em>. O modelo de referência continua o mesmo.</p></div>
         <div class="feat"><span class="feat__label">Refazer</span><h4>Nova minuta</h4><p>Gera uma nova versão do mesmo ato, do zero, sem usar modelo de referência. Útil quando você quer comparar duas opções ou começar de novo.</p></div>

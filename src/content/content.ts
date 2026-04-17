@@ -30,8 +30,11 @@ import {
   QUICK_ACTIONS,
   TEMPLATE_ACTIONS_1G,
   TEMPLATE_ACTIONS_2G,
+  TEMPLATE_ACTIONS_TRIAGEM,
   getTemplateActionsForGrau,
   buildMinutaPrompt,
+  buildEmendaInicialPrompt,
+  resolveTriagemCriterios,
   type TemplateAction,
   type TriagemResult
 } from '../shared/prompts';
@@ -45,13 +48,20 @@ import type {
 } from '../shared/types';
 import { detect, isPJeHost } from './detector';
 import { mountShell } from './ui/shell';
-import { mountFab, type FabController } from './ui/fab';
+import { mountNavbarButton, type NavbarButtonController } from './ui/navbar-button';
 import { mountSidebar, type SidebarController } from './ui/sidebar';
 import {
   mountDocumentList,
   type DocumentListController
 } from './ui/document-list';
 import { mountChat, type ChatBubbleAction, type ChatController } from './ui/chat';
+import { createTriagemPanel } from './ui/triagem-panel';
+import { createAnaliseProcessoBubble } from './ui/analise-processo-bubble';
+import {
+  executarAnalisarTarefasComBridge,
+  instalarListenerTriagemNoIframe
+} from './triagem/triagem-bridge';
+import { executarAnalisarProcesso } from './triagem/analisar-processo';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
@@ -71,13 +81,18 @@ import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
 import type { BaseAdapter } from './adapters/base-adapter';
 
 interface MountedUI {
-  fab: FabController;
   sidebar: SidebarController;
   docList: DocumentListController | null;
   chat: ChatController | null;
 }
 
 let mounted: MountedUI | null = null;
+/**
+ * Botão do header do PJe — vive FORA do ciclo `mountUI/unmountUI` porque
+ * deve aparecer também em telas sem processo aberto (painel do usuário,
+ * lista de tarefas, etc.). Criado uma única vez no `bootstrap`.
+ */
+let navbarButton: NavbarButtonController | null = null;
 let lastDetectionKey = '';
 
 const memory: {
@@ -179,7 +194,7 @@ async function handleLoadDocuments(): Promise<void> {
     memory.documentos = documentos;
     memory.extraidos.clear();
 
-    // Sai do modo "chat" e volta para document-list
+    // Sai do modo "chat" (timeline) e volta para document-list
     if (mounted.chat) {
       mounted.chat.destroy();
       mounted.chat = null;
@@ -574,9 +589,50 @@ function buildChatBubbleActions(): ChatBubbleAction[] {
         }
         executeMinutaGeneration(lastMinuta.action, null);
       }
+    },
+    {
+      id: 'encaminhar-emenda',
+      label: 'Encaminhar e inserir no PJe',
+      title:
+        'Aciona a transição "Comunicação - Elaborar (emenda automática)" na aba ' +
+        'do processo e injeta a minuta no editor da nova tarefa.',
+      onClick: (html, _markdown) => {
+        void handleEncaminharEmenda(html, (msg, kind) =>
+          mounted?.sidebar.setGlobalNotice(msg, kind ?? 'info')
+        );
+      }
     }
   ];
 }
+
+/**
+ * IDs de ações exibidas no rodapé da bolha de **emenda à inicial**.
+ *
+ * Mantém todos os botões padrão, mas troca "Inserir no PJe"
+ * (`insert-pje`) por "Encaminhar e inserir no PJe" (`encaminhar-emenda`):
+ * no fluxo de emenda o editor da nova tarefa ainda não existe, então o
+ * CTA apropriado é o que encaminha a tarefa e insere em uma só ação.
+ */
+const EMENDA_BUBBLE_ACTION_IDS = [
+  'copy',
+  'encaminhar-emenda',
+  'download-doc',
+  'refine-minuta',
+  'new-minuta'
+];
+
+/**
+ * IDs de ações exibidas no rodapé das bolhas de **minuta** (botão Minutar
+ * e minutas com modelo). Mantém todos os botões padrão — apenas omite
+ * "Encaminhar e inserir no PJe", que é específico do fluxo de emenda.
+ */
+const MINUTA_BUBBLE_ACTION_IDS = [
+  'copy',
+  'insert-pje',
+  'download-doc',
+  'refine-minuta',
+  'new-minuta'
+];
 
 /**
  * Pergunta ao usuário, via mensagem interativa no chat, qual instrução
@@ -615,7 +671,7 @@ function ensureChatMounted(): ChatController {
   if (mounted.chat) {
     return mounted.chat;
   }
-  // Trocamos a área de body do document-list para o chat
+  // Trocamos a área de body do document-list para o chat (timeline)
   if (mounted.docList) {
     mounted.docList.destroy();
     mounted.docList = null;
@@ -998,7 +1054,7 @@ function sendChatMessage(
   text: string,
   isQuickAction = false,
   displayLabel?: string,
-  bubbleKind: 'summary' | 'minuta' | 'default' = 'default'
+  bubbleKind: 'summary' | 'minuta' | 'emenda' | 'default' = 'default'
 ): void {
   if (!mounted || !memory.settings) {
     return;
@@ -1024,7 +1080,11 @@ function sendChatMessage(
   const beginOpts =
     bubbleKind === 'summary'
       ? { allowedActionIds: SUMMARY_BUBBLE_ACTION_IDS }
-      : undefined;
+      : bubbleKind === 'emenda'
+        ? { allowedActionIds: EMENDA_BUBBLE_ACTION_IDS }
+        : bubbleKind === 'minuta'
+          ? { allowedActionIds: MINUTA_BUBBLE_ACTION_IDS }
+          : undefined;
   chat.beginAssistantMessage(beginOpts);
 
   // Encerra qualquer porta anterior
@@ -1243,7 +1303,7 @@ function executeMinutaGeneration(
   const label = template
     ? `Gerando ${action.label.toLowerCase()} com modelo ${template.relativePath}…`
     : `Gerando ${action.label.toLowerCase()} (sem modelo)…`;
-  sendChatMessage(prompt, true, label);
+  sendChatMessage(prompt, true, label, 'minuta');
 }
 
 // =====================================================================
@@ -2040,6 +2100,9 @@ async function loadSettings(): Promise<void> {
       mounted.sidebar.setProviderLabel(
         `${PROVIDER_LABELS[provider]} · ${memory.settings.models[provider]}`
       );
+      // Aplica o perfil padrão persistido. Mudanças feitas na sessão via
+      // seletor do sidebar são ephemeral — ao reabrir, volta ao default.
+      mounted.sidebar.setProfile(memory.settings.defaultProfile);
       if (!present) {
         mounted.sidebar.setGlobalNotice(
           `Nenhuma chave cadastrada para ${PROVIDER_LABELS[provider]}. Abra o popup da extensão e configure.`,
@@ -2118,29 +2181,402 @@ function wireSidebarEvents(sidebar: SidebarController): void {
       void handleTemplateAction(actionId);
     });
   });
+
+  els.triagemInteligenteButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    handleTriagemInteligente();
+  });
+}
+
+/**
+ * Insere o painel de Triagem Inteligente como uma entrada da linha do
+ * tempo (chat). NÃO destrói o histórico anterior — resumos, minutas e
+ * mensagens permanecem visíveis ao rolar a coluna. Cada novo clique no
+ * botão acrescenta uma nova bolha-painel ao final do timeline.
+ *
+ * INJEÇÃO DOS CRITÉRIOS DE ANÁLISE: quando cada um dos handlers abaixo
+ * (Analisar tarefas / Analisar processo / Inserir etiquetas mágicas) for
+ * implementado e chamar o LLM, o prompt enviado DEVE incluir o retorno de
+ * `buildTriagemCriteriosBlock(memory.settings)` de `shared/prompts.ts`.
+ * Essa função consolida os 11 critérios da NT 1/2025 do CLI-JFCE (com a
+ * redação padrão quando o magistrado adota, ou o entendimento próprio
+ * quando substitui) mais os critérios livres adicionados na aba "Triagem
+ * Inteligente" do popup. A configuração fica em
+ * `memory.settings.triagemCriterios` e `memory.settings.triagemCriteriosCustom`.
+ */
+function handleTriagemInteligente(): void {
+  if (!mounted) return;
+  const chat = ensureChatMounted();
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+  // O grupo "Painel" só aparece na tela do painel do usuário do PJe — em
+  // outras telas a ação "Analisar tarefas" não tem dados para varrer.
+  // No TRF5 o painel é renderizado dentro de um iframe Angular cross-origin;
+  // detectamos isso pela URL do top OU pela presença de um iframe cuja src
+  // referencia a rota.
+  const isPainelUsuario =
+    window.location.href.includes('painel-usuario-interno') ||
+    Boolean(document.querySelector('iframe[src*="painel-usuario-interno"]'));
+  const isProcessoAberto = Boolean(memory.detection?.isProcessoPage);
+  const panel = createTriagemPanel(
+    mountShell().shadow,
+    {
+      onAnalisarTarefas: () => {
+        void handleAnalisarTarefas(notice);
+      },
+      onAnalisarProcesso: () => {
+        void handleAnalisarProcesso(notice);
+      },
+      onInserirEtiquetas: () => notice('Inserir etiquetas mágicas — em breve.')
+    },
+    { isPainelUsuario, isProcessoAberto }
+  );
+  chat.addCustomBubble(panel);
+}
+
+/**
+ * Fluxo do botão "Analisar o processo" (perfil Secretaria):
+ *
+ *   1. Verifica se os autos já foram extraídos (cache em
+ *      `memory.extraidos`). Se não, dispara a extração automática com
+ *      feedback de progresso — mesmo pipeline do botão "Extrair" da
+ *      sidebar, mas sem pedir seleção manual.
+ *   2. Resolve a lista de critérios adotados pelo magistrado a partir das
+ *      configurações da aba "Triagem Inteligente" do popup.
+ *   3. Chama o orquestrador (que delega ao background) para consultar a
+ *      LLM. O contexto é construído com `buildTriagemContextText`, mesma
+ *      função usada por "Minutar" — linha do tempo + docs integrais
+ *      recentes, já truncada em 18k chars.
+ *   4. Renderiza a bolha de resultado na timeline do chat. Quando houver
+ *      critérios não atendidos, a bolha mostra o botão "Gerar ato de
+ *      emenda à inicial", que reutiliza todo o fluxo de minuta existente
+ *      (busca de modelo, geração, inserção no editor do PJe).
+ */
+async function handleAnalisarProcesso(
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  if (!mounted || !memory.adapter || !memory.detection?.isProcessoPage) {
+    notice(
+      'Abra os autos digitais de um processo antes de usar "Analisar o processo".',
+      'error'
+    );
+    return;
+  }
+  if (!memory.settings) {
+    notice('Aguarde o carregamento das configurações e tente novamente.', 'error');
+    return;
+  }
+
+  // Garante que o cache de extração reflita a árvore atual. Se faltar
+  // algum documento (ou a lista estiver vazia), dispara extração
+  // automática. O usuário vê progresso no globalNotice do sidebar.
+  const ok = await ensureDocumentosExtraidosParaAnalise(notice);
+  if (!ok) return;
+
+  const criterios = resolveTriagemCriterios(memory.settings);
+  if (criterios.length === 0) {
+    notice(
+      'Nenhum critério de análise configurado. Abra o popup da extensão, ' +
+        'aba "Triagem Inteligente", e adote ou cadastre ao menos um critério.',
+      'error'
+    );
+    return;
+  }
+
+  const caseContext = buildTriagemContextText();
+  if (!caseContext) {
+    notice(
+      'Nenhum conteúdo textual disponível nos documentos extraídos.',
+      'error'
+    );
+    return;
+  }
+
+  notice('Analisando o processo pelos critérios configurados…', 'info');
+  const resp = await executarAnalisarProcesso({ caseContext, criterios });
+  if (!resp.ok || !resp.result) {
+    notice(resp.error ?? 'Falha ao analisar o processo.', 'error');
+    return;
+  }
+  notice('', 'info');
+
+  const chat = ensureChatMounted();
+  const bubble = createAnaliseProcessoBubble(
+    mountShell().shadow,
+    resp.result,
+    {
+      onGerarEmenda: (providencias) => {
+        void handleGerarEmendaInicial(providencias, notice);
+      }
+    }
+  );
+  chat.addCustomBubble(bubble);
+}
+
+/**
+ * Garante que os documentos estejam extraídos em `memory.extraidos`. Se
+ * a lista de documentos ainda não foi carregada, chama o adapter; se há
+ * documentos listados mas nem todos extraídos, dispara a extração em
+ * lote com feedback de progresso.
+ *
+ * Retorna true quando há texto utilizável em memória ao final; false se
+ * o usuário precisa corrigir algo (p.ex. árvore vazia).
+ */
+async function ensureDocumentosExtraidosParaAnalise(
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<boolean> {
+  if (!mounted || !memory.adapter) return false;
+
+  if (memory.documentos.length === 0) {
+    try {
+      memory.documentos = memory.adapter.extractDocumentos();
+    } catch (err) {
+      notice(`Falha ao listar documentos: ${errorMessage(err)}`, 'error');
+      return false;
+    }
+  }
+
+  if (memory.documentos.length === 0) {
+    notice(
+      'Nenhum documento encontrado na árvore de autos. Role a árvore até o ' +
+        'final e tente novamente.',
+      'error'
+    );
+    return false;
+  }
+
+  const faltam = memory.documentos.filter((d) => !memory.extraidos.has(d.id));
+  if (faltam.length === 0) return true;
+
+  notice(
+    `Extraindo ${faltam.length} documento(s) dos autos — pode levar alguns minutos…`,
+    'info'
+  );
+
+  let concluidos = 0;
+  try {
+    await extractContents(faltam, (event) => {
+      switch (event.type) {
+        case 'document-start':
+          notice(
+            `Extraindo ${concluidos + 1}/${faltam.length}: ${
+              event.documento.tipo || event.documento.descricao || `doc ${event.documento.id}`
+            }…`,
+            'info'
+          );
+          break;
+        case 'document-done':
+          concluidos += 1;
+          memory.extraidos.set(event.documento.id, event.documento);
+          notice(
+            `Extraindo ${concluidos}/${faltam.length}…`,
+            'info'
+          );
+          break;
+        case 'document-error':
+          concluidos += 1;
+          console.warn(
+            `${LOG_PREFIX} falha ao extrair doc ${event.documento.id}:`,
+            event.error
+          );
+          break;
+        default:
+          break;
+      }
+    });
+  } catch (err) {
+    notice(`Falha na extração: ${errorMessage(err)}`, 'error');
+    return false;
+  }
+
+  if (memory.extraidos.size === 0) {
+    notice(
+      'Nenhum documento pôde ser extraído — o modelo não terá conteúdo dos autos ' +
+        'para analisar.',
+      'error'
+    );
+    return false;
+  }
+
+  // Se houver documentos digitalizados pendentes e OCR automático estiver
+  // ligado, roda em background sem bloquear o fluxo. Sem OCR auto-run, a
+  // análise segue com o que já foi extraído (documentos digitais legíveis).
+  const pendentes = getOcrPendingDocuments(getExtraidosArray());
+  if (pendentes.length > 0 && memory.settings?.ocrAutoRun) {
+    notice(
+      `${pendentes.length} documento(s) digitalizado(s). Rodando OCR antes de analisar…`,
+      'info'
+    );
+    try {
+      await handleRunOcr();
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} OCR antes da análise falhou:`, err);
+      // Segue em frente com o que já há — análise parcial é melhor que falha.
+    }
+  }
+
+  if (mounted) {
+    mounted.sidebar.setExtractedFeaturesEnabled(true);
+    mounted.sidebar.setChatEnabled(true);
+  }
+  return true;
+}
+
+/**
+ * Dispara a geração do ato de emenda à inicial a partir das providências
+ * sugeridas pelo LLM na análise. Reaproveita todo o pipeline de minuta
+ * existente — busca de modelo (BM25 + rerank), inserção no editor do
+ * PJe, botões de copiar/baixar/refinar — apenas trocando o prompt pelo
+ * gabarito fixo com as providências injetadas.
+ */
+async function handleGerarEmendaInicial(
+  providencias: string[],
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  if (!mounted) return;
+  const action = TEMPLATE_ACTIONS_TRIAGEM.find((a) => a.id === 'emenda-inicial');
+  if (!action) {
+    notice('Ação "Emenda à inicial" não configurada.', 'error');
+    return;
+  }
+  const prompt = buildEmendaInicialPrompt(providencias);
+  lastMinuta.action = action;
+  lastMinuta.template = null;
+  sendChatMessage(prompt, true, `Gerando ${action.label.toLowerCase()}…`, 'emenda');
+}
+
+/**
+ * Fluxo de "Encaminhar e inserir no PJe" do ato de emenda à inicial.
+ *
+ * 1. Pergunta ao usuário via bolha interativa do chat se pode prosseguir,
+ *    lembrando que a **tarefa do processo precisa estar aberta em outra
+ *    aba** — a transição só pode ser acionada lá.
+ * 2. No "Prosseguir": dispara a automação no background, que procura a
+ *    aba do PJe com o processo aberto, aciona a transição "Comunicação -
+ *    Elaborar (emenda automática)" e injeta o HTML da emenda no editor
+ *    Badon da nova tarefa.
+ * 3. **Salvar** e **Assinar documento(s)** ficam com o usuário — esta
+ *    sprint para na injeção.
+ */
+async function handleEncaminharEmenda(
+  html: string,
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  if (!mounted) return;
+  const chat = mounted.chat;
+  if (!chat) return;
+
+  const numeroProcesso = memory.detection?.numeroProcesso ?? null;
+  if (!numeroProcesso) {
+    notice('Número do processo não identificado nesta aba.', 'error');
+    return;
+  }
+
+  chat.addInteractiveMessage({
+    text:
+      'Vou acionar a transição **Comunicação - Elaborar (emenda automática)** ' +
+      'na aba do PJe onde este processo está aberto e inserir a minuta no ' +
+      'editor da nova tarefa.\n\n' +
+      '**Pré-requisito:** a tarefa do processo (`' +
+      numeroProcesso +
+      '`) precisa estar aberta em outra aba do navegador — a transição ' +
+      'só existe na tela da tarefa, não no painel.\n\n' +
+      'Depois que o texto for inserido no editor, **revise, clique em ' +
+      'Salvar e em Assinar documento(s) manualmente** — esta etapa ainda ' +
+      'não é automatizada.',
+    choices: [
+      { id: 'prosseguir', label: 'Prosseguir', primary: true },
+      { id: 'cancelar', label: 'Cancelar', cancel: true }
+    ],
+    onChoose: (choiceId) => {
+      if (choiceId !== 'prosseguir') return;
+      void dispatchEncaminharEmenda(html, numeroProcesso, notice);
+    }
+  });
+}
+
+async function dispatchEncaminharEmenda(
+  html: string,
+  numeroProcesso: string,
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  notice('Encaminhando para emenda automática…');
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.ENCAMINHAR_EMENDA,
+      payload: { html, numeroProcesso }
+    })) as { ok: boolean; error?: string; stage?: string };
+
+    if (!response?.ok) {
+      const stage = response?.stage ? ` (${response.stage})` : '';
+      notice(
+        `Falha ao encaminhar${stage}: ${
+          response?.error ?? 'erro desconhecido'
+        }. Conclua manualmente na aba do PJe.`,
+        'error'
+      );
+      return;
+    }
+    notice(
+      'Minuta inserida no editor da nova tarefa. Revise, salve e assine ' +
+        'manualmente no PJe.'
+    );
+    window.setTimeout(() => notice('', 'info'), 5000);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} dispatchEncaminharEmenda falhou:`, err);
+    notice(`Falha ao encaminhar: ${errorMessage(err)}.`, 'error');
+  }
+}
+
+/**
+ * Dispara o coletor de tarefas e abre o dashboard. O coletor é totalmente
+ * client-side; a chamada à LLM acontece dentro do dashboard, sob demanda.
+ *
+ * Nota de UX: a varredura navega entre tarefas usando `history.back()` —
+ * o usuário verá o painel do PJe oscilando. Mantemos o sidebar com um
+ * notice de progresso para deixar claro o que está acontecendo.
+ */
+async function handleAnalisarTarefas(
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  notice(
+    'Analisando tarefas — pode levar alguns minutos. ' +
+      'Aguarde sem fechar a aba. O painel ficará indisponível durante a varredura.'
+  );
+  try {
+    const result = await executarAnalisarTarefasComBridge({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao analisar tarefas.', 'error');
+      return;
+    }
+    notice(
+      `Dashboard aberto: ${result.totalTarefas} tarefa(s), ` +
+        `${result.totalProcessos} processo(s).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAnalisarTarefas falhou:`, err);
+    notice(`Falha ao analisar tarefas: ${errorMessage(err)}`, 'error');
+  }
 }
 
 function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
   memory.adapter = adapter;
   memory.detection = detection;
   const shell = mountShell();
-  let fab: FabController | null = null;
+
   const sidebar = mountSidebar(shell.shadow, detection, {
     onLoadDocuments: () => {
       void handleLoadDocuments();
     },
     onClose: () => {
-      fab?.setVisible(true);
+      /* nada a fazer — sem FAB, o botão do header continua sempre visível */
     }
   });
-  fab = mountFab(shell.shadow, {
-    onClick: () => {
-      sidebar.open();
-      fab?.setVisible(false);
-    },
-    tooltip: `pAIdegua — ${detection.tribunal} ${detection.grau.toUpperCase()}`
-  });
-  mounted = { fab, sidebar, docList: null, chat: null };
+  mounted = { sidebar, docList: null, chat: null };
   wireSidebarEvents(sidebar);
   void loadSettings();
   console.log(
@@ -2171,7 +2607,6 @@ function unmountUI(): void {
   }
   mounted.docList?.destroy();
   mounted.chat?.destroy();
-  mounted.fab.destroy();
   mounted.sidebar.destroy();
   mounted = null;
   memory.adapter = null;
@@ -2192,11 +2627,13 @@ function runDetection(): void {
 
   console.log(`${LOG_PREFIX} detection:`, detection);
 
-  const shouldMount =
-    detection.isPJe &&
-    detection.isProcessoPage &&
-    detection.numeroProcesso !== null &&
-    adapter !== null;
+  // Monta a UI (FAB + sidebar) em QUALQUER tela do PJe onde um adapter
+  // reconhece o ambiente — inclui painel do usuário, lista de tarefas,
+  // tarefa aberta, etc. O botão do header agora precisa conseguir abrir
+  // o sidebar mesmo quando não há processo carregado; botões que exigem
+  // documentos (carregar, resumir, minutar) permanecem desabilitados até
+  // `setExtractedFeaturesEnabled(true)` ser chamado.
+  const shouldMount = detection.isPJe && adapter !== null;
 
   if (shouldMount && !mounted && adapter) {
     mountUI(detection, adapter);
@@ -2205,9 +2642,6 @@ function runDetection(): void {
 
   if (shouldMount && mounted && adapter) {
     mounted.sidebar.updateDetection(detection);
-    mounted.fab.setTooltip(
-      `pAIdegua — ${detection.tribunal} ${detection.grau.toUpperCase()}`
-    );
     memory.adapter = adapter;
     memory.detection = detection;
     return;
@@ -2306,13 +2740,66 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 function bootstrap(): void {
+  // Com `all_frames: true` no manifest, este script roda também dentro
+  // dos iframes do PJe (ex.: o Angular do painel-usuario-interno servido
+  // em frontend-prd.trf5.jus.br). Em iframes NÃO montamos UI; instalamos
+  // apenas o listener da ponte para a ação "Analisar tarefas" quando o
+  // iframe é o do painel.
+  //
+  // Importante: o iframe do painel NÃO casa com `isPJeHost` (o hostname
+  // não começa com "pje"), então a checagem de host fica condicional ao
+  // top frame.
+  const ehTopFrame = window === window.top;
+  if (!ehTopFrame) {
+    if (window.location.href.includes('painel-usuario-interno')) {
+      console.log(
+        `${LOG_PREFIX} content script (iframe painel) em`,
+        window.location.href
+      );
+      instalarListenerTriagemNoIframe();
+    }
+    return;
+  }
+
   if (!isPJeHost(window.location.hostname)) {
     return;
   }
+
   console.log(`${LOG_PREFIX} content script carregado em`, window.location.href);
   pingBackground();
+  mountGlobalNavbarButton();
   runDetection();
   observeDom();
+}
+
+/**
+ * Monta o botão do header uma única vez por content script. Vive fora do
+ * ciclo mountUI/unmountUI, então segue visível mesmo em páginas sem
+ * processo aberto (painel do usuário, lista de tarefas, etc.).
+ *
+ * O clique alterna o sidebar. Como `runDetection` agora monta a UI em
+ * qualquer tela PJe, quando o usuário clica aqui o sidebar quase sempre
+ * já está pronto — há um fallback para montagem tardia caso a detecção
+ * ainda não tenha concluído (primeiros milissegundos da página).
+ */
+function mountGlobalNavbarButton(): void {
+  if (navbarButton) return;
+  navbarButton = mountNavbarButton({
+    onClick: () => {
+      // Fallback: se o sidebar ainda não está montado (detecção tardia),
+      // roda uma detecção síncrona antes de alternar.
+      if (!mounted) {
+        runDetection();
+      }
+      if (!mounted) {
+        console.info(
+          `${LOG_PREFIX} pAIdegua ainda inicializando — tente novamente em instantes.`
+        );
+        return;
+      }
+      mounted.sidebar.toggle();
+    }
+  });
 }
 
 function errorMessage(error: unknown): string {

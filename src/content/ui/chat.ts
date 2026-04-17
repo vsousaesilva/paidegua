@@ -91,6 +91,13 @@ export interface ChatController {
   addInputPrompt(opts: InputPromptOptions): () => void;
   /** Insere texto puro de sistema (sem botões), para status passageiros. */
   addSystemText(text: string): HTMLDivElement;
+  /**
+   * Insere uma "bolha-painel" usando o nó arbitrário fornecido como conteúdo.
+   * Útil para anexar painéis ricos (ex.: triagem) à linha do tempo do chat
+   * sem destruir o histórico anterior. Retorna a bolha para o chamador
+   * remover ou atualizar quando necessário.
+   */
+  addCustomBubble(content: HTMLElement): HTMLDivElement;
   getMessages(): ChatMessage[];
   clear(): void;
   setSystemNotice(text: string): void;
@@ -170,6 +177,16 @@ const CHAT_CSS = `
   border: 1px dashed rgba(19, 81, 180, 0.32);
   color: var(--paidegua-primary-dark);
   font-size: 12px;
+}
+
+.paidegua-chat__bubble.is-panel {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 .paidegua-chat__bubble.is-system .paidegua-chat__system-text {
@@ -658,6 +675,16 @@ export function mountChat(
       textEl.className = 'paidegua-chat__system-text';
       textEl.innerHTML = renderMarkdown(text);
       bubble.append(textEl);
+      messagesEl.append(bubble);
+      scrollToBottom();
+      return bubble;
+    },
+
+    addCustomBubble(content: HTMLElement): HTMLDivElement {
+      removeEmpty();
+      const bubble = document.createElement('div');
+      bubble.className = 'paidegua-chat__bubble is-panel';
+      bubble.append(content);
       messagesEl.append(bubble);
       scrollToBottom();
       return bubble;
