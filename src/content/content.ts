@@ -769,7 +769,14 @@ function buildTriagemContextText(): string {
 
   const fmt = (d: ProcessoDocumento): string => {
     const dt = d.dataMovimentacao || 's/ data';
-    const rot = d.tipo || d.descricao || `doc ${d.id}`;
+    const tipo = (d.tipo || '').trim();
+    const desc = (d.descricao || '').trim();
+    let rot: string;
+    if (tipo && desc && desc.toLowerCase() !== tipo.toLowerCase()) {
+      rot = `${tipo} — "${desc}"`;
+    } else {
+      rot = tipo || desc || `doc ${d.id}`;
+    }
     return `${dt} — ${rot} (id ${d.id})`;
   };
 

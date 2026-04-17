@@ -729,6 +729,11 @@ export function buildAnaliseProcessoPrompt(
   return (
     `Você é um assistente que auxilia a Secretaria de uma Vara Federal a verificar se uma petição inicial atende aos critérios de admissibilidade adotados pelo magistrado.\n\n` +
     `TAREFA: para CADA um dos critérios listados abaixo, decida se está ou não atendido pelos documentos do processo, citando os ids dos documentos que embasam a conclusão.\n\n` +
+    `ESTRUTURA DOS DOCUMENTOS NO CONTEXTO:\n` +
+    `Cada documento aparece como \`{data} — {TIPO} — "{DESCRIÇÃO/NOME DO ARQUIVO}" (id N)\`.\n` +
+    `- TIPO é a categoria canônica do PJe (frequentemente genérica, ex.: "Outros Documentos", "Petição").\n` +
+    `- DESCRIÇÃO é o nome do arquivo atribuído pelo advogado (ex.: "CNIS completo", "Indeferimento administrativo").\n` +
+    `Para o critério de nomeação correta, considere ATENDIDO quando TIPO **ou** DESCRIÇÃO permita identificar imediatamente o conteúdo da peça. Só marque como NÃO atendido se AMBOS forem genéricos ao ponto de impedir a identificação do conteúdo.\n\n` +
     `REGRAS DE AVALIAÇÃO:\n` +
     `- Se um critério depende de tipo específico de causa (ex.: "Salário-maternidade" só se aplica em ação de salário-maternidade) e a causa concreta é OUTRA, considere o critério como ATENDIDO (campo "atendido": true) e justifique com "critério não aplicável a esta causa".\n` +
     `- Se um critério é aplicável e os autos demonstram a documentação exigida, marque como atendido e cite o documento.\n` +
