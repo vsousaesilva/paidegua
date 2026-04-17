@@ -847,10 +847,22 @@ interface DataCandidata {
 }
 
 /**
+ * Palavras no contexto imediato de uma data que indicam se tratar de
+ * norma/ato citado no corpo do documento (portarias, leis, decretos,
+ * resoluções etc.), e não da data de emissão do documento em análise.
+ * Datas com esses marcadores nas proximidades são descartadas para não
+ * poluir a lista de "DATAS CANDIDATAS".
+ */
+const DATA_RUIDO_REGEX =
+  /\b(portaria|resolu[çc][aã]o|instru[çc][aã]o\s+normativa|decreto|decreto[- ]lei|lei|lei\s+complementar|medida\s+provis[óo]ria|provimento|s[úu]mula|enunciado|artigo|art\.?|§|inciso|cap[ií]tulo|c[óo]digo|emenda|ac[óo]rd[ãa]o|nasc(imento|ido)|dn|rg|cpf|cnh|identidade|expedi[çc][aã]o|matr[íi]cula)\b/i;
+
+/**
  * Extrai as datas aparentes no texto com ±40 chars de contexto. Cap de
  * 12 entradas por documento para manter o prompt enxuto — números e
  * datas extensas juntos raramente superam isso em comprovantes e
- * procurações.
+ * procurações. Datas em contexto de norma/ato citado (PORTARIA, LEI,
+ * DECRETO etc.) ou de identificação pessoal (RG, CPF, DN) são
+ * descartadas, pois não representam a data de emissão do documento.
  */
 function extrairDatasComContexto(texto: string): DataCandidata[] {
   if (!texto) return [];
@@ -860,6 +872,7 @@ function extrairDatasComContexto(texto: string): DataCandidata[] {
     const ini = Math.max(0, idx - 40);
     const fim = Math.min(texto.length, idx + len + 40);
     const trecho = texto.slice(ini, fim).replace(/\s+/g, ' ').trim();
+    if (DATA_RUIDO_REGEX.test(trecho)) return;
     const key = `${raw}|${trecho}`;
     if (vistos.has(key)) return;
     vistos.add(key);
