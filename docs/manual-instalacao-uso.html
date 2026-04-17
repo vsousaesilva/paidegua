@@ -780,6 +780,18 @@
         </div>
       </div>
 
+      <h3><span class="marker"></span>Critérios da Triagem Inteligente</h3>
+      <p>Na aba <strong>Triagem</strong> do popup, você define os critérios de análise inicial que a funcionalidade de Triagem Inteligente usará nos processos previdenciários e assistenciais. A base é a <strong>Nota Técnica nº 1/2025 do CLI-JFCE</strong>, que uniformizou as exigências entre os 16 Juizados Especiais Federais do Ceará.</p>
+      <ul>
+        <li>Para cada critério — <em>emenda à inicial, gratuidade de justiça, representação processual, interesse de agir, competência, prevenção</em> e outros — mantenha a redação padrão da NT marcando a opção <strong>Adoto a NT</strong>, ou desmarque e descreva no campo livre <em>como você entende e aplica aquele critério na sua unidade</em>.</li>
+        <li>Use o bloco <strong>"Deseja incluir outros critérios customizados?"</strong> para adicionar exigências próprias da sua unidade que não constam da NT 1/2025 — basta ligar o <em>toggle</em> "Sim" e inserir quantas quiser.</li>
+        <li>Os critérios escolhidos (padronizados, personalizados ou customizados) são <strong>injetados nos prompts</strong> da Triagem Inteligente e definem o que será verificado na análise. As alterações são salvas automaticamente.</li>
+      </ul>
+      <div class="callout callout--tip">
+        <h4>Antes do primeiro uso</h4>
+        <p>Revise os critérios na aba <em>Triagem</em> do popup antes de usar a funcionalidade pela primeira vez. Como os critérios entram nos prompts da IA, o resultado da análise depende diretamente das escolhas feitas aqui.</p>
+      </div>
+
       <div class="callout callout--info">
         <h4>Termos de uso e governança</h4>
         <p>Na tela de configurações há a seção <em>Termos de uso e Governança</em>, que explica como a ferramenta se enquadra na Resolução CNJ 615/2025: é classificada como de baixo risco, exige supervisão humana, protege dados sensíveis, registra trilha de uso e identifica os documentos gerados com apoio de IA. Recomenda-se ler antes do uso no dia a dia.</p>
@@ -798,7 +810,7 @@
 
       <ol>
         <li>Acesse o PJe. O pAIdegua pode ser aberto em <strong>qualquer tela do sistema</strong> — painel do usuário, lista de tarefas, autos de um processo etc.</li>
-        <li>Há duas formas de abrir o painel lateral: clicando no <strong>botão "PAIDEGUA" injetado na barra superior do próprio PJe</strong> ou no <strong>botão flutuante</strong> que aparece no canto da página.</li>
+        <li>O painel lateral é aberto pelo <strong>botão "PAIDEGUA" injetado na barra superior do próprio PJe</strong>.</li>
         <li>As funcionalidades que dependem de autos abertos (Carregar Documentos, Resumir, Resumir em áudio, Anonimizar, Minutar e a seção "Minutas com modelo") ficam automaticamente ocultas enquanto você não estiver em uma tela de processo — reaparecem assim que os autos forem abertos.</li>
       </ol>
 
@@ -963,7 +975,7 @@
         <div class="feat">
           <span class="feat__label">Processo</span>
           <h4>Analisar o processo</h4>
-          <p>Dentro de um processo aberto, executa uma análise guiada pelos critérios configurados (por padrão, os critérios da <strong>NT 1/2025 do TRF5</strong> — emenda à inicial, gratuidade, representação processual, interesse de agir, competência, prevenção e outros). O status exibido durante a execução é: <em>"Analisando o processo pelos critérios configurados..."</em>.</p>
+          <p>Dentro de um processo aberto, executa uma análise guiada pelos critérios configurados na aba <strong>Triagem</strong> do popup (ver seção <em>Configuração inicial</em>). Por padrão, adota os critérios da <strong>Nota Técnica nº 1/2025 do CLI-JFCE</strong> — emenda à inicial, gratuidade, representação processual, interesse de agir, competência, prevenção e outros — mas cada critério pode ser personalizado ou substituído por redação própria, e critérios customizados adicionais podem ser incluídos. O status exibido durante a execução é: <em>"Analisando o processo pelos critérios configurados..."</em>.</p>
         </div>
         <div class="feat">
           <span class="feat__label">Emenda</span>
@@ -972,9 +984,14 @@
         </div>
       </div>
 
+      <div class="callout callout--tip">
+        <h4>Configure os critérios antes do primeiro uso</h4>
+        <p>Os critérios utilizados em <em>Analisar o processo</em> são definidos na aba <strong>Triagem</strong> do popup da extensão. Como eles entram nos prompts enviados à IA, o resultado da análise depende diretamente do que você escolheu ali — recomenda-se revisar os textos padrão, ajustar os que tiverem entendimento próprio e, se for o caso, incluir critérios customizados da sua unidade.</p>
+      </div>
+
       <div class="callout callout--info">
         <h4>Integração com o PJe no fluxo de emenda</h4>
-        <p>A bolha da minuta de emenda traz o botão <strong>"Encaminhar e inserir no PJe"</strong>, que aciona a transição de tarefa correspondente no PJe e injeta o texto da minuta no editor da nova tarefa — tudo em uma única ação, sem saltar entre abas manualmente.</p>
+        <p>A bolha da minuta de emenda traz o botão <strong>"Encaminhar e inserir no PJe"</strong> (no lugar do habitual <em>"Inserir no PJe"</em>), que aciona a transição de tarefa correspondente no PJe e injeta o texto da minuta no editor da nova tarefa — tudo em uma única ação, sem saltar entre abas manualmente.</p>
       </div>
     </section>
 

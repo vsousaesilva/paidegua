@@ -58,7 +58,12 @@ Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes se
 
 5. Modelos de minuta (opcional): Clique em "Gerenciar modelos" para abrir a pagina de configuracao. Ali voce pode selecionar uma pasta do seu computador com seus modelos de minutas (sentencas, decisoes, despachos). A extensao aceita arquivos .docx, .doc, .odt, .rtf, .pdf, .txt e .md. Organize por subpastas (ex.: "procedente", "improcedente", "despachos", "decisoes") para melhor selecao automatica.
 
-6. Termos de uso e governanca: No popup ha a secao "Termos de uso e Governanca (Res. CNJ 615/2025)" com o enquadramento da ferramenta como de baixo risco (Anexo BR4/BR8), a obrigacao de supervisao humana (art. 19, IV e art. 34), a politica de privacidade/anonimizacao (art. 30), a trilha de auditoria (art. 19, par. 6 e art. 27 - EM DESENVOLVIMENTO, ainda nao implementada na versao atual) e a identificacao de conteudo gerado com apoio de IA (art. 21). Leia antes do uso em producao.
+6. Criterios da Triagem Inteligente (perfil Secretaria): na aba "Triagem" do popup voce define os criterios de analise inicial usados pela funcionalidade de Triagem Inteligente nos processos previdenciarios e assistenciais. A base e a Nota Tecnica n 1/2025 do CLI-JFCE, que uniformizou as exigencias entre os 16 Juizados Especiais Federais do Ceara. Para cada criterio (emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao etc.) voce pode:
+   - Manter a redacao padrao da NT 1/2025 (chave "Adoto a NT" marcada); ou
+   - Desmarcar a adocao e descrever no campo livre como voce entende e aplica aquele criterio na sua unidade.
+   Ha ainda o bloco "Deseja incluir outros criterios customizados?" — ligue o toggle "Sim" para adicionar criterios proprios da sua unidade que nao constam da NT 1/2025. Os criterios escolhidos (padronizados, personalizados e customizados) sao injetados nos prompts da Triagem Inteligente. As alteracoes sao salvas automaticamente.
+
+7. Termos de uso e governanca: No popup ha a secao "Termos de uso e Governanca (Res. CNJ 615/2025)" com o enquadramento da ferramenta como de baixo risco (Anexo BR4/BR8), a obrigacao de supervisao humana (art. 19, IV e art. 34), a politica de privacidade/anonimizacao (art. 30), a trilha de auditoria (art. 19, par. 6 e art. 27 - EM DESENVOLVIMENTO, ainda nao implementada na versao atual) e a identificacao de conteudo gerado com apoio de IA (art. 21). Leia antes do uso em producao.
 
 ---
 
@@ -67,9 +72,7 @@ Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes se
 ### Acessando o pAIdegua
 
 1. Acesse o PJe. O pAIdegua agora pode ser aberto em qualquer tela do sistema (painel do usuario, lista de tarefas, autos de um processo etc.), nao apenas quando houver processo aberto.
-2. Ha duas formas de abrir o painel lateral:
-   - Clicando no botao "PAIDEGUA" que a extensao injeta na barra superior do proprio PJe.
-   - Clicando no botao flutuante do pAIdegua, que aparece no canto da pagina.
+2. O painel lateral e aberto pelo botao "PAIDEGUA" que a extensao injeta na barra superior do proprio PJe.
 3. As funcionalidades que dependem de autos abertos (Carregar Documentos, Resumir, Resumir em audio, Anonimizar, Minutar e a secao "Minutas com modelo") ficam automaticamente ocultas enquanto voce nao estiver em uma tela de processo — reaparecem assim que os autos forem abertos.
 
 ### Painel lateral
@@ -174,11 +177,13 @@ Funcionalidade dedicada ao trabalho de secretaria no 1o grau. Aparece como botao
 
 1. Analisar tarefas: le a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providencia necessaria e apresenta um quadro resumo para orientar a priorizacao do dia.
 
-2. Analisar o processo: dentro de um processo aberto, executa uma analise guiada pelos criterios configurados (por padrao, os criterios da NT 1/2025 do TRF5 — emenda a inicial, gratuidade, representacao processual, interesse de agir, competencia, prevencao e outros). O status exibido durante a execucao e "Analisando o processo pelos criterios configurados...".
+2. Analisar o processo: dentro de um processo aberto, executa uma analise guiada pelos criterios configurados na aba "Triagem" do popup da extensao (ver passo 6 da Configuracao inicial). Por padrao, adota os criterios da Nota Tecnica n 1/2025 do CLI-JFCE — emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao e outros — mas cada criterio pode ser personalizado ou substituido por redacao propria da unidade, e criterios customizados adicionais podem ser incluidos. O status exibido durante a execucao e "Analisando o processo pelos criterios configurados...".
 
 3. Gerar ato de emenda a inicial: quando a analise indicar necessidade de emenda, a extensao oferece a geracao da minuta de ato de emenda a inicial diretamente no chat, ja contemplando os pontos identificados na triagem.
 
-O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz apenas o botao "Encaminhar e inserir no PJe", que faz o encaminhamento da tarefa e insere o texto da minuta no editor CKEditor correspondente, em uma unica acao.
+IMPORTANTE: antes do primeiro uso da Triagem Inteligente, revise os criterios na aba "Triagem" do popup. Os criterios escolhidos (padrao da NT, personalizados ou customizados) sao injetados nos prompts da analise — logo, definem o resultado produzido pela funcionalidade.
+
+O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz o botao "Encaminhar e inserir no PJe" (no lugar do habitual "Inserir no PJe"), que faz o encaminhamento da tarefa e insere o texto da minuta no editor CKEditor correspondente, em uma unica acao.
 
 ### Chat livre
 
