@@ -275,7 +275,16 @@ export const STORAGE_KEYS = {
    * seleção, origem do PJe). Indexado por `requestId` — a aba-painel lê
    * da chave `${PREFIX}${requestId}` ao carregar.
    */
-  GESTAO_PAINEL_STATE_PREFIX: 'paidegua.gestao.painelState.'
+  GESTAO_PAINEL_STATE_PREFIX: 'paidegua.gestao.painelState.',
+  /**
+   * Prefixo de chave em `chrome.storage.session` com o roteamento da aba
+   * intermediária do Painel Gerencial (`requestId → {painelTabId, pjeTabId}`).
+   * Precisa ser persistido porque o service worker do MV3 pode ser
+   * suspenso durante a varredura (dezenas de segundos entre mensagens de
+   * progresso é suficiente) — se dependêssemos de um Map em memória,
+   * perderíamos a rota e `GESTAO_COLETA_DONE` chegaria sem destinatário.
+   */
+  GESTAO_PAINEL_ROUTE_PREFIX: 'paidegua.gestao.painelRoute.'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

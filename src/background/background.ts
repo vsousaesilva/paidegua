@@ -2118,22 +2118,53 @@ async function handleOpenGestaoDashboard(
 // =====================================================================
 
 /**
- * Tabela em memória relacionando cada `requestId` à aba-painel e à aba
- * do PJe que a disparou. Usada para rotear:
+ * Tabela persistida em `chrome.storage.session` relacionando cada
+ * `requestId` à aba-painel e à aba do PJe que a disparou. Usada para
+ * rotear:
  *   - GESTAO_START_COLETA (painel → PJe)
  *   - GESTAO_COLETA_PROG  (PJe    → painel)
  *   - GESTAO_COLETA_READY (pós-save, painel carrega o dashboard)
  *   - GESTAO_COLETA_FAIL  (PJe    → painel)
  *
- * Sobrevive apenas enquanto o service worker está vivo. Se o SW for
- * suspenso, perdemos a rota — mas service workers do Chrome extensions
- * só suspendem quando não há chamadas de rede/IPC em andamento, e
- * durante a varredura há postMessage constante do content script.
+ * Persistimos em session storage (e não em Map em memória) porque o
+ * service worker do MV3 pode ser suspenso durante a varredura. A
+ * chave é `${GESTAO_PAINEL_ROUTE_PREFIX}${requestId}`.
  */
-const gestaoPainelRoutes = new Map<
-  string,
-  { painelTabId: number; pjeTabId: number }
->();
+interface GestaoPainelRota {
+  painelTabId: number;
+  pjeTabId: number;
+}
+
+function rotaKey(requestId: string): string {
+  return `${STORAGE_KEYS.GESTAO_PAINEL_ROUTE_PREFIX}${requestId}`;
+}
+
+async function getRota(requestId: string): Promise<GestaoPainelRota | null> {
+  if (!requestId) return null;
+  const key = rotaKey(requestId);
+  const got = await chrome.storage.session.get(key);
+  const val = got?.[key];
+  if (
+    val &&
+    typeof val.painelTabId === 'number' &&
+    typeof val.pjeTabId === 'number'
+  ) {
+    return { painelTabId: val.painelTabId, pjeTabId: val.pjeTabId };
+  }
+  return null;
+}
+
+async function setRota(
+  requestId: string,
+  rota: GestaoPainelRota
+): Promise<void> {
+  await chrome.storage.session.set({ [rotaKey(requestId)]: rota });
+}
+
+async function deleteRota(requestId: string): Promise<void> {
+  if (!requestId) return;
+  await chrome.storage.session.remove(rotaKey(requestId));
+}
 
 function gerarRequestId(): string {
   return `gestao-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -2185,7 +2216,7 @@ async function handleOpenGestaoPainel(
       });
       return;
     }
-    gestaoPainelRoutes.set(requestId, {
+    await setRota(requestId, {
       painelTabId: tab.id,
       pjeTabId
     });
@@ -2201,7 +2232,7 @@ async function handleGestaoStartColeta(
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
-    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    const rota = await getRota(payload?.requestId ?? '');
     if (!rota) {
       sendResponse({
         ok: false,
@@ -2245,7 +2276,7 @@ async function handleGestaoColetaProg(
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
-    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    const rota = await getRota(payload?.requestId ?? '');
     if (!rota) {
       sendResponse({ ok: false, error: 'Rota não encontrada.' });
       return;
@@ -2268,7 +2299,7 @@ async function handleGestaoColetaDone(
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
-    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    const rota = await getRota(payload?.requestId ?? '');
     if (!rota) {
       sendResponse({ ok: false, error: 'Rota não encontrada.' });
       return;
@@ -2296,7 +2327,7 @@ async function handleGestaoColetaDone(
       })
       .catch(() => { /* aba-painel pode ter sido fechada */ });
 
-    gestaoPainelRoutes.delete(payload.requestId);
+    await deleteRota(payload.requestId);
     sendResponse({ ok: true });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handleGestaoColetaDone falhou:`, error);
@@ -2309,7 +2340,7 @@ async function handleGestaoColetaFail(
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
-    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    const rota = await getRota(payload?.requestId ?? '');
     if (rota) {
       await chrome.tabs
         .sendMessage(rota.painelTabId, {
@@ -2317,7 +2348,7 @@ async function handleGestaoColetaFail(
           payload
         })
         .catch(() => { /* aba-painel pode ter sido fechada */ });
-      gestaoPainelRoutes.delete(payload.requestId);
+      await deleteRota(payload.requestId);
     }
     await chrome.storage.session.remove(
       `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
@@ -2333,14 +2364,27 @@ async function handleGestaoColetaFail(
 // varredura, removemos a rota e o estado temporário para não vazarmos
 // storage.session.
 chrome.tabs.onRemoved.addListener((tabId) => {
-  for (const [rid, rota] of gestaoPainelRoutes.entries()) {
-    if (rota.painelTabId === tabId || rota.pjeTabId === tabId) {
-      gestaoPainelRoutes.delete(rid);
-      void chrome.storage.session.remove(
-        `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${rid}`
-      );
+  void (async () => {
+    try {
+      const all = await chrome.storage.session.get(null);
+      const toRemove: string[] = [];
+      for (const [key, val] of Object.entries(all)) {
+        if (!key.startsWith(STORAGE_KEYS.GESTAO_PAINEL_ROUTE_PREFIX)) continue;
+        const rota = val as Partial<GestaoPainelRota> | null;
+        if (!rota) continue;
+        if (rota.painelTabId === tabId || rota.pjeTabId === tabId) {
+          const rid = key.slice(STORAGE_KEYS.GESTAO_PAINEL_ROUTE_PREFIX.length);
+          toRemove.push(key);
+          toRemove.push(`${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${rid}`);
+        }
+      }
+      if (toRemove.length) {
+        await chrome.storage.session.remove(toRemove);
+      }
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} onRemoved gestão falhou:`, err);
     }
-  }
+  })();
 });
 
 /**
