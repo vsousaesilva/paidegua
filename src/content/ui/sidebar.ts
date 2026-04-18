@@ -626,7 +626,8 @@ export function mountSidebar(
       <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de triagem inteligente">Triagem Inteligente</button>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Recursos para a Gestão</div>
-      <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade">Abrir Painel Gerencial</button>
+      <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade">Painel Gerencial pAIdegua</button>
+      <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-hint" style="grid-column: 1 / -1; font-size: 11px; font-style: italic; color: var(--paidegua-text-muted); text-align: center; margin-top: -2px;">Aqui você se faz!</div>
       <div data-profile-section="gestao" data-painel-section="fora-painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 12px; color: var(--paidegua-text-muted); line-height: 1.45; padding: 10px 12px; background: rgba(255,255,255,0.6); border: 1px dashed var(--paidegua-border); border-radius: var(--paidegua-radius-sm);">Abra o <strong>Painel do usuário</strong> do PJe para usar as ferramentas de Gestão.</div>
     </div>
 

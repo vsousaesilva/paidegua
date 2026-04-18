@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     const payload = await loadPayload();
     if (!payload) {
       root.innerHTML =
-        '<p class="loading">Nenhum dado encontrado. Volte ao Painel do Usuário do PJe e clique em "Abrir Painel Gerencial".</p>';
+        '<p class="loading">Nenhum dado encontrado. Volte ao Painel do Usuário do PJe e clique em "Painel Gerencial pAIdegua".</p>';
       meta.textContent = '';
       return;
     }
