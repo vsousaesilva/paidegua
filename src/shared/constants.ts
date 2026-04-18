@@ -25,14 +25,24 @@ export type ProviderId = (typeof PROVIDER_IDS)[number];
  * Perfis de trabalho. "Gabinete" expõe os atos baseados em modelos
  * (sentenças, decisões, despachos etc.) — é o comportamento histórico
  * da extensão. "Secretaria" substitui esses botões por ações próprias
- * do cartório/secretaria (a primeira é Triagem Inteligente).
+ * do cartório/secretaria (a primeira é Triagem Inteligente). "Gestão"
+ * é o perfil do diretor de secretaria: expõe, na tela do painel do
+ * usuário do PJe, ferramentas de diagnóstico e alertas gerenciais
+ * sobre a carga de trabalho.
+ *
+ * Regras de disponibilidade por grau (ver `shared/pje-host.ts`):
+ *   - Gabinete: todos os graus
+ *   - Gestão:   todos os graus
+ *   - Secretaria: apenas 1º grau (pje1g). 2º grau e Turma Recursal
+ *     continuam restritos por ora — avaliação futura.
  */
-export const PROFILE_IDS = ['gabinete', 'secretaria'] as const;
+export const PROFILE_IDS = ['gabinete', 'secretaria', 'gestao'] as const;
 export type ProfileId = (typeof PROFILE_IDS)[number];
 
 export const PROFILE_LABELS: Record<ProfileId, string> = {
   gabinete: 'Gabinete',
-  secretaria: 'Secretaria'
+  secretaria: 'Secretaria',
+  gestao: 'Gestão'
 };
 
 /** Perfil padrão na primeira instalação — preserva UX atual. */
@@ -150,7 +160,26 @@ export const MESSAGE_CHANNELS = {
    * (emenda automática)" e injeta a minuta de emenda (HTML) no editor
    * Badon. O salvamento e a assinatura ficam com o usuário.
    */
-  ENCAMINHAR_EMENDA: 'paidegua/triagem/encaminhar-emenda'
+  ENCAMINHAR_EMENDA: 'paidegua/triagem/encaminhar-emenda',
+  /**
+   * Content → background: pede para abrir a página "Salvar como modelo"
+   * em uma nova aba, passando o HTML/texto da minuta via
+   * `chrome.storage.session`. A página efetua a gravação no disco (pasta
+   * de modelos do usuário) e o append no IndexedDB de templates.
+   */
+  TEMPLATES_SAVE_AS_MODEL: 'paidegua/templates/save-as-model',
+  /**
+   * Content → background: pede a abertura da página do Painel Gerencial
+   * (perfil Gestão) em uma nova aba. O payload com os agregados coletados
+   * é gravado em `chrome.storage.session` antes de a aba ser criada.
+   */
+  GESTAO_OPEN_DASHBOARD: 'paidegua/gestao/open-dashboard',
+  /**
+   * Dashboard gerencial → background: pede insights gerenciais à LLM a
+   * partir do payload já sanitizado (mesma política do dashboard de
+   * Triagem — ver `shared/triagem-anonymize.ts`).
+   */
+  GESTAO_INSIGHTS: 'paidegua/gestao/insights'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -178,7 +207,26 @@ export const STORAGE_KEYS = {
    * para a aba que será aberta. Conteúdo de processos não vai para
    * `storage.local`.
    */
-  TRIAGEM_DASHBOARD_PAYLOAD: 'paidegua.triagem.dashboardPayload'
+  TRIAGEM_DASHBOARD_PAYLOAD: 'paidegua.triagem.dashboardPayload',
+  /**
+   * Chave em `chrome.storage.session` (volátil) usada para entregar o
+   * HTML da minuta para a página "Salvar como modelo". Conteúdo de
+   * minutas NUNCA vai para `storage.local`.
+   */
+  SAVE_TEMPLATE_PAYLOAD: 'paidegua.saveTemplate.payload',
+  /**
+   * Chave em `chrome.storage.session` (volátil) usada para entregar o
+   * payload agregado do Painel Gerencial (perfil Gestão) para a aba
+   * que será aberta. Mesmo racional do `TRIAGEM_DASHBOARD_PAYLOAD`:
+   * preserva nomes apenas localmente; o envio à LLM exige sanitização.
+   */
+  GESTAO_DASHBOARD_PAYLOAD: 'paidegua.gestao.dashboardPayload',
+  /**
+   * Chave em `chrome.storage.local` com a última seleção de tarefas do
+   * Painel Gerencial (apenas nomes de tarefa — não é PII). Usada para
+   * pré-marcar os checkboxes do seletor múltiplo ao reabrir.
+   */
+  GESTAO_TAREFAS_SELECIONADAS: 'paidegua.gestao.tarefasSelecionadas'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

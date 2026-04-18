@@ -62,9 +62,12 @@ import {
   instalarListenerTriagemNoIframe
 } from './triagem/triagem-bridge';
 import { executarAnalisarProcesso } from './triagem/analisar-processo';
+import { instalarListenerGestaoNoIframe } from './gestao/gestao-bridge';
+import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
+import type { SaveTemplatePayload } from '../shared/templates-save';
 import {
   aplicarRegexAnonimizacao,
   aplicarSubstituicoesNomes,
@@ -512,6 +515,59 @@ async function insertIntoPJeEditorFlow(_html: string, markdown: string): Promise
   }
 }
 
+/**
+ * Fluxo "Salvar como modelo": monta o payload e delega a gravação para a
+ * página dedicada da extensão (abre em nova aba). A própria página cuida
+ * de: ler o handle da pasta no IndexedDB, pedir readwrite, escrever o
+ * .doc e anexar o registro no índice.
+ */
+async function openSaveAsModelFlow(html: string, markdown: string): Promise<void> {
+  const sidebar = mounted?.sidebar;
+  const action = lastMinuta.action;
+  if (!action) {
+    sidebar?.setGlobalNotice('Nenhuma minuta para salvar como modelo.', 'error');
+    return;
+  }
+
+  const numeroProcesso = memory.detection?.numeroProcesso ?? null;
+  const suggestedFilename = suggestMinutaFilename(numeroProcesso, action.label);
+
+  const payload: SaveTemplatePayload = {
+    html,
+    markdown,
+    actionLabel: action.label,
+    actionId: action.id,
+    numeroProcesso,
+    suggestedFilename
+  };
+
+  sidebar?.setGlobalNotice('Abrindo página de salvamento…', 'info');
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.TEMPLATES_SAVE_AS_MODEL,
+      payload
+    })) as { ok: boolean; error?: string } | undefined;
+
+    if (!response?.ok) {
+      sidebar?.setGlobalNotice(
+        response?.error ?? 'Falha ao abrir página de salvamento.',
+        'error'
+      );
+      return;
+    }
+    sidebar?.setGlobalNotice(
+      'Confirme o salvamento na aba aberta. O modelo entra no índice logo após a gravação.',
+      'info'
+    );
+    window.setTimeout(() => sidebar?.setGlobalNotice('', 'info'), 4000);
+  } catch (error: unknown) {
+    sidebar?.setGlobalNotice(
+      `Falha ao iniciar salvamento: ${errorMessage(error)}`,
+      'error'
+    );
+  }
+}
+
 function buildChatBubbleActions(): ChatBubbleAction[] {
   return [
     {
@@ -558,6 +614,23 @@ function buildChatBubbleActions(): ChatBubbleAction[] {
             'error'
           );
         }
+      }
+    },
+    {
+      id: 'save-as-model',
+      label: 'Salvar como modelo',
+      title:
+        'Salvar esta minuta, como está, na pasta de modelos — passa a ser ' +
+        'referência para futuras gerações.',
+      onClick: (html, markdown) => {
+        if (!lastMinuta.action) {
+          mounted?.sidebar.setGlobalNotice(
+            'Nenhuma minuta para salvar como modelo.',
+            'error'
+          );
+          return;
+        }
+        void openSaveAsModelFlow(html, markdown);
       }
     },
     {
@@ -617,6 +690,7 @@ const EMENDA_BUBBLE_ACTION_IDS = [
   'copy',
   'encaminhar-emenda',
   'download-doc',
+  'save-as-model',
   'refine-minuta',
   'new-minuta'
 ];
@@ -630,6 +704,7 @@ const MINUTA_BUBBLE_ACTION_IDS = [
   'copy',
   'insert-pje',
   'download-doc',
+  'save-as-model',
   'refine-minuta',
   'new-minuta'
 ];
@@ -2390,6 +2465,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     event.preventDefault();
     handleTriagemInteligente();
   });
+
+  els.painelGerencialButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handlePainelGerencial();
+  });
 }
 
 /**
@@ -2769,6 +2849,45 @@ async function handleAnalisarTarefas(
   }
 }
 
+/**
+ * Fluxo do botão "Abrir Painel Gerencial" (perfil Gestão):
+ *   1. Pede ao iframe (ou coleta local) a lista de tarefas disponíveis.
+ *   2. Mostra o seletor múltiplo — o usuário escolhe quais tarefas entram.
+ *   3. Varre apenas as selecionadas, calcula indicadores locais e abre a
+ *      página do Painel Gerencial (nova aba). A chamada à IA para gerar
+ *      alertas/sugestões acontece dentro da página, sobre dados já
+ *      sanitizados.
+ */
+async function handlePainelGerencial(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo painel gerencial — preparando seletor de tarefas...');
+  try {
+    const result = await abrirPainelGerencial({
+      onProgress: (msg) => notice(msg)
+    });
+    if (result.cancelado) {
+      notice('', 'info');
+      return;
+    }
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir o Painel Gerencial.', 'error');
+      return;
+    }
+    notice(
+      `Painel Gerencial aberto: ${result.totalTarefas} tarefa(s), ` +
+        `${result.totalProcessos} processo(s).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePainelGerencial falhou:`, err);
+    notice(`Falha no Painel Gerencial: ${errorMessage(err)}`, 'error');
+  }
+}
+
 function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
   memory.adapter = adapter;
   memory.detection = detection;
@@ -2963,6 +3082,7 @@ function bootstrap(): void {
         window.location.href
       );
       instalarListenerTriagemNoIframe();
+      instalarListenerGestaoNoIframe();
     }
     return;
   }

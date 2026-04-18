@@ -48,11 +48,17 @@ import {
   searchTemplates,
   type SearchOptions
 } from '../shared/templates-search';
+import type { SaveTemplatePayload } from '../shared/templates-save';
 import type {
   AnaliseProcessoResult,
   ChatMessage,
   ChatStartPayload,
   ExtensionMessage,
+  GestaoAlerta,
+  GestaoDashboardPayload,
+  GestaoIndicadores,
+  GestaoInsightsLLM,
+  GestaoSugestao,
   PAIdeguaSettings,
   SynthesizeSpeechPayload,
   SynthesizeSpeechResult,
@@ -200,6 +206,20 @@ chrome.runtime.onMessage.addListener(
         );
         return true;
 
+      case MESSAGE_CHANNELS.GESTAO_OPEN_DASHBOARD:
+        void handleOpenGestaoDashboard(
+          message.payload as GestaoDashboardPayload,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_INSIGHTS:
+        void handleGestaoInsights(
+          message.payload as { indicadores: GestaoIndicadores; anon: TriagemPayloadAnon },
+          sendResponse
+        );
+        return true;
+
       case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
         void handleAnalisarProcesso(
           message.payload as AnalisarProcessoRequest,
@@ -210,6 +230,13 @@ chrome.runtime.onMessage.addListener(
       case MESSAGE_CHANNELS.ENCAMINHAR_EMENDA:
         void handleEncaminharEmenda(
           message.payload as EncaminharEmendaRequest,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.TEMPLATES_SAVE_AS_MODEL:
+        void handleOpenSaveAsModel(
+          message.payload as SaveTemplatePayload,
           sendResponse
         );
         return true;
@@ -1802,6 +1829,39 @@ async function handleOpenTriagemDashboard(
 }
 
 /**
+ * Recebe a minuta a ser salva como modelo pelo content script, estaciona
+ * em `chrome.storage.session` e abre a página dedicada em nova aba.
+ *
+ * A gravação em si (acesso ao FileSystemDirectoryHandle persistido no IDB
+ * e write na pasta) não pode acontecer aqui porque o service worker não
+ * tem user gesture. Delegamos para a página da extensão.
+ */
+async function handleOpenSaveAsModel(
+  payload: SaveTemplatePayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (
+      !payload ||
+      typeof payload.html !== 'string' ||
+      typeof payload.actionLabel !== 'string'
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido para salvar modelo.' });
+      return;
+    }
+    await chrome.storage.session.set({
+      [STORAGE_KEYS.SAVE_TEMPLATE_PAYLOAD]: payload
+    });
+    const url = chrome.runtime.getURL('save-template/save.html');
+    await chrome.tabs.create({ url });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenSaveAsModel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
  * Recebe o payload JÁ SANITIZADO (sanitizePayloadForLLM) do dashboard
  * e pede à LLM ativa um panorama + sugestões de próximos passos.
  *
@@ -1974,6 +2034,203 @@ function parseTriagemInsightsResponse(raw: string): TriagemInsightsLLM | null {
     return { panorama: obj.panorama, sugestoes };
   } catch (err) {
     console.warn(`${LOG_PREFIX} parseTriagemInsightsResponse: JSON inválido`, err);
+    return null;
+  }
+}
+
+// =====================================================================
+// Painel Gerencial — perfil Gestão
+// =====================================================================
+
+/**
+ * Grava o payload agregado do Painel Gerencial em `chrome.storage.session`
+ * (volátil) e abre a página do dashboard gerencial em uma nova aba. Nenhum
+ * dado de processo é persistido em `storage.local` — o payload sai junto
+ * com a sessão do navegador.
+ */
+async function handleOpenGestaoDashboard(
+  payload: GestaoDashboardPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !Array.isArray(payload.tarefas) || !payload.indicadores) {
+      sendResponse({ ok: false, error: 'Payload do Painel Gerencial inválido.' });
+      return;
+    }
+    await chrome.storage.session.set({
+      [STORAGE_KEYS.GESTAO_DASHBOARD_PAYLOAD]: payload
+    });
+    const url = chrome.runtime.getURL('gestao-dashboard/gestao-dashboard.html');
+    await chrome.tabs.create({ url });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenGestaoDashboard falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Recebe os indicadores agregados + payload já sanitizado
+ * (`sanitizePayloadForLLM`) e pede à LLM uma leitura gerencial com alertas
+ * e sugestões de organização do trabalho.
+ *
+ * Reaproveita a mesma checagem de PII do handler de triagem — se qualquer
+ * nome de polo ativo passar no claro ou CNJ de outro processo vazar no
+ * texto de movimentação, a chamada é bloqueada.
+ */
+async function handleGestaoInsights(
+  payload: { indicadores: GestaoIndicadores; anon: TriagemPayloadAnon },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !payload.indicadores || !payload.anon) {
+      sendResponse({ ok: false, error: 'Payload gerencial inválido.' });
+      return;
+    }
+    const piiAlert = detectPiiInAnonPayload(payload.anon);
+    if (piiAlert) {
+      console.warn(`${LOG_PREFIX} PII detectada no payload gerencial:`, piiAlert);
+      sendResponse({
+        ok: false,
+        error:
+          'Falha de segurança: o payload contém dados sensíveis no claro. ' +
+          'A chamada à IA foi bloqueada. (' + piiAlert + ')'
+      });
+      return;
+    }
+
+    const settings = await getSettings();
+    const providerId = settings.activeProvider;
+    const apiKey = await getApiKey(providerId);
+    if (!apiKey) {
+      sendResponse({
+        ok: false,
+        error: `API key não cadastrada para ${providerId}.`
+      });
+      return;
+    }
+
+    const provider = getProvider(providerId);
+    const prompt = buildGestaoInsightsPrompt(payload.indicadores, payload.anon);
+
+    const controller = new AbortController();
+    const generator = provider.sendMessage({
+      apiKey,
+      model: settings.models[providerId],
+      systemPrompt:
+        'Você é um assistente de gestão judiciária ajudando magistrados e ' +
+        'diretores de vara a enxergar rapidamente o estado dos processos em ' +
+        'cada tarefa do PJe. ' +
+        TRIAGEM_LLM_ANON_NOTICE + ' ' +
+        'Responda SEMPRE em JSON puro, sem texto adicional, sem markdown.',
+      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      temperature: 0.2,
+      maxTokens: 1800,
+      signal: controller.signal
+    });
+
+    let raw = '';
+    for await (const chunk of generator) {
+      raw += chunk.delta;
+    }
+
+    const insights = parseGestaoInsightsResponse(raw);
+    if (!insights) {
+      sendResponse({
+        ok: false,
+        error: 'Resposta da IA não pôde ser interpretada como JSON de insights gerenciais.'
+      });
+      return;
+    }
+    sendResponse({ ok: true, insights });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleGestaoInsights falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+function buildGestaoInsightsPrompt(
+  indicadores: GestaoIndicadores,
+  anon: TriagemPayloadAnon
+): string {
+  return (
+    `Você está analisando o Painel Gerencial de uma unidade judiciária no PJe.\n\n` +
+    `INDICADORES AGREGADOS (calculados localmente, sem IA):\n` +
+    '```json\n' +
+    JSON.stringify(indicadores, null, 2) +
+    '\n```\n\n' +
+    `PROCESSOS POR TAREFA (anonimizados — nomes de partes removidos):\n` +
+    '```json\n' +
+    JSON.stringify(anon, null, 2) +
+    '\n```\n\n' +
+    `Sua tarefa: produzir um JSON com três campos:\n` +
+    `  - "panorama": 2 a 4 frases descrevendo o estado gerencial do acervo.\n` +
+    `  - "alertas": entre 1 e 5 alertas que exigem atenção imediata do gestor ` +
+    `(ex.: concentração de atrasos em uma tarefa, assunto repetitivo em alta ` +
+    `quantidade, processos prioritários parados). Cada alerta tem ` +
+    `{titulo, detalhe, severidade: "alta"|"media"|"baixa"}.\n` +
+    `  - "sugestoes": entre 2 e 5 sugestões de reorganização do trabalho ` +
+    `(redistribuir, criar mutirão, adotar despacho em lote, revisar etiquetas). ` +
+    `Cada sugestão tem {titulo, detalhe, prioridade: "alta"|"media"|"baixa"}.\n\n` +
+    `Pode citar números CNJ (campo "ref") quando útil para localizar os autos. ` +
+    `NÃO invente dados fora do JSON fornecido. Responda APENAS com o JSON:\n` +
+    `{"panorama":"...","alertas":[{"titulo":"","detalhe":"","severidade":"alta|media|baixa"}],"sugestoes":[{"titulo":"","detalhe":"","prioridade":"alta|media|baixa"}]}`
+  );
+}
+
+function parseGestaoInsightsResponse(raw: string): GestaoInsightsLLM | null {
+  if (!raw) return null;
+  let cleaned = raw.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace < 0) return null;
+  const slice = cleaned.slice(firstBrace, lastBrace + 1);
+  try {
+    const obj = JSON.parse(slice) as Partial<GestaoInsightsLLM>;
+    if (typeof obj.panorama !== 'string') return null;
+
+    const alertas: GestaoAlerta[] = [];
+    if (Array.isArray(obj.alertas)) {
+      for (const a of obj.alertas) {
+        if (
+          a &&
+          typeof a.titulo === 'string' &&
+          typeof a.detalhe === 'string' &&
+          (a.severidade === 'alta' || a.severidade === 'media' || a.severidade === 'baixa')
+        ) {
+          alertas.push({
+            titulo: a.titulo,
+            detalhe: a.detalhe,
+            severidade: a.severidade
+          });
+        }
+      }
+    }
+
+    const sugestoes: GestaoSugestao[] = [];
+    if (Array.isArray(obj.sugestoes)) {
+      for (const s of obj.sugestoes) {
+        if (
+          s &&
+          typeof s.titulo === 'string' &&
+          typeof s.detalhe === 'string' &&
+          (s.prioridade === 'alta' || s.prioridade === 'media' || s.prioridade === 'baixa')
+        ) {
+          sugestoes.push({
+            titulo: s.titulo,
+            detalhe: s.detalhe,
+            prioridade: s.prioridade
+          });
+        }
+      }
+    }
+
+    return { panorama: obj.panorama, alertas, sugestoes };
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} parseGestaoInsightsResponse: JSON inválido`, err);
     return null;
   }
 }

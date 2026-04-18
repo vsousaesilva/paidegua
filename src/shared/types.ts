@@ -19,6 +19,14 @@ export interface PJeDetection {
   isProcessoPage: boolean;
   numeroProcesso: string | null;
   baseUrl: string;
+  /**
+   * True quando a aba atual é (ou contém como iframe) o painel do
+   * usuário interno do PJe — a única tela em que as ações do perfil
+   * Gestão (e a ação "Analisar tarefas" do perfil Secretaria) têm
+   * dados para varrer. Em outras telas as seções do perfil Gestão
+   * são ocultadas via CSS pela sidebar.
+   */
+  isPainelUsuario: boolean;
 }
 
 /** Documento processual extraído dos autos digitais. */
@@ -274,4 +282,95 @@ export interface AnaliseProcessoResult {
   panorama: string;
   /** Avaliação detalhada por critério (mesma ordem da configuração). */
   criterios: AnaliseCriterio[];
+}
+
+// =====================================================================
+// Painel Gerencial — perfil Gestão
+// =====================================================================
+
+/**
+ * Metadados de uma tarefa disponível no painel do usuário, usados pelo
+ * seletor múltiplo do perfil Gestão. Capturado antes da varredura para
+ * permitir que o magistrado escolha exatamente quais tarefas incluir no
+ * dashboard gerencial — diferente da Triagem (perfil Secretaria) que
+ * aplica um filtro fixo via `TAREFA_REGEX`.
+ */
+export interface GestaoTarefaInfo {
+  /** Texto exato do `<span class="nome">` da tarefa. */
+  nome: string;
+  /** Quantidade exibida no badge da tarefa (quando disponível). */
+  quantidade: number | null;
+}
+
+/** Configuração escolhida pelo usuário antes de disparar a coleta gerencial. */
+export interface GestaoSelecaoTarefas {
+  /** Nomes exatos (como aparecem no `<span class="nome">`) selecionados. */
+  tarefasSelecionadas: string[];
+  /** ISO timestamp da última seleção (para mostrar no dashboard). */
+  salvoEm: string;
+}
+
+/**
+ * Resultado agregado exibido no dashboard gerencial. Reaproveita o
+ * mesmo formato de `TriagemTarefaSnapshot` para os cartões, mas agrupa
+ * por tarefa selecionada pelo usuário e agrega indicadores no topo.
+ */
+export interface GestaoDashboardPayload {
+  /** ISO timestamp de quando os dados foram coletados. */
+  geradoEm: string;
+  /** Hostname da instância PJe (ex: "pje1g.trf5.jus.br"). */
+  hostnamePJe: string;
+  /** Nomes das tarefas efetivamente varridas (subset da seleção do usuário). */
+  tarefasSelecionadas: string[];
+  /** Snapshots completos por tarefa. */
+  tarefas: TriagemTarefaSnapshot[];
+  /** Total geral de processos varridos. */
+  totalProcessos: number;
+  /** Indicadores agregados calculados localmente (sem LLM). */
+  indicadores: GestaoIndicadores;
+  /** Insights gerados pela LLM (sobre dados anonimizados). null = carregando. */
+  insightsLLM: GestaoInsightsLLM | null;
+}
+
+/**
+ * Indicadores determinísticos calculados no próprio navegador, a partir
+ * do payload anonimizado ou não — nenhum vai para a LLM. Servem para
+ * alimentar cards de alerta e gráficos antes (e independentemente) de
+ * qualquer resposta da IA.
+ */
+export interface GestaoIndicadores {
+  /** Processos cujo `diasNaTarefa` excede o limiar configurado. */
+  atrasados: number;
+  /** Limiar de dias considerado "atraso" (padrão 30). */
+  limiarAtrasoDias: number;
+  /** Processos marcados como prioritários nos cartões. */
+  prioritarios: number;
+  /** Processos com sigilo declarado. */
+  sigilosos: number;
+  /** Contagem por tarefa: mapeia nome da tarefa → total de processos. */
+  porTarefa: Record<string, number>;
+  /** Top 5 etiquetas mais frequentes. */
+  topEtiquetas: Array<{ etiqueta: string; total: number }>;
+}
+
+/** Saída do LLM com leitura gerencial sobre indicadores anonimizados. */
+export interface GestaoInsightsLLM {
+  /** Leitura geral (2-4 frases) — nunca cita nomes. */
+  panorama: string;
+  /** Alertas priorizados para atenção imediata. */
+  alertas: GestaoAlerta[];
+  /** Sugestões de reorganização/distribuição de trabalho. */
+  sugestoes: GestaoSugestao[];
+}
+
+export interface GestaoAlerta {
+  titulo: string;
+  detalhe: string;
+  severidade: 'alta' | 'media' | 'baixa';
+}
+
+export interface GestaoSugestao {
+  titulo: string;
+  detalhe: string;
+  prioridade: 'alta' | 'media' | 'baixa';
 }

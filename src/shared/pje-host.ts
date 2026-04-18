@@ -51,3 +51,15 @@ export function detectGrauFromHostname(hostname: string): PJeGrau {
 export function isSecretariaProfileAvailable(grau: PJeGrau): boolean {
   return grau === '1g';
 }
+
+/**
+ * True quando o perfil "Gestão" deve ficar disponível — regra atual:
+ * todos os graus (1º, 2º e Turma Recursal). O módulo de gestão tem
+ * aspecto geral, aplicável a qualquer unidade, ao contrário do perfil
+ * Secretaria que hoje atende somente o primeiro grau. Mantido como
+ * função para centralizar a regra e facilitar eventual restrição
+ * futura (ex.: só para hosts conhecidos).
+ */
+export function isGestaoProfileAvailable(_grau: PJeGrau): boolean {
+  return true;
+}

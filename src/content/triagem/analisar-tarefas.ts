@@ -67,7 +67,7 @@ export interface AnalisarTarefasOptions {
   pjeOrigin?: string;
 }
 
-interface TarefaInfo {
+export interface TarefaInfo {
   nome: string;
   href: string;
 }
@@ -109,7 +109,7 @@ export async function executarAnalisarTarefas(
   progress('Analisando tarefas — pode levar alguns minutos. Aguarde.');
 
   progress('Procurando tarefas de análise inicial e triagem...');
-  const tarefas = capturarTarefasAlvo();
+  const tarefas = capturarTarefas((nome) => TAREFA_REGEX.test(nome));
   if (tarefas.length === 0) {
     debugDumpDom();
     return {
@@ -127,71 +127,7 @@ export async function executarAnalisarTarefas(
     tarefas.map((t) => t.nome)
   );
 
-  const tarefasSnapshot: TriagemTarefaSnapshot[] = [];
-
-  for (let i = 0; i < tarefas.length; i += 1) {
-    const t = tarefas[i];
-    progress(`Tarefa ${i + 1}/${tarefas.length}: ${t.nome} — entrando...`);
-
-    try {
-      await entrarNaTarefa(t.nome, t.href);
-    } catch (err) {
-      console.warn(`${LOG_PREFIX} falhou ao entrar em "${t.nome}":`, err);
-      tarefasSnapshot.push({
-        tarefaNome: t.nome,
-        totalLido: 0,
-        truncado: false,
-        processos: []
-      });
-      // Tenta voltar ao painel para a próxima iteração.
-      try { await voltarAoPainel(); } catch { /* segue */ }
-      continue;
-    }
-
-    let processos: TriagemProcesso[] = [];
-    let truncado = false;
-    let paginasLidas = 0;
-    let motivoFimPaginacao = 'erro antes de ler qualquer página';
-    try {
-      const r = await lerTodasAsPaginas(
-        (msg) => progress(`Tarefa ${i + 1}/${tarefas.length}: ${t.nome} — ${msg}`),
-        pjeOrigin
-      );
-      processos = r.processos;
-      truncado = r.truncado;
-      paginasLidas = r.paginasLidas;
-      motivoFimPaginacao = r.motivo;
-    } catch (err) {
-      console.warn(`${LOG_PREFIX} leitura da tarefa "${t.nome}" falhou:`, err);
-      motivoFimPaginacao = err instanceof Error ? err.message : String(err);
-    }
-
-    tarefasSnapshot.push({
-      tarefaNome: t.nome,
-      totalLido: processos.length,
-      truncado,
-      paginasLidas,
-      motivoFimPaginacao,
-      processos
-    });
-
-    progress(
-      `Tarefa ${i + 1}/${tarefas.length}: ${processos.length} processo(s) lido(s)` +
-        (truncado ? ' (truncado)' : '') +
-        '.'
-    );
-
-    // Voltar ao painel para a próxima iteração (precisamos do link).
-    progress(`Tarefa ${i + 1}/${tarefas.length}: voltando ao painel...`);
-    try {
-      await voltarAoPainel();
-    } catch (err) {
-      console.warn(`${LOG_PREFIX} voltar ao painel falhou:`, err);
-      // Se não conseguimos voltar, não dá pra continuar.
-      break;
-    }
-  }
-
+  const tarefasSnapshot = await coletarSnapshots(tarefas, pjeOrigin, progress);
   const totalProcessos = tarefasSnapshot.reduce((s, t) => s + t.totalLido, 0);
 
   const payload: TriagemDashboardPayload = {
@@ -242,20 +178,23 @@ function temWidgetPainel(): boolean {
 }
 
 /**
- * Captura `{ nome, href }` de cada tarefa alvo. Há tipicamente DOIS links
- * por tarefa (menu lateral + widget principal). Eles têm o MESMO `nome`,
- * mas o `href` pode divergir — o widget principal costuma trazer o
- * segmento de filtros base64 na 4ª posição, sem o qual o roteador
- * Angular falha com "Cannot match any routes".
+ * Captura `{ nome, href }` de cada tarefa que passa no `filtro`. Há
+ * tipicamente DOIS links por tarefa (menu lateral + widget principal).
+ * Eles têm o MESMO `nome`, mas o `href` pode divergir — o widget
+ * principal costuma trazer o segmento de filtros base64 na 4ª posição,
+ * sem o qual o roteador Angular falha com "Cannot match any routes".
  *
  * Estratégia: agrupar por nome e escolher o href com mais segmentos
  * (proxy razoável para "tem o filtro").
+ *
+ * Exportado para uso pelo perfil Gestão, que passa um filtro baseado
+ * na seleção do usuário em vez do regex fixo da Triagem.
  */
-function capturarTarefasAlvo(): TarefaInfo[] {
+export function capturarTarefas(filtro: (nome: string) => boolean): TarefaInfo[] {
   const candidatos: TarefaInfo[] = [];
   for (const link of encontrarLinksTarefa()) {
     const nome = getTaskName(link);
-    if (!nome || !TAREFA_REGEX.test(nome)) continue;
+    if (!nome || !filtro(nome)) continue;
     const href = link.getAttribute('href') ?? '';
     if (!href) continue;
     candidatos.push({ nome, href });
@@ -284,6 +223,106 @@ function capturarTarefasAlvo(): TarefaInfo[] {
   }
 
   return Array.from(porNome.values());
+}
+
+/**
+ * Lista todas as tarefas disponíveis no painel com quantidades — base
+ * para o seletor múltiplo do perfil Gestão. Deduplica por nome (mesma
+ * tarefa pode aparecer no widget principal e na sidebar) e mantém a
+ * ordem do DOM para preservar a que o PJe já apresenta ao usuário.
+ *
+ * A quantidade é extraída do texto do link (padrão `Nome (N)`). Quando
+ * não encontrada, devolve `null`.
+ */
+export function listarTodasTarefas(): Array<{ nome: string; quantidade: number | null }> {
+  const vistos = new Map<string, { nome: string; quantidade: number | null }>();
+  for (const link of encontrarLinksTarefa()) {
+    const nome = getTaskName(link);
+    if (!nome) continue;
+    if (vistos.has(nome)) continue;
+    const raw = (link.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const m = raw.match(/\((\d+)\)\s*$/);
+    const quantidade = m ? Number(m[1]) : null;
+    vistos.set(nome, { nome, quantidade: Number.isFinite(quantidade) ? quantidade : null });
+  }
+  return Array.from(vistos.values());
+}
+
+/**
+ * Loop principal de varredura: para cada tarefa da lista, navega,
+ * lê todas as páginas e volta ao painel. Extraído para reuso pelo
+ * perfil Gestão (seleção arbitrária de tarefas) — a Triagem
+ * (perfil Secretaria) continua chamando através de `executarAnalisarTarefas`
+ * com o filtro fixo `TAREFA_REGEX`.
+ */
+export async function coletarSnapshots(
+  tarefas: TarefaInfo[],
+  pjeOrigin: string,
+  progress: (msg: string) => void
+): Promise<TriagemTarefaSnapshot[]> {
+  const tarefasSnapshot: TriagemTarefaSnapshot[] = [];
+
+  for (let i = 0; i < tarefas.length; i += 1) {
+    const t = tarefas[i];
+    progress(`Tarefa ${i + 1}/${tarefas.length}: ${t.nome} — entrando...`);
+
+    try {
+      await entrarNaTarefa(t.nome, t.href);
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} falhou ao entrar em "${t.nome}":`, err);
+      tarefasSnapshot.push({
+        tarefaNome: t.nome,
+        totalLido: 0,
+        truncado: false,
+        processos: []
+      });
+      try { await voltarAoPainel(); } catch { /* segue */ }
+      continue;
+    }
+
+    let processos: TriagemProcesso[] = [];
+    let truncado = false;
+    let paginasLidas = 0;
+    let motivoFimPaginacao = 'erro antes de ler qualquer página';
+    try {
+      const r = await lerTodasAsPaginas(
+        (msg) => progress(`Tarefa ${i + 1}/${tarefas.length}: ${t.nome} — ${msg}`),
+        pjeOrigin
+      );
+      processos = r.processos;
+      truncado = r.truncado;
+      paginasLidas = r.paginasLidas;
+      motivoFimPaginacao = r.motivo;
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} leitura da tarefa "${t.nome}" falhou:`, err);
+      motivoFimPaginacao = err instanceof Error ? err.message : String(err);
+    }
+
+    tarefasSnapshot.push({
+      tarefaNome: t.nome,
+      totalLido: processos.length,
+      truncado,
+      paginasLidas,
+      motivoFimPaginacao,
+      processos
+    });
+
+    progress(
+      `Tarefa ${i + 1}/${tarefas.length}: ${processos.length} processo(s) lido(s)` +
+        (truncado ? ' (truncado)' : '') +
+        '.'
+    );
+
+    progress(`Tarefa ${i + 1}/${tarefas.length}: voltando ao painel...`);
+    try {
+      await voltarAoPainel();
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} voltar ao painel falhou:`, err);
+      break;
+    }
+  }
+
+  return tarefasSnapshot;
 }
 
 function contarSegmentos(href: string): number {

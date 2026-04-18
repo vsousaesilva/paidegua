@@ -20,7 +20,10 @@ import {
   type ProfileId
 } from '../../shared/constants';
 import { getTemplateActionsForGrau } from '../../shared/prompts';
-import { isSecretariaProfileAvailable } from '../../shared/pje-host';
+import {
+  isGestaoProfileAvailable,
+  isSecretariaProfileAvailable
+} from '../../shared/pje-host';
 
 export interface SidebarElements {
   body: HTMLElement;
@@ -37,6 +40,12 @@ export interface SidebarElements {
   templateActionButtons: Map<string, HTMLButtonElement>;
   /** Botão "Triagem Inteligente" — visível apenas no perfil Secretaria. */
   triagemInteligenteButton: HTMLButtonElement;
+  /**
+   * Botão "Abrir Painel Gerencial" — visível apenas no perfil Gestão e
+   * quando a aba atual é o painel-usuario-interno do PJe (fora dessa
+   * tela o CSS do container oculta o grupo inteiro).
+   */
+  painelGerencialButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -293,11 +302,19 @@ const SIDEBAR_CSS = `
   border-color: var(--paidegua-primary);
 }
 
-/* Visibilidade condicional por perfil ativo. */
-.paidegua-sidebar[data-profile="gabinete"] [data-profile-section="secretaria"] {
+/* Visibilidade condicional por perfil ativo. Cada perfil oculta as
+ * seções exclusivas dos demais — seções sem data-profile-section (como
+ * o botão "Carregar Documentos") continuam visíveis em todos. */
+.paidegua-sidebar[data-profile="gabinete"] [data-profile-section="secretaria"],
+.paidegua-sidebar[data-profile="gabinete"] [data-profile-section="gestao"] {
   display: none !important;
 }
-.paidegua-sidebar[data-profile="secretaria"] [data-profile-section="gabinete"] {
+.paidegua-sidebar[data-profile="secretaria"] [data-profile-section="gabinete"],
+.paidegua-sidebar[data-profile="secretaria"] [data-profile-section="gestao"] {
+  display: none !important;
+}
+.paidegua-sidebar[data-profile="gestao"] [data-profile-section="gabinete"],
+.paidegua-sidebar[data-profile="gestao"] [data-profile-section="secretaria"] {
   display: none !important;
 }
 
@@ -305,6 +322,16 @@ const SIDEBAR_CSS = `
  * processo aberto (Resumir, Resumir em áudio, Anonimizar, Minutar)
  * somem quando a detecção indica que não há autos abertos. */
 .paidegua-sidebar[data-processo-aberto="false"] [data-processo-section="processo"] {
+  display: none !important;
+}
+
+/* Ações do perfil Gestão dependem de estar no painel do usuário do PJe.
+ * Fora dessa tela, o grupo inteiro some; a UI exibe no lugar um aviso
+ * (montado pelo orquestrador) explicando que é preciso abrir o painel. */
+.paidegua-sidebar[data-painel-usuario="false"] [data-painel-section="painel"] {
+  display: none !important;
+}
+.paidegua-sidebar[data-painel-usuario="true"] [data-painel-section="fora-painel"] {
   display: none !important;
 }
 
@@ -520,14 +547,30 @@ export function mountSidebar(
   aside.setAttribute('aria-label', 'pAIdegua');
 
   const secretariaAllowed = isSecretariaProfileAvailable(detection.grau);
+  const gestaoAllowed = isGestaoProfileAvailable(detection.grau);
+  const allowedProfiles = PROFILE_IDS.filter((id) => {
+    if (id === 'secretaria') return secretariaAllowed;
+    if (id === 'gestao') return gestaoAllowed;
+    return true;
+  });
   const requestedProfile: ProfileId = options.initialProfile ?? DEFAULT_PROFILE;
-  // Instâncias de 2º grau / Turma Recursal não têm tarefas de secretaria
-  // no mesmo formato — forçamos Gabinete e omitimos o seletor.
-  const initialProfile: ProfileId = secretariaAllowed ? requestedProfile : 'gabinete';
+  // Se o perfil pedido não está disponível neste grau, cai em Gabinete
+  // (sempre presente). Regra atual: Secretaria só em 1º grau; Gestão em
+  // todos os graus. O seletor só aparece quando há mais de um perfil.
+  const initialProfile: ProfileId = (allowedProfiles as readonly string[]).includes(
+    requestedProfile
+  )
+    ? requestedProfile
+    : 'gabinete';
+  const mostrarSeletorPerfil = allowedProfiles.length > 1;
   aside.setAttribute('data-profile', initialProfile);
   aside.setAttribute(
     'data-processo-aberto',
     detection.isProcessoPage ? 'true' : 'false'
+  );
+  aside.setAttribute(
+    'data-painel-usuario',
+    detection.isPainelUsuario ? 'true' : 'false'
   );
 
   aside.innerHTML = `
@@ -551,9 +594,9 @@ export function mountSidebar(
         data-paidegua="profile-select"
         aria-label="Perfil de trabalho"
         title="Perfil de trabalho"
-        ${secretariaAllowed ? '' : 'hidden style="display:none"'}
+        ${mostrarSeletorPerfil ? '' : 'hidden style="display:none"'}
       >
-        ${PROFILE_IDS
+        ${allowedProfiles
           .map(
             (id) =>
               `<option value="${id}"${id === initialProfile ? ' selected' : ''}>${PROFILE_LABELS[id]}</option>`
@@ -581,6 +624,10 @@ export function mountSidebar(
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações da secretaria</div>
       <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de triagem inteligente">Triagem Inteligente</button>
+      <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
+      <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações de gestão</div>
+      <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade">Abrir Painel Gerencial</button>
+      <div data-profile-section="gestao" data-painel-section="fora-painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 12px; color: var(--paidegua-text-muted); line-height: 1.45; padding: 10px 12px; background: rgba(255,255,255,0.6); border: 1px dashed var(--paidegua-border); border-radius: var(--paidegua-radius-sm);">Abra o <strong>Painel do usuário</strong> do PJe para usar as ferramentas de Gestão.</div>
     </div>
 
     <div class="paidegua-sidebar__notice" data-paidegua="global-notice"></div>
@@ -636,6 +683,7 @@ export function mountSidebar(
     if (id) templateActionButtons.set(id, btn);
   }
   const triagemInteligenteButton = q<HTMLButtonElement>('triagem-inteligente');
+  const painelGerencialButton = q<HTMLButtonElement>('painel-gerencial');
   const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
@@ -685,6 +733,7 @@ export function mountSidebar(
     anonimizarButton,
     templateActionButtons,
     triagemInteligenteButton,
+    painelGerencialButton,
     providerLabel,
     globalNotice
   };
@@ -727,6 +776,10 @@ export function mountSidebar(
       aside.setAttribute(
         'data-processo-aberto',
         next.isProcessoPage ? 'true' : 'false'
+      );
+      aside.setAttribute(
+        'data-painel-usuario',
+        next.isPainelUsuario ? 'true' : 'false'
       );
       // Reajusta o placeholder somente enquanto o body ainda mostra o texto
       // inicial — após montar docList ou chat, não mexemos.

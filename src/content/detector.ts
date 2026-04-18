@@ -116,7 +116,8 @@ export function detect(): { detection: PJeDetection; adapter: BaseAdapter | null
     grau: 'unknown',
     isProcessoPage: false,
     numeroProcesso: null,
-    baseUrl: `${protocol}//${host}`
+    baseUrl: `${protocol}//${host}`,
+    isPainelUsuario: false
   };
 
   if (!isPJeHost(hostname)) {
@@ -133,8 +134,23 @@ export function detect(): { detection: PJeDetection; adapter: BaseAdapter | null
     grau,
     version: adapter?.version ?? 'unknown',
     isProcessoPage: adapter ? adapter.isProcessoPage() : false,
-    numeroProcesso: adapter ? adapter.extractNumeroProcesso() : null
+    numeroProcesso: adapter ? adapter.extractNumeroProcesso() : null,
+    isPainelUsuario: isPainelUsuarioPage()
   };
 
   return { detection, adapter };
+}
+
+/**
+ * Detecta se a aba atual é o painel-usuario-interno do PJe, seja diretamente
+ * (URL contém `painel-usuario-interno`) ou via iframe Angular cross-origin
+ * (caso do TRF5, onde o painel vive em frontend-prd.trf5.jus.br).
+ *
+ * A heurística é a mesma já usada em `content.ts` antes do clique em
+ * "Triagem Inteligente", agora centralizada para alimentar a sidebar
+ * (que esconde as ações do perfil Gestão fora dessa tela).
+ */
+function isPainelUsuarioPage(): boolean {
+  if (window.location.href.includes('painel-usuario-interno')) return true;
+  return Boolean(document.querySelector('iframe[src*="painel-usuario-interno"]'));
 }

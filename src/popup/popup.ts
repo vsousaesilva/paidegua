@@ -27,7 +27,11 @@ import type {
   TestConnectionResult,
   TriagemCriterioCustom
 } from '../shared/types';
-import { detectGrauFromHostname, isSecretariaProfileAvailable } from '../shared/pje-host';
+import {
+  detectGrauFromHostname,
+  isGestaoProfileAvailable,
+  isSecretariaProfileAvailable
+} from '../shared/pje-host';
 
 interface SettingsResponse {
   ok: boolean;
@@ -79,10 +83,11 @@ function populateProviders(): void {
   }
 }
 
-function populateProfiles(): void {
+function populateProfiles(allowed?: readonly ProfileId[]): void {
   const select = $<HTMLSelectElement>('default-profile-select');
+  const ids = allowed ?? PROFILE_IDS;
   select.innerHTML = '';
-  for (const id of PROFILE_IDS) {
+  for (const id of ids) {
     const option = document.createElement('option');
     option.value = id;
     option.textContent = PROFILE_LABELS[id];
@@ -152,11 +157,18 @@ async function loadAll(): Promise<void> {
 }
 
 /**
- * Consulta a aba ativa; se for um PJe de 2º grau ou Turma Recursal,
- * oculta a aba "Triagem Inteligente" e a seção "Perfil de trabalho",
- * e força o perfil padrão para Gabinete (persistindo).
+ * Consulta a aba ativa e restringe as opções do popup por grau do PJe.
  *
- * Em abas que não são PJe (ou são pje1g), nada muda.
+ * Regras (a seção "Perfil de trabalho" fica sempre visível — Gabinete e
+ * Gestão são válidos em qualquer grau):
+ *   - Secretaria: disponível apenas em 1º grau (pje1g). Em 2g/TR a
+ *     opção é removida do seletor, a aba "Triagem Inteligente" do popup
+ *     (que é específica da Secretaria) é ocultada e, se o perfil padrão
+ *     persistido for "secretaria", forçamos volta para "gabinete".
+ *   - Gestão: disponível em todos os graus (regra atual). Pode ser
+ *     restringida no futuro em `isGestaoProfileAvailable`.
+ *
+ * Em abas que não são PJe, nada muda (o seletor mantém todos os perfis).
  */
 async function applyGrauRestrictions(): Promise<void> {
   if (!currentSettings) return;
@@ -171,24 +183,39 @@ async function applyGrauRestrictions(): Promise<void> {
   }
   if (!hostname) return;
   const grau = detectGrauFromHostname(hostname);
-  if (isSecretariaProfileAvailable(grau)) return;
-  // 2g / turma_recursal: perfil Secretaria indisponível.
-  const tabTriagem = document.getElementById('tab-triagem');
-  if (tabTriagem) tabTriagem.setAttribute('hidden', '');
-  const profileSection = document.getElementById('profile-section');
-  if (profileSection) profileSection.setAttribute('hidden', '');
-  // Se a aba Triagem estava ativa, volta para Geral.
-  const triagemSelected = tabTriagem?.getAttribute('aria-selected') === 'true';
-  if (triagemSelected) setActiveTab('tab-geral');
-  // Persistir perfil padrão como Gabinete para manter coerência.
-  if (currentSettings.defaultProfile !== 'gabinete') {
-    const response = (await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
-      payload: { defaultProfile: 'gabinete' as ProfileId }
-    })) as { ok: boolean; settings?: PAIdeguaSettings };
-    if (response?.ok && response.settings) {
-      currentSettings = response.settings;
-      $<HTMLSelectElement>('default-profile-select').value = 'gabinete';
+  const secretariaOk = isSecretariaProfileAvailable(grau);
+  const gestaoOk = isGestaoProfileAvailable(grau);
+
+  // Repopula o seletor só com os perfis permitidos para o grau atual.
+  const allowed = PROFILE_IDS.filter((id) => {
+    if (id === 'secretaria') return secretariaOk;
+    if (id === 'gestao') return gestaoOk;
+    return true;
+  });
+  populateProfiles(allowed);
+  // Restaura o valor selecionado se continuar válido; senão, cai em Gabinete.
+  const stored = currentSettings.defaultProfile;
+  const valorInicial: ProfileId = (allowed as readonly string[]).includes(stored)
+    ? stored
+    : 'gabinete';
+  $<HTMLSelectElement>('default-profile-select').value = valorInicial;
+
+  if (!secretariaOk) {
+    // Aba "Triagem Inteligente" é específica da Secretaria.
+    const tabTriagem = document.getElementById('tab-triagem');
+    if (tabTriagem) tabTriagem.setAttribute('hidden', '');
+    const triagemSelected = tabTriagem?.getAttribute('aria-selected') === 'true';
+    if (triagemSelected) setActiveTab('tab-geral');
+    // Persistir perfil padrão como Gabinete se estiver em Secretaria.
+    if (stored === 'secretaria') {
+      const response = (await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
+        payload: { defaultProfile: 'gabinete' as ProfileId }
+      })) as { ok: boolean; settings?: PAIdeguaSettings };
+      if (response?.ok && response.settings) {
+        currentSettings = response.settings;
+        $<HTMLSelectElement>('default-profile-select').value = 'gabinete';
+      }
     }
   }
 }
