@@ -656,11 +656,12 @@ function procNumberSpan(p: TriagemProcesso): HTMLElement {
   span.className = 'proc-num';
   span.tabIndex = 0;
   span.setAttribute('role', 'button');
-  span.setAttribute('aria-label', `Copiar número do processo ${p.numeroProcesso}`);
+  const cnj = extractCNJ(p.numeroProcesso);
+  span.setAttribute('aria-label', `Copiar número do processo ${cnj}`);
   span.title = 'Clique para copiar';
   span.textContent = p.numeroProcesso || '(sem número)';
   const copy = (): void => {
-    void copyToClipboard(p.numeroProcesso, `Número copiado: ${p.numeroProcesso}`);
+    void copyToClipboard(cnj, `Número copiado: ${cnj}`);
   };
   span.addEventListener('click', copy);
   span.addEventListener('keydown', (ev) => {
@@ -670,6 +671,18 @@ function procNumberSpan(p: TriagemProcesso): HTMLElement {
     }
   });
   return span;
+}
+
+/**
+ * Extrai apenas o número CNJ (formato NNNNNNN-DD.YYYY.J.TR.OOOO) do
+ * texto do PJe, que vem prefixado pela classe processual (ex.:
+ * "PJEC 0003020-32.2026.4.05.8109"). Retorna o número original caso o
+ * padrão não seja encontrado.
+ */
+function extractCNJ(raw: string): string {
+  if (!raw) return raw;
+  const m = raw.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/);
+  return m ? m[0] : raw.trim();
 }
 
 // =====================================================================
@@ -735,7 +748,7 @@ function showToast(msg: string): void {
 
 function procsToText(procs: TriagemProcesso[]): string {
   return procs
-    .map((p) => p.numeroProcesso)
+    .map((p) => extractCNJ(p.numeroProcesso))
     .filter((n) => n && n.trim())
     .join('\n');
 }
