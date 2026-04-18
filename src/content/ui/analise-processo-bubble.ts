@@ -231,6 +231,63 @@ const BUBBLE_CSS = `
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+.paidegua-analise__aux {
+  padding: 9px 12px;
+  border-radius: 4px;
+  border-left: 3px solid;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.paidegua-analise__aux--info {
+  background: rgba(19, 81, 180, 0.06);
+  border-left-color: var(--paidegua-primary);
+}
+
+.paidegua-analise__aux--warn {
+  background: rgba(219, 154, 4, 0.08);
+  border-left-color: rgba(219, 154, 4, 0.55);
+}
+
+.paidegua-analise__aux--alert {
+  background: rgba(200, 48, 48, 0.07);
+  border-left-color: rgba(200, 48, 48, 0.55);
+}
+
+.paidegua-analise__aux-title {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 5px;
+}
+
+.paidegua-analise__aux--info .paidegua-analise__aux-title {
+  color: var(--paidegua-primary-dark);
+}
+
+.paidegua-analise__aux--warn .paidegua-analise__aux-title {
+  color: #8a5a00;
+}
+
+.paidegua-analise__aux--alert .paidegua-analise__aux-title {
+  color: #8a1a1a;
+}
+
+.paidegua-analise__aux-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--paidegua-text);
+}
+
+.paidegua-analise__aux-list li {
+  line-height: 1.4;
+}
 `;
 
 const VEREDITO_PRESET: Record<
@@ -320,6 +377,37 @@ function buildCriterioItem(c: AnaliseCriterio, openByDefault: boolean): HTMLLIEl
 }
 
 /**
+ * Monta uma seção auxiliar (pontos de conferência, divergências cadastrais,
+ * alertas especiais) — lista com título curto e itens em bullet. Retorna
+ * null quando não há itens, para o chamador poder inserir condicionalmente.
+ */
+function buildAuxSection(
+  title: string,
+  items: readonly string[],
+  variant: 'info' | 'warn' | 'alert'
+): HTMLElement | null {
+  if (items.length === 0) return null;
+  const section = document.createElement('div');
+  section.className = `paidegua-analise__aux paidegua-analise__aux--${variant}`;
+
+  const header = document.createElement('span');
+  header.className = 'paidegua-analise__aux-title';
+  header.textContent = title;
+  section.append(header);
+
+  const list = document.createElement('ul');
+  list.className = 'paidegua-analise__aux-list';
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.textContent = item;
+    list.append(li);
+  }
+  section.append(list);
+
+  return section;
+}
+
+/**
  * Monta o nó da bolha de resultado. Não anexa em lugar nenhum — o chamador
  * (content.ts) usa `chat.addCustomBubble` para inserir na timeline.
  */
@@ -360,6 +448,30 @@ export function createAnaliseProcessoBubble(
     list.append(buildCriterioItem(c, !c.atendido));
   }
   root.append(list);
+
+  // Seções auxiliares: não contaminam o veredito, mas sinalizam ao servidor
+  // pontos que exigem conferência visual, divergências de cadastro e
+  // situações institucionais (competência, sigilo, prevenção etc.).
+  const conf = buildAuxSection(
+    'Conferência humana sugerida',
+    result.pontosDeConferenciaHumana,
+    'info'
+  );
+  if (conf) root.append(conf);
+
+  const diverg = buildAuxSection(
+    'Divergências cadastrais',
+    result.divergenciasCadastrais,
+    'warn'
+  );
+  if (diverg) root.append(diverg);
+
+  const alertas = buildAuxSection(
+    'Alertas especiais',
+    result.alertasEspeciais,
+    'alert'
+  );
+  if (alertas) root.append(alertas);
 
   const naoAtendidos = result.criterios.filter(
     (c) => !c.atendido && (c.providenciaSolicitada ?? '').trim()

@@ -282,6 +282,26 @@ export interface AnaliseProcessoResult {
   panorama: string;
   /** Avaliação detalhada por critério (mesma ordem da configuração). */
   criterios: AnaliseCriterio[];
+  /**
+   * Itens que o servidor deve verificar no PDF original por limitação do
+   * OCR ou da análise automatizada (ex.: nomes manuscritos em procuração
+   * a rogo, data de assinatura ilegível). Sempre presente; pode ser [].
+   */
+  pontosDeConferenciaHumana: string[];
+  /**
+   * Divergências objetivas entre o cadastro do sistema processual e os
+   * documentos anexos (ex.: CPF do cadastro diverge do documento). Não
+   * contamina o veredito; serve de alerta para conferência humana.
+   * Sempre presente; pode ser [].
+   */
+  divergenciasCadastrais: string[];
+  /**
+   * Situações que merecem atenção do servidor/magistrado mas fogem do
+   * binário atendido/não atendido (ex.: possível incompetência, valor da
+   * causa, prevenção). Não afeta o veredito global. Sempre presente;
+   * pode ser [].
+   */
+  alertasEspeciais: string[];
 }
 
 // =====================================================================
