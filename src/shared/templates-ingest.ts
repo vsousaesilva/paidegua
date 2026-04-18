@@ -372,6 +372,27 @@ export async function ensureReadPermission(
 }
 
 /**
+ * Garante permissão de leitura/escrita no handle. Usada pela página
+ * "Salvar como modelo" antes de gravar um novo .doc na pasta configurada.
+ *
+ * Importante: `requestPermission` só funciona dentro de um user gesture.
+ * Esta função deve ser chamada a partir de um handler de clique.
+ */
+export async function ensureReadWritePermission(
+  handle: FileSystemDirectoryHandle
+): Promise<boolean> {
+  const permHandle = handle as unknown as {
+    queryPermission: (opts: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>;
+    requestPermission: (opts: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>;
+  };
+  const opts = { mode: 'readwrite' as const };
+  let state = await permHandle.queryPermission(opts);
+  if (state === 'granted') return true;
+  state = await permHandle.requestPermission(opts);
+  return state === 'granted';
+}
+
+/**
  * Ingere todos os arquivos suportados encontrados sob o diretório raiz.
  * Reporta progresso via callback opcional. Não persiste — devolve os
  * `TemplateRecord` para o chamador salvar via templates-store.

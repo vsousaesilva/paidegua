@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pAIdegua — Salvar como modelo</title>
+    <link rel="stylesheet" href="save.css" />
+  </head>
+  <body>
+    <main class="paidegua-save">
+      <header class="paidegua-save__header">
+        <span class="paidegua-save__logo" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+            <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+            <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+          </svg>
+        </span>
+        <div>
+          <h1>Salvar minuta como modelo</h1>
+          <p class="paidegua-save__subtitle">
+            A minuta é gravada na sua pasta de modelos e passa a integrar o
+            índice usado na geração de novas peças.
+          </p>
+        </div>
+      </header>
+
+      <section class="paidegua-save__card">
+        <h2>Destino</h2>
+
+        <div id="no-dir-block" class="paidegua-save__notice" hidden>
+          <p>
+            Nenhuma pasta de modelos configurada. Configure primeiro em
+            <strong>Opções → Modelos de Minuta</strong> e volte aqui.
+          </p>
+          <div class="paidegua-save__row">
+            <button id="btn-open-options" type="button" class="paidegua-save__btn paidegua-save__btn--primary">
+              Abrir Opções
+            </button>
+            <button id="btn-cancel-nodir" type="button" class="paidegua-save__btn">
+              Fechar
+            </button>
+          </div>
+        </div>
+
+        <dl id="dest-info" class="paidegua-save__info" hidden>
+          <dt>Pasta</dt>
+          <dd id="dest-folder">—</dd>
+          <dt>Subpasta (categoria)</dt>
+          <dd id="dest-subfolder">—</dd>
+          <dt>Arquivo</dt>
+          <dd id="dest-filename">—</dd>
+        </dl>
+
+        <div id="actions" class="paidegua-save__row" hidden>
+          <button id="btn-save" type="button" class="paidegua-save__btn paidegua-save__btn--primary">
+            Salvar como modelo
+          </button>
+          <button id="btn-cancel" type="button" class="paidegua-save__btn">
+            Cancelar
+          </button>
+        </div>
+
+        <div id="status" class="paidegua-save__status" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="paidegua-save__card paidegua-save__card--note">
+        <h2>Atenção</h2>
+        <ul class="paidegua-save__doc">
+          <li>
+            O modelo é salvo <strong>como está</strong> — nomes, números de
+            processo e valores são preservados. Evite usar este recurso para
+            processos com segredo de justiça.
+          </li>
+          <li>
+            O arquivo é gravado no formato <code>.doc</code> (Word HTML),
+            compatível com o ingest atual.
+          </li>
+          <li>
+            O índice BM25 é atualizado imediatamente; a próxima minuta
+            poderá usar este novo modelo como referência.
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="save.js"></script>
+  </body>
+</html>
