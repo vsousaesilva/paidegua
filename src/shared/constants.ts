@@ -179,7 +179,49 @@ export const MESSAGE_CHANNELS = {
    * partir do payload já sanitizado (mesma política do dashboard de
    * Triagem — ver `shared/triagem-anonymize.ts`).
    */
-  GESTAO_INSIGHTS: 'paidegua/gestao/insights'
+  GESTAO_INSIGHTS: 'paidegua/gestao/insights',
+  /**
+   * Content (aba PJe) → background: pede a abertura da aba intermediária
+   * do Painel Gerencial (seletor + progresso). O background grava a lista
+   * de tarefas em `chrome.storage.session`, cria a aba e memoriza o
+   * relacionamento `{painelTabId ↔ pjeTabId}` para rotear as mensagens
+   * posteriores. Evita o modal em shadow-DOM que ficava por trás do
+   * sidebar da aplicação.
+   */
+  GESTAO_OPEN_PAINEL: 'paidegua/gestao/open-painel',
+  /**
+   * Aba-painel → background: o usuário confirmou a seleção de tarefas.
+   * O background localiza o content script da aba PJe correspondente e
+   * dispara `GESTAO_RUN_COLETA`.
+   */
+  GESTAO_START_COLETA: 'paidegua/gestao/start-coleta',
+  /**
+   * Background → content (aba PJe): inicia a varredura das tarefas
+   * selecionadas. O content reporta progresso e resultado de volta via
+   * `GESTAO_COLETA_PROG` / `GESTAO_COLETA_DONE` (ou `GESTAO_COLETA_FAIL`).
+   */
+  GESTAO_RUN_COLETA: 'paidegua/gestao/run-coleta',
+  /**
+   * Content (aba PJe) → background → aba-painel: atualização de progresso
+   * textual. Roteada pelo background via `chrome.tabs.sendMessage`.
+   */
+  GESTAO_COLETA_PROG: 'paidegua/gestao/coleta-prog',
+  /**
+   * Content (aba PJe) → background: varredura concluída. O background
+   * grava o payload final em `GESTAO_DASHBOARD_PAYLOAD` e manda a
+   * aba-painel navegar para o dashboard.
+   */
+  GESTAO_COLETA_DONE: 'paidegua/gestao/coleta-done',
+  /**
+   * Background → aba-painel: aviso de que o payload foi gravado e a
+   * página pode navegar para `gestao-dashboard.html`.
+   */
+  GESTAO_COLETA_READY: 'paidegua/gestao/coleta-ready',
+  /**
+   * Content (aba PJe) → background → aba-painel: varredura falhou. A
+   * aba-painel exibe o erro e oferece nova tentativa / voltar ao seletor.
+   */
+  GESTAO_COLETA_FAIL: 'paidegua/gestao/coleta-fail'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -226,7 +268,14 @@ export const STORAGE_KEYS = {
    * Painel Gerencial (apenas nomes de tarefa — não é PII). Usada para
    * pré-marcar os checkboxes do seletor múltiplo ao reabrir.
    */
-  GESTAO_TAREFAS_SELECIONADAS: 'paidegua.gestao.tarefasSelecionadas'
+  GESTAO_TAREFAS_SELECIONADAS: 'paidegua.gestao.tarefasSelecionadas',
+  /**
+   * Prefixo de chave em `chrome.storage.session` com o estado da aba
+   * intermediária do Painel Gerencial (lista de tarefas disponíveis para
+   * seleção, origem do PJe). Indexado por `requestId` — a aba-painel lê
+   * da chave `${PREFIX}${requestId}` ao carregar.
+   */
+  GESTAO_PAINEL_STATE_PREFIX: 'paidegua.gestao.painelState.'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

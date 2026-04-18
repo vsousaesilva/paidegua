@@ -59,6 +59,7 @@ import type {
   GestaoIndicadores,
   GestaoInsightsLLM,
   GestaoSugestao,
+  GestaoTarefaInfo,
   PAIdeguaSettings,
   SynthesizeSpeechPayload,
   SynthesizeSpeechResult,
@@ -216,6 +217,49 @@ chrome.runtime.onMessage.addListener(
       case MESSAGE_CHANNELS.GESTAO_INSIGHTS:
         void handleGestaoInsights(
           message.payload as { indicadores: GestaoIndicadores; anon: TriagemPayloadAnon },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_OPEN_PAINEL:
+        void handleOpenGestaoPainel(
+          message.payload as {
+            tarefas: GestaoTarefaInfo[];
+            hostnamePJe: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_START_COLETA:
+        void handleGestaoStartColeta(
+          message.payload as { requestId: string; nomes: string[] },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_COLETA_PROG:
+        void handleGestaoColetaProg(
+          message.payload as { requestId: string; msg: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_COLETA_DONE:
+        void handleGestaoColetaDone(
+          message.payload as {
+            requestId: string;
+            dashboardPayload: GestaoDashboardPayload;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_COLETA_FAIL:
+        void handleGestaoColetaFail(
+          message.payload as { requestId: string; error: string },
           sendResponse
         );
         return true;
@@ -2068,6 +2112,236 @@ async function handleOpenGestaoDashboard(
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }
+
+// =====================================================================
+// Painel Gerencial — aba intermediária (seletor + progresso)
+// =====================================================================
+
+/**
+ * Tabela em memória relacionando cada `requestId` à aba-painel e à aba
+ * do PJe que a disparou. Usada para rotear:
+ *   - GESTAO_START_COLETA (painel → PJe)
+ *   - GESTAO_COLETA_PROG  (PJe    → painel)
+ *   - GESTAO_COLETA_READY (pós-save, painel carrega o dashboard)
+ *   - GESTAO_COLETA_FAIL  (PJe    → painel)
+ *
+ * Sobrevive apenas enquanto o service worker está vivo. Se o SW for
+ * suspenso, perdemos a rota — mas service workers do Chrome extensions
+ * só suspendem quando não há chamadas de rede/IPC em andamento, e
+ * durante a varredura há postMessage constante do content script.
+ */
+const gestaoPainelRoutes = new Map<
+  string,
+  { painelTabId: number; pjeTabId: number }
+>();
+
+function gerarRequestId(): string {
+  return `gestao-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function handleOpenGestaoPainel(
+  payload: {
+    tarefas: GestaoTarefaInfo[];
+    hostnamePJe: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou o painel.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload de abertura do painel inválido.' });
+      return;
+    }
+
+    const requestId = gerarRequestId();
+    const stateKey = `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('gestao-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba do Painel Gerencial.'
+      });
+      return;
+    }
+    gestaoPainelRoutes.set(requestId, {
+      painelTabId: tab.id,
+      pjeTabId
+    });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenGestaoPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handleGestaoStartColeta(
+  payload: { requestId: string; nomes: string[] },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão do Painel Gerencial expirou. Volte ao PJe e abra o painel novamente.'
+      });
+      return;
+    }
+    if (!Array.isArray(payload.nomes) || payload.nomes.length === 0) {
+      sendResponse({ ok: false, error: 'Nenhuma tarefa selecionada.' });
+      return;
+    }
+    const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.GESTAO_RUN_COLETA,
+      payload: { requestId: payload.requestId, nomes: payload.nomes }
+    });
+    if (!ack?.ok) {
+      sendResponse({
+        ok: false,
+        error:
+          ack?.error ??
+          'A aba do PJe não aceitou iniciar a varredura. Confirme que ela continua aberta no Painel do Usuário.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleGestaoStartColeta falhou:`, error);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(error) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handleGestaoColetaProg(
+  payload: { requestId: string; msg: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.GESTAO_COLETA_PROG,
+        payload
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleGestaoColetaProg falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handleGestaoColetaDone(
+  payload: { requestId: string; dashboardPayload: GestaoDashboardPayload },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    if (
+      !payload.dashboardPayload ||
+      !Array.isArray(payload.dashboardPayload.tarefas) ||
+      !payload.dashboardPayload.indicadores
+    ) {
+      sendResponse({ ok: false, error: 'Payload do dashboard inválido.' });
+      return;
+    }
+
+    await chrome.storage.session.set({
+      [STORAGE_KEYS.GESTAO_DASHBOARD_PAYLOAD]: payload.dashboardPayload
+    });
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload.requestId}`
+    );
+
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.GESTAO_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+
+    gestaoPainelRoutes.delete(payload.requestId);
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleGestaoColetaDone falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handleGestaoColetaFail(
+  payload: { requestId: string; error: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = gestaoPainelRoutes.get(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.GESTAO_COLETA_FAIL,
+          payload
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+      gestaoPainelRoutes.delete(payload.requestId);
+    }
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleGestaoColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// Limpeza: se a aba-painel ou a aba PJe for fechada antes do fim da
+// varredura, removemos a rota e o estado temporário para não vazarmos
+// storage.session.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const [rid, rota] of gestaoPainelRoutes.entries()) {
+    if (rota.painelTabId === tabId || rota.pjeTabId === tabId) {
+      gestaoPainelRoutes.delete(rid);
+      void chrome.storage.session.remove(
+        `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${rid}`
+      );
+    }
+  }
+});
 
 /**
  * Recebe os indicadores agregados + payload já sanitizado

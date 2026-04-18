@@ -24,7 +24,7 @@ module.exports = (_env, argv) => {
       'options/options': './src/options/options.ts',
       'dashboard/dashboard': './src/dashboard/dashboard.ts',
       'gestao-dashboard/gestao-dashboard': './src/gestao-dashboard/gestao-dashboard.ts',
-      'save-template/save': './src/save-template/save.ts'
+      'gestao-painel/painel': './src/gestao-painel/painel.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -62,8 +62,8 @@ module.exports = (_env, argv) => {
           { from: 'src/dashboard/dashboard.css', to: 'dashboard/dashboard.css' },
           { from: 'src/gestao-dashboard/gestao-dashboard.html', to: 'gestao-dashboard/gestao-dashboard.html' },
           { from: 'src/gestao-dashboard/gestao-dashboard.css', to: 'gestao-dashboard/gestao-dashboard.css' },
-          { from: 'src/save-template/save.html', to: 'save-template/save.html' },
-          { from: 'src/save-template/save.css', to: 'save-template/save.css' },
+          { from: 'src/gestao-painel/painel.html', to: 'gestao-painel/painel.html' },
+          { from: 'src/gestao-painel/painel.css', to: 'gestao-painel/painel.css' },
           { from: 'src/content/content.css', to: 'content.css' },
           // PDF.js worker precisa ser servido como arquivo acessivel via
           // chrome.runtime.getURL. Listado em web_accessible_resources

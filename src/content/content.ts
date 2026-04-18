@@ -62,8 +62,12 @@ import {
   instalarListenerTriagemNoIframe
 } from './triagem/triagem-bridge';
 import { executarAnalisarProcesso } from './triagem/analisar-processo';
-import { instalarListenerGestaoNoIframe } from './gestao/gestao-bridge';
+import {
+  coletarTarefasSelecionadas,
+  instalarListenerGestaoNoIframe
+} from './gestao/gestao-bridge';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
+import { computarIndicadoresGestao } from './gestao/gestao-indicadores';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
@@ -2851,12 +2855,13 @@ async function handleAnalisarTarefas(
 
 /**
  * Fluxo do botão "Abrir Painel Gerencial" (perfil Gestão):
- *   1. Pede ao iframe (ou coleta local) a lista de tarefas disponíveis.
- *   2. Mostra o seletor múltiplo — o usuário escolhe quais tarefas entram.
- *   3. Varre apenas as selecionadas, calcula indicadores locais e abre a
- *      página do Painel Gerencial (nova aba). A chamada à IA para gerar
- *      alertas/sugestões acontece dentro da página, sobre dados já
- *      sanitizados.
+ *   1. Lista as tarefas disponíveis (via iframe ou localmente).
+ *   2. Pede ao background para abrir a aba intermediária do painel.
+ *
+ * A seleção em si, a barra de progresso e a abertura do dashboard ao
+ * final acontecem DENTRO daquela aba — o sidebar do PJe fica limpo. Esta
+ * função termina assim que a aba é criada; a varredura posterior é
+ * disparada pelo listener de `GESTAO_RUN_COLETA` no mesmo content script.
  */
 async function handlePainelGerencial(): Promise<void> {
   if (!mounted) return;
@@ -2864,27 +2869,98 @@ async function handlePainelGerencial(): Promise<void> {
     mounted?.sidebar.setGlobalNotice(msg, kind);
   };
 
-  notice('Abrindo painel gerencial — preparando seletor de tarefas...');
+  notice('Abrindo Painel Gerencial em nova aba...');
   try {
     const result = await abrirPainelGerencial({
       onProgress: (msg) => notice(msg)
     });
-    if (result.cancelado) {
-      notice('', 'info');
-      return;
-    }
     if (!result.ok) {
       notice(result.error ?? 'Falha ao abrir o Painel Gerencial.', 'error');
       return;
     }
     notice(
-      `Painel Gerencial aberto: ${result.totalTarefas} tarefa(s), ` +
-        `${result.totalProcessos} processo(s).`
+      `Painel Gerencial aberto em nova aba (${result.totalTarefas} tarefa(s) disponíveis).`
     );
     window.setTimeout(() => notice('', 'info'), 3500);
   } catch (err) {
     console.warn(`${LOG_PREFIX} handlePainelGerencial falhou:`, err);
     notice(`Falha no Painel Gerencial: ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Handler do `GESTAO_RUN_COLETA` — disparado pelo background quando a
+ * aba-painel confirma a seleção. Executa a varredura no contexto desta
+ * aba (PJe), reporta progresso e devolve o payload final ao background
+ * para que ele grave em `storage.session` e mande a aba-painel navegar
+ * para o dashboard.
+ *
+ * Respondemos de forma ASSÍNCRONA: o listener faz `sendResponse({ok:true})`
+ * imediatamente para liberar o remetente e segue a varredura em outro
+ * microtask — progresso e resultado finais vão por mensagens separadas
+ * (`GESTAO_COLETA_PROG`, `GESTAO_COLETA_DONE`, `GESTAO_COLETA_FAIL`).
+ */
+async function handleGestaoRunColeta(
+  payload: { requestId: string; nomes: string[] }
+): Promise<void> {
+  const { requestId, nomes } = payload;
+  try {
+    const postProg = (msg: string): void => {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.GESTAO_COLETA_PROG,
+          payload: { requestId, msg }
+        })
+        .catch(() => { /* aba-painel pode ter fechado; ignoramos */ });
+    };
+
+    postProg(
+      `Varredura iniciada em ${nomes.length} tarefa(s). Pode levar alguns minutos.`
+    );
+
+    const { ok, snapshots, error } = await coletarTarefasSelecionadas({
+      nomes,
+      onProgress: postProg
+    });
+    if (!ok) {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.GESTAO_COLETA_FAIL,
+        payload: {
+          requestId,
+          error: error ?? 'Falha na varredura das tarefas selecionadas.'
+        }
+      });
+      return;
+    }
+
+    const totalProcessos = snapshots.reduce((s, t) => s + t.totalLido, 0);
+    const indicadores = computarIndicadoresGestao(snapshots);
+    const dashboardPayload = {
+      geradoEm: new Date().toISOString(),
+      hostnamePJe: new URL(window.location.origin).hostname,
+      tarefasSelecionadas: nomes,
+      tarefas: snapshots,
+      totalProcessos,
+      indicadores,
+      insightsLLM: null
+    };
+
+    postProg(`Varredura concluída: ${totalProcessos} processo(s) em ${snapshots.length} tarefa(s).`);
+
+    await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.GESTAO_COLETA_DONE,
+      payload: { requestId, dashboardPayload }
+    });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleGestaoRunColeta falhou:`, err);
+    try {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.GESTAO_COLETA_FAIL,
+        payload: { requestId, error: errorMessage(err) }
+      });
+    } catch {
+      /* aba-painel pode ter sido fechada */
+    }
   }
 }
 
@@ -3032,25 +3108,42 @@ function pingBackground(): void {
 // PJe abre em outra window). O background roteia o pedido do sidebar para
 // todas as outras tabs jus.br; a que contém o editor responde com sucesso.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (
-    !message ||
-    typeof message.channel !== 'string' ||
-    message.channel !== MESSAGE_CHANNELS.INSERT_IN_PJE_EDITOR_PERFORM
-  ) {
+  if (!message || typeof message.channel !== 'string') {
     return false;
   }
-  try {
-    const payload = message.payload as { html: string; plain: string };
-    const detection = detectPJeEditor();
-    if (!detection.available) {
-      sendResponse({ ok: false, error: 'sem editor nesta aba' });
+
+  if (message.channel === MESSAGE_CHANNELS.INSERT_IN_PJE_EDITOR_PERFORM) {
+    try {
+      const payload = message.payload as { html: string; plain: string };
+      const detection = detectPJeEditor();
+      if (!detection.available) {
+        sendResponse({ ok: false, error: 'sem editor nesta aba' });
+        return false;
+      }
+      const ok = insertIntoPJeEditor(payload.html, payload.plain);
+      sendResponse({ ok, kind: detection.kind });
+    } catch (error: unknown) {
+      sendResponse({ ok: false, error: errorMessage(error) });
+    }
+    return false;
+  }
+
+  // Disparo do painel gerencial: a aba-painel chama o background e o
+  // background encaminha para ESTA aba (a que tem o PJe aberto). Só o top
+  // frame da aba PJe roda a coleta — iframes e outras abas ignoram.
+  if (message.channel === MESSAGE_CHANNELS.GESTAO_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as { requestId: string; nomes: string[] };
+    if (!payload || !payload.requestId || !Array.isArray(payload.nomes)) {
+      sendResponse({ ok: false, error: 'Payload de coleta inválido.' });
       return false;
     }
-    const ok = insertIntoPJeEditor(payload.html, payload.plain);
-    sendResponse({ ok, kind: detection.kind });
-  } catch (error: unknown) {
-    sendResponse({ ok: false, error: errorMessage(error) });
+    sendResponse({ ok: true });
+    void handleGestaoRunColeta(payload);
+    return false;
   }
+
   return false;
 });
 
