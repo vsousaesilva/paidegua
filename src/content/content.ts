@@ -3542,7 +3542,18 @@ function mountGlobalNavbarButton(): void {
         );
         return;
       }
+      const wasOpen = mounted.sidebar.isOpen();
       mounted.sidebar.toggle();
+      // Auto-carregamento: ao abrir o pAIdegua dentro de um processo,
+      // dispara a listagem de documentos sem exigir clique no botão. Se o
+      // usuário perceber que a árvore do PJe estava com lazy loading (lista
+      // incompleta), ele clica em "Recarregar Documentos" para refazer.
+      const abriuAgora = !wasOpen && mounted.sidebar.isOpen();
+      const emProcesso = memory.detection?.isProcessoPage === true;
+      const semDocsCarregados = !mounted.docList;
+      if (abriuAgora && emProcesso && semDocsCarregados && memory.adapter) {
+        void handleLoadDocuments();
+      }
     }
   });
 }
