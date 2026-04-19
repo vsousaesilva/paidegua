@@ -66,11 +66,11 @@ Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes se
    Ha ainda o bloco "Deseja incluir outros criterios customizados?" — ligue o toggle "Sim" para adicionar criterios proprios da sua unidade que nao constam da NT 1/2025. Os criterios escolhidos (padronizados, personalizados e customizados) sao injetados nos prompts da Triagem Inteligente. As alteracoes sao salvas automaticamente.
 
 8. Etiquetas Inteligentes (perfil Secretaria): a aba "Etiquetas Inteligentes" do popup configura o catalogo de etiquetas do PJe usado pela acao "Inserir etiquetas magicas" da Triagem Inteligente. Fluxo:
-   - Clique em "Buscar catalogo do PJe" — a extensao consulta a API do PJe (mesma origem do usuario, sem sair da estacao) e armazena o catalogo localmente no IndexedDB do navegador.
+   - Clique em "Buscar catalogo do PJe" — o pAIdegua traz a lista completa de etiquetas da sua unidade direto do PJe e guarda no seu navegador, sem sair da estacao.
    - No painel "Catalogo completo" voce ve todas as etiquetas da unidade. Use o filtro por nome, marque "Apenas favoritas" ou use os botoes "Marcar visiveis", "Desmarcar visiveis" e "Marcar todas favoritas" para selecao em lote.
    - As etiquetas marcadas formam o painel superior "Sugestionaveis (selecionadas)" — sao as unicas que a Triagem Inteligente considera quando sugere etiquetas magicas para um processo.
-   - O campo "Orientacoes para a IA extrair marcadores do processo" e um texto livre injetado no prompt; use para guiar o foco (materia, beneficio, fase processual) e melhorar o de-para com as etiquetas.
-   - Clique em "Salvar selecao" ao final. "Reindexar agora" refaz o indice BM25 usado no de-para. "Remover catalogo" apaga o cache local.
+   - O campo "Orientacoes para a IA extrair marcadores do processo" e um texto livre enviado junto com as instrucoes da IA; use para guiar o foco (materia, beneficio, fase processual) e melhorar a comparacao com as etiquetas.
+   - Clique em "Salvar selecao" ao final. "Reindexar agora" atualiza a comparacao com o processo. "Remover catalogo" apaga a lista guardada no navegador.
 
 9. Termos de uso e governanca: No popup ha a secao "Termos de uso e Governanca (Res. CNJ 615/2025)" com o enquadramento da ferramenta como de baixo risco (Anexo BR4/BR8), a obrigacao de supervisao humana (art. 19, IV e art. 34), a politica de privacidade/anonimizacao (art. 30), a trilha de auditoria (art. 19, par. 6 e art. 27 - EM DESENVOLVIMENTO, ainda nao implementada na versao atual) e a identificacao de conteudo gerado com apoio de IA (art. 21). Leia antes do uso em producao.
 
@@ -193,27 +193,27 @@ Grupo "Processo" (aparece quando ha autos abertos):
 
 2. Analisar o processo: executa uma analise guiada pelos criterios configurados na aba "Triagem Inteligente" do popup da extensao (ver passo 7 da Configuracao inicial). Por padrao, adota os criterios da Nota Tecnica n 1/2025 do CLI-JFCE — emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao e outros — mas cada criterio pode ser personalizado ou substituido por redacao propria da unidade, e criterios customizados adicionais podem ser incluidos. O status exibido durante a execucao e "Analisando o processo pelos criterios configurados...".
 
-3. Inserir etiquetas magicas: usa o catalogo de etiquetas selecionado na aba "Etiquetas Inteligentes" do popup (ver passo 8 da Configuracao inicial) para sugerir quais etiquetas aplicar ao processo. A extensao pede a IA uma lista curta de marcadores semanticos, roda BM25 contra as etiquetas sugestionaveis e abre uma bolha com:
-   - Os marcadores que a IA extraiu do processo (contextualizam o "por que" das sugestoes).
-   - A lista de etiquetas ranqueadas, com checkbox e barra de similaridade relativa ao top-1.
-   - Botao "Copiar selecionadas" — copia os nomes das etiquetas marcadas para a area de transferencia, para colar no campo de etiquetas do PJe (a aplicacao automatica via API sera liberada em versao futura).
+3. Inserir etiquetas magicas: usa o catalogo de etiquetas selecionado na aba "Etiquetas Inteligentes" do popup (ver passo 8 da Configuracao inicial) para sugerir quais etiquetas aplicar ao processo. A IA le os autos, extrai os principais assuntos e temas (chamados aqui de marcadores), compara com as etiquetas que voce marcou como sugestionaveis e abre uma bolha mostrando:
+   - Os marcadores encontrados no processo (explicam o "por que" das sugestoes).
+   - A lista das etiquetas mais parecidas — cada uma com caixa de selecao e uma barrinha indicando o quanto combina com o processo.
+   - Botao "Copiar selecionadas" — copia os nomes das etiquetas marcadas para a area de transferencia, para colar no campo de etiquetas do PJe (a aplicacao automatica no PJe esta prevista para versoes futuras).
 
 Gerar ato de emenda a inicial: quando a analise de processo indicar necessidade de emenda, a extensao oferece a geracao da minuta de ato de emenda a inicial diretamente no chat, ja contemplando os pontos identificados na triagem.
 
-IMPORTANTE: antes do primeiro uso da Triagem Inteligente, revise os criterios na aba "Triagem Inteligente" e o catalogo na aba "Etiquetas Inteligentes" do popup. Esses ajustes sao injetados nos prompts e definem o resultado produzido pelas acoes.
+IMPORTANTE: antes do primeiro uso da Triagem Inteligente, revise os criterios na aba "Triagem Inteligente" e o catalogo na aba "Etiquetas Inteligentes" do popup. Esses ajustes alimentam tanto as instrucoes enviadas a IA quanto a comparacao das etiquetas com o processo, e definem o resultado produzido pelas acoes.
 
-O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz o botao "Encaminhar e inserir no PJe" (no lugar do habitual "Inserir no PJe"), que faz o encaminhamento da tarefa e insere o texto da minuta no editor CKEditor correspondente, em uma unica acao.
+O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz o botao "Encaminhar e inserir no PJe" (no lugar do habitual "Inserir no PJe"), que faz o encaminhamento da tarefa e insere o texto da minuta no editor de minutas da nova tarefa, em uma unica acao.
 
 ### Painel Gerencial pAIdegua (perfil Gestao)
 
 Disponivel no perfil Gestao quando o usuario esta no "Painel do usuario" do PJe (qualquer grau). Ao clicar em "Painel Gerencial pAIdegua", a extensao:
 
 1. Detecta as tarefas visiveis no painel do PJe e pergunta quais delas devem entrar no relatorio.
-2. Coleta, via API REST do PJe, os processos de cada tarefa selecionada, com progresso em tempo real.
+2. Busca diretamente no PJe os processos de cada tarefa selecionada, com progresso em tempo real.
 3. Abre uma aba propria com o dashboard gerencial, contendo:
    - Indicadores deterministicos da unidade (total de processos, distribuicao por tarefa, "10 mais antigos por tarefa" etc.).
    - Lista por tarefa, com tabelas ordenaveis e os tres icones por processo (autos, copiar CNJ, abrir tarefa).
-   - Botao "Gerar insights" que envia os dados sanitizados (`sanitizePayloadForLLM` remove numeros de processo e partes) para o provedor de IA configurado e traz de volta alertas, relacionamentos entre tarefas e sugestoes de acao.
+   - Botao "Gerar insights" que envia os dados ao servico de IA configurado com os dados sensiveis removidos (o numero do processo e os nomes das partes sao ocultados antes de sair do navegador) e traz de volta alertas, relacionamentos entre tarefas e sugestoes de acao.
 
 O proposito e dar ao diretor de secretaria uma visao consolidada da carga de trabalho da unidade sem precisar rodar relatorios no PJe.
 
@@ -224,7 +224,7 @@ Tambem disponivel no perfil Gestao quando o usuario esta no "Painel do usuario" 
 Fluxo ao clicar em "Prazos na Fita pAIdegua":
 
 1. A extensao lista as tarefas "Controle de prazo" visiveis e pergunta quais coletar.
-2. Para cada tarefa, consulta via API REST do PJe todos os expedientes abertos de cada processo (ciencia, destinatario, ato, data-limite, natureza, anomalias).
+2. Para cada tarefa, busca diretamente no PJe todos os expedientes abertos de cada processo (ciencia, destinatario, ato, data-limite, natureza, anomalias).
 3. Abre o dashboard "Prazos na Fita" com:
    - KPIs no topo (total de processos, total de expedientes abertos, prazos correndo, vencimentos nos proximos 7 dias).
    - Uma tabela por tarefa, com cabecalhos ordenaveis e coluna "Dias" destacando vencimentos proximos.
@@ -233,23 +233,23 @@ Fluxo ao clicar em "Prazos na Fita pAIdegua":
 
 ### Abrir tarefa no PJe
 
-Em todas as linhas de processo dos tres paineis (Triagem Inteligente, Painel Gerencial e Prazos na Fita) ha um terceiro icone (seta para fora de uma caixa) ao lado do hiperlink dos autos e do botao de copiar CNJ. O icone abre diretamente a tela de movimentacao da tarefa corrente do processo no PJe (`movimentar.seam`) — o mesmo destino do link "Abrir tarefa" do widget "Documentos pendentes" do painel nativo.
+Em todas as linhas de processo dos tres paineis (Triagem Inteligente, Painel Gerencial e Prazos na Fita) ha um terceiro icone (seta para fora de uma caixa) ao lado do hiperlink dos autos e do botao de copiar CNJ. O icone abre diretamente a tela de movimentacao da tarefa corrente do processo no PJe — o mesmo destino do link "Abrir tarefa" do widget "Documentos pendentes" do painel nativo.
 
-A janela popup e nomeada por processo, de modo que cliques subsequentes na mesma linha reaproveitam a aba aberta. Se o popup for bloqueado pelo navegador, libere o origin do PJe no icone de popup bloqueado da barra de enderecos.
+A janela popup e nomeada por processo, de modo que cliques subsequentes na mesma linha reaproveitam a aba aberta. Se o popup for bloqueado pelo navegador, libere o endereco do PJe no icone de popup bloqueado da barra de enderecos.
 
-Quando a linha e oriunda de fallback DOM (coleta sem snapshot de autenticacao REST capturado), o icone nao aparece — e comportamento intencional para evitar abrir tarefa errada.
+Quando a coleta daquela linha nao conseguiu todos os identificadores que o PJe exige para abrir a tarefa correta, o icone nao aparece — e comportamento intencional para evitar abrir tarefa errada.
 
 ### Encerrar expedientes em lote (Prazos na Fita)
 
-Ultima coluna da tabela do dashboard "Prazos na Fita". Um clique no icone de lixeira executa, em aba invisivel, o fluxo que o PJe normalmente exige em tres cliques + confirmacao:
+Ultima coluna da tabela do dashboard "Prazos na Fita". Um clique no icone de lixeira executa, em aba invisivel, o mesmo fluxo que o PJe normalmente exige em tres cliques + confirmacao:
 
-1. Abrir a tarefa (`movimentar.seam`).
+1. Abrir a tela de movimentacao da tarefa.
 2. Marcar o cabecalho "Fechado" que seleciona todos os expedientes abertos.
 3. Clicar em "Encerrar expedientes selecionados" e confirmar o popup.
 
 A automacao fecha TODOS os expedientes abertos daquela tarefa de uma so vez — use-a quando a providencia padrao for justamente essa (p. ex., "ciencia vencida nao encerrada"). Para encerramento parcial, use o icone "Abrir tarefa" e trate o caso no PJe.
 
-Estados visuais do botao (persistidos em `chrome.storage.local` e sobrevivem ao F5):
+Estados visuais do botao (ficam salvos no navegador e sobrevivem ao recarregar a pagina):
 
 - pronto (lixeira, neutra): clique para fechar todos os expedientes da tarefa.
 - executando (spinner, azul): aba invisivel em andamento — aguarde.
@@ -257,7 +257,7 @@ Estados visuais do botao (persistidos em `chrome.storage.local` e sobrevivem ao 
 - erro (triangulo de aviso, amarelo): clique novamente para tentar de novo; a mensagem indica a causa (sessao expirada, botao nao encontrado etc.).
 - nada-a-fazer (traco, cinza): todos os expedientes da tarefa ja estavam fechados.
 
-Execucao serial: se voce clicar em varias linhas, a extensao enfileira e processa uma por vez, evitando competicao por aba/sessao. Multiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rotulo completo — as demais ficam em modo compacto (so o icone) para deixar claro qual foi a linha acionada.
+Execucao uma de cada vez: se voce clicar em varias linhas, o pAIdegua enfileira e processa uma por vez, evitando que disputem a mesma aba/sessao. Multiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rotulo completo — as demais ficam em modo compacto (so o icone) para deixar claro qual foi a linha acionada.
 
 ### Copiar numero CNJ
 
@@ -289,7 +289,7 @@ Abaixo de cada resposta da IA (em especial minutas) aparecem botoes de acao rapi
 Os demais botoes seguem disponiveis em ambos os casos:
 
 - Copiar: copia a resposta (markdown) para a area de transferencia.
-- Inserir no PJe: insere o texto diretamente no editor CKEditor do PJe aberto em outra aba, sem copiar e colar manualmente.
+- Inserir no PJe: insere o texto diretamente no editor de minutas do PJe aberto em outra aba, sem copiar e colar manualmente.
 - Encaminhar e inserir no PJe: presente apenas no fluxo de emenda a inicial da Triagem Inteligente — encaminha a tarefa e insere a minuta no editor em uma mesma acao.
 - Baixar .doc: salva a resposta como arquivo do Word (.doc), ja com nome sugerido a partir do numero do processo e do tipo de ato.
 - Refinar minuta: reaproveita a ultima minuta gerada com uma instrucao adicional digitada pelo usuario (ex.: "encurtar", "mudar o tom", "citar a Sumula 343 do STJ", "reforcar o dispositivo"), preservando o template usado.
@@ -345,12 +345,12 @@ Dicas:
 
 - Atualizacao da extensao: Quando receber uma nova versao do "dist.zip", extraia o arquivo sobrescrevendo a pasta "dist" ja existente e depois va em chrome://extensions ou edge://extensions e clique no botao de atualizar (seta circular) no card da extensao.
 
-- Painel Gerencial ou Prazos na Fita abrem vazios ou com erro "Sem snapshot de auth": abra o Painel do usuario do PJe e clique em qualquer tarefa antes de acionar os botoes do perfil Gestao. Essa primeira interacao captura o token de autenticacao usado nas chamadas REST da coleta. Se a sessao do PJe tiver expirado, refaca o login e tente novamente.
+- Painel Gerencial ou Prazos na Fita abrem vazios ou com erro "Sem credenciais de acesso": abra o Painel do usuario do PJe e clique em qualquer tarefa antes de acionar os botoes do perfil Gestao. Essa primeira interacao captura a chave de sessao que o pAIdegua usa para buscar os dados no PJe. Se a sessao do PJe tiver expirado, refaca o login e tente novamente.
 
-- Icone "Abrir tarefa" nao aparece em alguma linha: a linha foi coletada por fallback DOM (sem os IDs que o PJe exige para abrir a tarefa correta). Recarregue o painel do PJe, abra uma tarefa para capturar o snapshot de auth e rode a coleta de novo.
+- Icone "Abrir tarefa" nao aparece em alguma linha: a coleta daquela linha nao conseguiu todos os identificadores que o PJe exige para abrir a tarefa correta. Recarregue o painel do PJe, abra uma tarefa para que o pAIdegua capture as credenciais de acesso e rode a coleta de novo.
 
-- Popup "Abrir tarefa" bloqueado: o navegador bloqueou a janela popup. Clique no icone de popup bloqueado na barra de enderecos do navegador e libere o origin do PJe.
+- Popup "Abrir tarefa" bloqueado: o navegador bloqueou a janela popup. Clique no icone de popup bloqueado na barra de enderecos do navegador e libere o endereco do PJe.
 
-- "Encerrar expedientes" fica em erro: verifique se a sessao do PJe esta ativa (abra o PJe em outra aba). Se o PJe tiver alterado o DOM da tela `movimentar.seam`, reporte ao Inovajus — a manutencao envolve ajustar o seletor na automacao. Enquanto isso, o encerramento pode ser feito manualmente a partir do icone "Abrir tarefa".
+- "Encerrar expedientes" fica em erro: verifique se a sessao do PJe esta ativa (abra o PJe em outra aba). Se o PJe tiver mudado a estrutura da tela de movimentacao da tarefa, reporte ao Inovajus — a manutencao envolve ajustar a automacao. Enquanto isso, o encerramento pode ser feito manualmente a partir do icone "Abrir tarefa".
 
 - "Inserir etiquetas magicas" nao traz sugestoes: confirme na aba "Etiquetas Inteligentes" do popup que (a) o catalogo foi buscado (botao "Buscar catalogo do PJe") e (b) ha etiquetas marcadas no painel "Sugestionaveis (selecionadas)". Sem etiquetas sugestionaveis, nao ha o que sugerir.

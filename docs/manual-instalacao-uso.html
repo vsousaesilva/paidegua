@@ -798,13 +798,13 @@
       </div>
 
       <h3><span class="marker"></span>Etiquetas Inteligentes</h3>
-      <p>A aba <strong>Etiquetas Inteligentes</strong> do popup configura o catálogo de etiquetas do PJe usado pela ação <em>Inserir etiquetas mágicas</em> da Triagem Inteligente. Fluxo recomendado:</p>
+      <p>A aba <strong>Etiquetas Inteligentes</strong> do popup configura a lista de etiquetas do PJe usada pela ação <em>Inserir etiquetas mágicas</em> da Triagem Inteligente. Fluxo recomendado:</p>
       <ol>
-        <li>Clique em <strong>Buscar catálogo do PJe</strong> — a extensão consulta a API do PJe (mesma origem do usuário, sem sair da sua estação) e armazena o catálogo localmente no navegador.</li>
+        <li>Clique em <strong>Buscar catálogo do PJe</strong> — o pAIdegua traz a lista completa de etiquetas da sua unidade direto do PJe e guarda no seu navegador, sem sair da sua estação.</li>
         <li>No painel <strong>Catálogo completo</strong>, veja todas as etiquetas da unidade. Use o filtro por nome, marque <em>Apenas favoritas</em> ou utilize os botões <em>Marcar visíveis</em>, <em>Desmarcar visíveis</em> e <em>Marcar todas favoritas</em> para seleção em lote.</li>
         <li>As etiquetas marcadas formam o painel superior <strong>Sugestionáveis (selecionadas)</strong> — são as únicas que a Triagem Inteligente considera ao sugerir <em>etiquetas mágicas</em> para um processo.</li>
-        <li>No campo <strong>Orientações para a IA extrair marcadores do processo</strong>, inclua (opcionalmente) um texto livre que guia o foco da IA: matéria, benefício, fase processual. Melhora o de-para com as etiquetas selecionadas.</li>
-        <li>Clique em <strong>Salvar seleção</strong>. <em>Reindexar agora</em> refaz o índice BM25 usado no de-para; <em>Remover catálogo</em> apaga o cache local.</li>
+        <li>No campo <strong>Orientações para a IA extrair marcadores do processo</strong>, inclua (opcionalmente) um texto livre que guia o foco da IA: matéria, benefício, fase processual. Ajuda a encontrar as etiquetas mais adequadas a cada processo.</li>
+        <li>Clique em <strong>Salvar seleção</strong>. <em>Reindexar agora</em> atualiza a comparação com o processo; <em>Remover catálogo</em> apaga a lista guardada no navegador.</li>
       </ol>
       <div class="callout callout--info">
         <h4>Onde essa seleção é usada</h4>
@@ -1009,7 +1009,7 @@
         <div class="feat">
           <span class="feat__label">Novo</span>
           <h4>Inserir etiquetas mágicas</h4>
-          <p>Usa o catálogo configurado na aba <strong>Etiquetas Inteligentes</strong> do popup para sugerir quais etiquetas aplicar ao processo. A IA extrai uma lista curta de marcadores semânticos, a extensão roda BM25 contra as etiquetas sugestionáveis e abre uma bolha com: os <em>marcadores</em> que motivaram as sugestões, a lista de etiquetas ranqueadas com checkbox e barra de similaridade, e o botão <strong>Copiar selecionadas</strong> — copia os nomes das etiquetas marcadas para colar no campo de etiquetas do PJe. A aplicação automática via API do PJe está prevista para versões futuras.</p>
+          <p>Usa a lista configurada na aba <strong>Etiquetas Inteligentes</strong> do popup para sugerir quais etiquetas aplicar ao processo. A IA lê os autos, extrai os principais assuntos e temas (chamados aqui de <em>marcadores</em>), compara com as etiquetas que você marcou como sugestionáveis e abre uma bolha mostrando: os marcadores encontrados (explicam o porquê das sugestões), a lista das etiquetas mais parecidas — cada uma com caixa de seleção e uma barrinha indicando o quanto combina com o processo — e o botão <strong>Copiar selecionadas</strong>, que copia os nomes das etiquetas marcadas para você colar no campo de etiquetas do PJe. A aplicação automática no PJe está prevista para versões futuras.</p>
         </div>
         <div class="feat">
           <span class="feat__label">Emenda</span>
@@ -1020,7 +1020,7 @@
 
       <div class="callout callout--tip">
         <h4>Configure antes do primeiro uso</h4>
-        <p>Os critérios de <em>Analisar o processo</em> e o catálogo de <em>Inserir etiquetas mágicas</em> são definidos nas abas <strong>Triagem Inteligente</strong> e <strong>Etiquetas Inteligentes</strong> do popup. Como essas escolhas entram nos prompts enviados à IA e no de-para BM25, o resultado depende diretamente do que foi configurado ali.</p>
+        <p>Os critérios de <em>Analisar o processo</em> e o catálogo de <em>Inserir etiquetas mágicas</em> são definidos nas abas <strong>Triagem Inteligente</strong> e <strong>Etiquetas Inteligentes</strong> do popup. Como essas escolhas alimentam tanto as instruções enviadas à IA quanto a comparação das etiquetas com o processo, o resultado depende diretamente do que foi configurado ali.</p>
       </div>
 
       <div class="callout callout--info">
@@ -1044,12 +1044,12 @@
       <h3><span class="marker"></span>Painel Gerencial pAIdegua</h3>
       <ol>
         <li>Detecta as tarefas visíveis no painel do PJe e pergunta quais devem entrar no relatório.</li>
-        <li>Coleta, via API REST do PJe, os processos de cada tarefa selecionada, com progresso em tempo real.</li>
+        <li>Busca diretamente no PJe os processos de cada tarefa selecionada, com progresso em tempo real.</li>
         <li>Abre uma aba própria com o <em>dashboard gerencial</em>, contendo:
           <ul>
             <li><strong>Indicadores determinísticos</strong> da unidade (total de processos, distribuição por tarefa, "10 mais antigos por tarefa" etc.).</li>
             <li><strong>Lista por tarefa</strong>, com tabelas ordenáveis e os três ícones por processo (autos, copiar CNJ, abrir tarefa).</li>
-            <li>Botão <strong>Gerar insights</strong>: envia os dados <em>sanitizados</em> (remove número do processo e partes antes de sair do navegador) ao serviço de IA configurado e traz de volta alertas, relacionamentos entre tarefas e sugestões de ação.</li>
+            <li>Botão <strong>Gerar insights</strong>: envia os dados ao serviço de IA configurado <em>com os dados sensíveis removidos</em> (o número do processo e os nomes das partes são ocultados antes de sair do navegador) e traz de volta alertas, relacionamentos entre tarefas e sugestões de ação.</li>
           </ul>
         </li>
       </ol>
@@ -1058,7 +1058,7 @@
       <p>Foca especificamente nas tarefas cujo nome contém <em>"Controle de prazo"</em> — onde ficam os expedientes com prazo correndo. Fluxo:</p>
       <ol>
         <li>A extensão lista as tarefas <em>Controle de prazo</em> visíveis e pergunta quais coletar.</li>
-        <li>Para cada tarefa, consulta via API REST do PJe todos os <strong>expedientes abertos</strong> de cada processo (ciência, destinatário, ato, data-limite, natureza, anomalias).</li>
+        <li>Para cada tarefa, busca diretamente no PJe todos os <strong>expedientes abertos</strong> de cada processo (ciência, destinatário, ato, data-limite, natureza, anomalias).</li>
         <li>Abre o dashboard <em>Prazos na Fita</em> com:
           <ul>
             <li><strong>KPIs</strong> no topo (total de processos, total de expedientes abertos, prazos correndo, vencimentos nos próximos 7 dias).</li>
@@ -1071,8 +1071,8 @@
 
       <div class="callout callout--tip">
         <h4>Coluna "Encerrar" — encerrar expedientes em lote</h4>
-        <p>Última coluna da tabela de <em>Prazos na Fita</em>. Um clique no ícone de lixeira executa, em aba invisível, o fluxo que o PJe normalmente exige em três cliques + confirmação: abrir <code>movimentar.seam</code>, marcar o cabeçalho "Fechado" (seleciona todos os expedientes abertos) e clicar em <strong>Encerrar expedientes selecionados</strong>. Fecha <strong>todos</strong> os expedientes abertos daquela tarefa — use quando a providência padrão for essa. Para encerramento parcial, abra a tarefa pelo ícone de <em>Abrir tarefa</em> e trate o caso no PJe.</p>
-        <p>Estados do botão (persistidos em <code>storage.local</code>, sobrevivem ao F5):</p>
+        <p>Última coluna da tabela de <em>Prazos na Fita</em>. Um clique no ícone de lixeira executa, em aba invisível, o mesmo fluxo que o PJe normalmente exige em três cliques + confirmação: abrir a tela de movimentação da tarefa, marcar o cabeçalho "Fechado" (seleciona todos os expedientes abertos) e clicar em <strong>Encerrar expedientes selecionados</strong>. Fecha <strong>todos</strong> os expedientes abertos daquela tarefa — use quando a providência padrão for essa. Para encerramento parcial, abra a tarefa pelo ícone de <em>Abrir tarefa</em> e trate o caso no PJe.</p>
+        <p>Estados do botão (ficam salvos no navegador e sobrevivem ao recarregar a página):</p>
         <ul>
           <li><strong>Pronto</strong> (lixeira, neutra): clique para fechar todos os expedientes da tarefa.</li>
           <li><strong>Executando</strong> (spinner, azul): aba invisível em andamento — aguarde.</li>
@@ -1080,7 +1080,7 @@
           <li><strong>Erro</strong> (triângulo de aviso, amarelo): clique para tentar de novo; a mensagem indica a causa.</li>
           <li><strong>Nada a fazer</strong> (traço, cinza): todos os expedientes da tarefa já estavam fechados.</li>
         </ul>
-        <p>A execução é <strong>serial</strong>: cliques em várias linhas ficam enfileirados para evitar competição por aba/sessão. Múltiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rótulo completo — as demais ficam em modo compacto (só o ícone).</p>
+        <p>A execução é feita <strong>uma de cada vez</strong>: se você clicar em várias linhas, elas entram em fila para evitar que disputem a mesma aba/sessão. Quando o mesmo processo aparece em mais de uma linha, todas compartilham o mesmo estado, mas só a linha clicada mostra o rótulo completo — as outras ficam em modo compacto (só o ícone).</p>
       </div>
 
       <div class="callout callout--info">
@@ -1095,7 +1095,7 @@
         <span class="section-num">06d</span>
         <div>
           <h2>Abrir tarefa no PJe</h2>
-          <p>Atalho direto da linha do processo para <code>movimentar.seam</code></p>
+          <p>Atalho direto da linha do processo para a tela de movimentação da tarefa</p>
         </div>
       </div>
 
@@ -1108,7 +1108,7 @@
 
       <div class="callout callout--warn">
         <h4>Quando o ícone não aparece</h4>
-        <p>Em linhas coletadas por fallback (sem os identificadores que o PJe exige para abrir a tarefa correta), o ícone é omitido intencionalmente — preferimos ausência a um botão que leve para a tarefa errada. Recarregue o painel do PJe, abra qualquer tarefa para capturar o <em>snapshot de autenticação</em> e rode a coleta de novo.</p>
+        <p>Quando a coleta não conseguiu todos os identificadores que o PJe exige para abrir a tarefa correta, o ícone é ocultado de propósito — preferimos não mostrar nada a levar você para a tarefa errada. Recarregue o painel do PJe, abra qualquer tarefa para que o pAIdegua capture as <em>credenciais de acesso</em> e rode a coleta de novo.</p>
       </div>
     </section>
 
@@ -1289,12 +1289,12 @@
           <p>Quando você receber uma nova versão da equipe do Inovajus, substitua a pasta antiga pela nova no seu computador. Depois, abra a página de extensões e clique na seta circular no quadro do pAIdegua para recarregar.</p>
         </details>
         <details>
-          <summary>Painel Gerencial ou Prazos na Fita abrem vazios / mostram "Sem snapshot de auth"</summary>
-          <p>Abra o <strong>Painel do usuário</strong> do PJe e clique em qualquer tarefa antes de acionar os botões do perfil Gestão. Essa primeira interação captura o token de autenticação usado nas chamadas REST da coleta. Se a sessão do PJe tiver expirado, refaça o login e tente novamente.</p>
+          <summary>Painel Gerencial ou Prazos na Fita abrem vazios / mostram "Sem credenciais de acesso"</summary>
+          <p>Abra o <strong>Painel do usuário</strong> do PJe e clique em qualquer tarefa antes de acionar os botões do perfil Gestão. Essa primeira interação captura a chave de sessão que o pAIdegua usa para buscar os dados no PJe. Se a sessão do PJe tiver expirado, refaça o login e tente novamente.</p>
         </details>
         <details>
           <summary>O ícone "Abrir tarefa" não aparece em alguma linha</summary>
-          <p>A linha foi coletada por fallback (sem os identificadores que o PJe exige para abrir a tarefa correta). Recarregue o painel do PJe, abra qualquer tarefa para capturar o <em>snapshot de autenticação</em> e rode a coleta de novo.</p>
+          <p>A coleta daquela linha não conseguiu todos os identificadores que o PJe exige para abrir a tarefa correta. Recarregue o painel do PJe, abra qualquer tarefa para que o pAIdegua capture as <em>credenciais de acesso</em> e rode a coleta de novo.</p>
         </details>
         <details>
           <summary>O popup de "Abrir tarefa" foi bloqueado</summary>
@@ -1302,7 +1302,7 @@
         </details>
         <details>
           <summary>"Encerrar expedientes" ficou em erro</summary>
-          <p>Verifique se a sessão do PJe está ativa (abra o PJe em outra aba). Se o PJe tiver alterado o DOM da tela <code>movimentar.seam</code>, reporte à equipe do Inovajus — a manutenção envolve ajustar o seletor da automação. Enquanto isso, o encerramento pode ser feito manualmente a partir do ícone <em>Abrir tarefa</em>.</p>
+          <p>Verifique se a sessão do PJe está ativa (abra o PJe em outra aba). Se o PJe tiver mudado a estrutura da tela de movimentação da tarefa, reporte à equipe do Inovajus — a manutenção envolve ajustar a automação. Enquanto isso, o encerramento pode ser feito manualmente a partir do ícone <em>Abrir tarefa</em>.</p>
         </details>
         <details>
           <summary>"Inserir etiquetas mágicas" não traz sugestões</summary>
