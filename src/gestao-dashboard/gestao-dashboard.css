@@ -246,6 +246,38 @@ a:hover { text-decoration: underline; }
 
 .proc-table tr:hover { background: rgba(19, 81, 180, 0.04); }
 
+/* Cabeçalhos ordenáveis (alfabético / numérico / data). */
+.th-sort { user-select: none; }
+.th-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.th-label { display: inline-block; }
+.th-sort--active .th-label { color: var(--primary-dark); }
+.th-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 4px;
+  line-height: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.th-sort-btn:hover { background: rgba(19, 81, 180, 0.10); color: var(--primary); }
+.th-sort-btn:active { background: rgba(19, 81, 180, 0.18); }
+.th-sort-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 1px;
+}
+.sort-icon { display: block; }
+.sort-icon__arrow { fill: rgba(91, 107, 130, 0.4); transition: fill 0.15s; }
+.sort-icon__arrow--active { fill: var(--primary); }
+
 .proc-table .num {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -294,6 +326,26 @@ a:hover { text-decoration: underline; }
 .proc-copy:hover { background: rgba(19, 81, 180, 0.08); color: var(--primary); border-color: var(--primary-light); }
 .proc-copy:active { background: rgba(19, 81, 180, 0.16); }
 .proc-copy:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+
+.proc-open-task {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  line-height: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.proc-open-task:hover { background: rgba(19, 81, 180, 0.08); color: var(--primary); border-color: var(--primary-light); }
+.proc-open-task:active { background: rgba(19, 81, 180, 0.16); }
+.proc-open-task:focus-visible {
   outline: 2px solid var(--primary-light);
   outline-offset: 2px;
 }
@@ -629,8 +681,12 @@ a:hover { text-decoration: underline; }
 
 /* ========== Diagnóstico (tabela simples) ========== */
 
+/*
+ * A tabela encolhe para o conteudo (alinhada a esquerda do card).
+ * Caso o conteudo seja muito largo, o wrapper `.scroll-limit` cuida da
+ * rolagem. Mesmo comportamento do painel "Analisar tarefas".
+ */
 .tabela {
-  width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }

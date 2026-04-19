@@ -14,6 +14,12 @@
  */
 
 import { MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
+import {
+  abrirTarefaPopup,
+  OPEN_TASK_ICON_SVG,
+  podeAbrirTarefa
+} from '../shared/pje-task-popup';
+import { makeTableSortable, type TableSortColumn } from '../shared/table-sort';
 import { sanitizePayloadForLLM } from '../shared/triagem-anonymize';
 import type {
   GestaoAlerta,
@@ -151,7 +157,7 @@ function buildMetricas(
     : 0;
 
   wrap.append(
-    metric('Processos varridos', String(total)),
+    metric('Processos', String(total)),
     metric('Tarefas', String(ind ? Object.keys(ind.porTarefa).length : 0)),
     metric(
       `Atrasados (> ${ind.limiarAtrasoDias}d)`,
@@ -427,7 +433,8 @@ function buildDiagnostico(payload: GestaoDashboardPayload): HTMLElement {
   const sec = section('Diagnóstico de coleta');
   setHint(
     sec,
-    'Detalhes técnicos por tarefa (útil quando o total parece menor do que o esperado).'
+    'Detalhes técnicos por tarefa para entender o resultado da varredura ' +
+      '(útil quando o total parece menor do que o esperado).'
   );
   const table = document.createElement('table');
   table.className = 'tabela';
@@ -435,8 +442,6 @@ function buildDiagnostico(payload: GestaoDashboardPayload): HTMLElement {
     '<thead><tr>' +
     '<th>Tarefa</th>' +
     '<th style="text-align:right">Lidos</th>' +
-    '<th style="text-align:right">Páginas</th>' +
-    '<th>Encerramento</th>' +
     '</tr></thead>';
   const tbody = document.createElement('tbody');
   for (const t of payload.tarefas) {
@@ -445,13 +450,13 @@ function buildDiagnostico(payload: GestaoDashboardPayload): HTMLElement {
     const tdLido = tdText(String(t.totalLido));
     tdLido.style.textAlign = 'right';
     tr.appendChild(tdLido);
-    const tdPag = tdText(String(t.paginasLidas ?? '—'));
-    tdPag.style.textAlign = 'right';
-    tr.appendChild(tdPag);
-    tr.appendChild(tdText(t.motivoFimPaginacao ?? '—'));
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
+  makeTableSortable(table, payload.tarefas, [
+    { type: 'alpha', value: (t) => t.tarefaNome || null },
+    { type: 'num',   value: (t) => t.totalLido }
+  ]);
   sec.appendChild(wrapScroll(table));
   return sec;
 }
@@ -595,7 +600,26 @@ function buildProcTable(procs: TriagemProcesso[]): HTMLElement {
     tr.appendChild(tdDias(p.diasNaTarefa));
     tbody.appendChild(tr);
   }
+  makeTableSortable(table, procs, procTableColumns());
   return table;
+}
+
+function procTableColumns(): TableSortColumn<TriagemProcesso>[] {
+  return [
+    { type: 'alpha', value: (p) => extractCNJ(p.numeroProcesso) || p.numeroProcesso || null },
+    { type: 'alpha', value: (p) => p.assunto || null },
+    { type: 'alpha', value: (p) => p.poloPassivo || null },
+    { type: 'alpha', value: (p) => marcadoresSortKey(p) },
+    { type: 'num',   value: (p) => p.diasNaTarefa }
+  ];
+}
+
+function marcadoresSortKey(p: TriagemProcesso): string | null {
+  const partes: string[] = [];
+  if (p.prioritario) partes.push('prioritário');
+  if (p.sigiloso) partes.push('sigiloso');
+  for (const e of p.etiquetas) partes.push(e);
+  return partes.length > 0 ? partes.join(' ') : null;
 }
 
 function tdMarcadores(p: TriagemProcesso): HTMLElement {
@@ -688,6 +712,26 @@ function procNumberSpan(p: TriagemProcesso): HTMLElement {
     void copyToClipboard(cnj, `Número copiado: ${cnj}`);
   });
   wrap.appendChild(btn);
+
+  if (podeAbrirTarefa(p.idProcesso, p.idTaskInstance) && p.url) {
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'proc-open-task';
+    openBtn.title = 'Abrir tarefa no PJe';
+    openBtn.setAttribute('aria-label', `Abrir tarefa do processo ${cnj}`);
+    openBtn.innerHTML = OPEN_TASK_ICON_SVG;
+    openBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const ok = abrirTarefaPopup({
+        idProcesso: p.idProcesso,
+        idTaskInstance: p.idTaskInstance!,
+        referenciaUrlAutos: p.url
+      });
+      if (!ok) showToast('Não foi possível abrir a tarefa (popup bloqueado?).');
+    });
+    wrap.appendChild(openBtn);
+  }
 
   return wrap;
 }

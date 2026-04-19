@@ -22,6 +22,9 @@
 
 import { LOG_PREFIX, STORAGE_KEYS } from '../../shared/constants';
 import type {
+  PJeApiEtiqueta,
+  PJeApiEtiquetaRaw,
+  PJeApiEtiquetasListResponse,
   PJeApiListarRequest,
   PJeApiListarResponse,
   PJeApiProcesso,
@@ -149,6 +152,11 @@ function montarHeaders(
 interface ApiEntityAninhada {
   descricao?: unknown;
   nome?: unknown;
+  // `nomeTag` aparece nos itens de `tagsProcessoList` na resposta da REST
+  // `recuperarProcessosTarefaPendenteComCriterios` (shape observado:
+  // `{ id, idProcesso, idProcessoTag, nomeTag, nomeTagCompleto }`). Os
+  // demais DTOs (polo, orgao, classe) usam `descricao`/`nome`.
+  nomeTag?: unknown;
 }
 interface ApiEntity {
   idProcesso?: number | string;
@@ -181,7 +189,11 @@ function extrairTexto(v: unknown): string | null {
   }
   if (typeof v === 'object') {
     const o = v as ApiEntityAninhada;
-    return extrairTexto(o.descricao ?? o.nome);
+    return (
+      extrairTexto(o.descricao) ??
+      extrairTexto(o.nome) ??
+      extrairTexto(o.nomeTag)
+    );
   }
   return null;
 }
@@ -267,11 +279,15 @@ export async function listarProcessosDaTarefa(
     string,
     string
   >;
-  // 300 e o tamanho que o painel nativo do PJe usa. Tamanhos menores
-  // (ex.: 100) fazem o servidor reordenar/repetir entre paginas — vimos
-  // count=904 para uma tarefa com 94 processos reais e acumulado
-  // estourando 1000. Alinhar com o painel estabiliza a paginacao.
-  const pageSize = Math.max(1, Math.min(500, req.pageSize ?? 300));
+  // Historicamente usavamos pageSize=300 (mesmo do painel Angular). Mas
+  // tarefas grandes (ex.: "[JEF] Analisar inicial - Pericia", 678 proc)
+  // tem paginacao quebrada no servidor: pag 2+ so devolve 1 ID novo por
+  // iter, nunca converge para o `total`. Solucao: pedir pageSize grande
+  // o bastante para caber a tarefa inteira na primeira chamada.
+  // Tamanhos menores (ex.: 100) ja foram testados e PIORAM (count=904
+  // para 94 processos reais). Tamanhos grandes nao tem esse problema —
+  // e quando a tarefa cabe em 1 pagina, nao ha "paginacao" a quebrar.
+  const pageSize = Math.max(1, Math.min(2000, req.pageSize ?? 1000));
   const limite = Math.max(1, req.maxProcessos ?? Number.MAX_SAFE_INTEGER);
   // IMPORTANTE: o painel Angular envia `page: 0` (zero-indexed) e o
   // servidor pagina a partir dai. Com `page: 1` o servidor estava
@@ -285,6 +301,17 @@ export async function listarProcessosDaTarefa(
   let total = 0;
   let duplicatasDescartadas = 0;
   let idsInvalidosDescartados = 0;
+  // O endpoint tem paginacao instavel em tarefas grandes: paginas consecutivas
+  // podem repetir blocos inteiros sem avancar o cursor. Em vez de depender do
+  // cap de 200 iter (que gera dezenas de milhares de dupes), encerramos cedo
+  // assim que a paginacao vira essencialmente improdutiva.
+  //
+  // "Improdutiva" = novos/pageSize <= 5% (e.g., <=15 IDs novos em pagina de
+  // 300). Observamos servidor devolvendo exatamente `novos=1` por pagina em
+  // tarefas grandes — isso burlava o antigo detector `novos===0`.
+  const LIMIAR_NOVIDADE_RATIO = 0.05;
+  const MAX_PAGINAS_IMPRODUTIVAS_SEGUIDAS = 2;
+  let paginasImprodutivasSeguidas = 0;
 
   try {
     for (let pagCount = 0; pagCount < 200; pagCount++) {
@@ -400,16 +427,51 @@ export async function listarProcessosDaTarefa(
           `acumulado=${acumulado.length} ` +
           `descartados={dup:${duplicatasDescartadas}, idInvalido:${idsInvalidosDescartados}}`
       );
+      // Condicoes de parada:
+      //  - entities vazio  = servidor nao tem mais nada.
+      //  - acumulado >= total = ja pegamos tudo que o servidor diz existir.
+      //  - acumulado >= limite = atingimos o max pedido pelo caller.
+      //
+      // NAO usamos `entities.length < pageSize` como "ultima pagina" porque
+      // o servidor pode capar silenciosamente em pageSize maiores que 300
+      // (ex.: pedir 1000 e receber 300). Nesse caso, so o acumulado/total
+      // diz se acabou.
       if (
-        entities.length < pageSize ||
+        entities.length === 0 ||
         acumulado.length >= total ||
         acumulado.length >= limite
       )
         break;
+      // Safety net para paginacao instavel: se a pagina trouxe itens mas
+      // quase nenhum era novo, contamos como "improdutiva". Base do ratio
+      // e `entities.length` (nao `pageSize`) para tolerar ultima pagina
+      // pequena legitima.
+      const razaoNovos = novosNestaPagina / Math.max(1, entities.length);
+      if (razaoNovos <= LIMIAR_NOVIDADE_RATIO) {
+        paginasImprodutivasSeguidas += 1;
+        if (paginasImprodutivasSeguidas >= MAX_PAGINAS_IMPRODUTIVAS_SEGUIDAS) {
+          console.debug(
+            `${LOG_PREFIX} [REST] "${req.nomeTarefa}" encerrando paginacao: ` +
+              `${paginasImprodutivasSeguidas} paginas consecutivas com ` +
+              `novos/entities <= ${(LIMIAR_NOVIDADE_RATIO * 100).toFixed(0)}% ` +
+              `(cursor do servidor travou). Acumulado=${acumulado.length}/${total}.`
+          );
+          break;
+        }
+      } else {
+        paginasImprodutivasSeguidas = 0;
+      }
       page += 1;
     }
+    if (total > 0 && acumulado.length < total) {
+      console.debug(
+        `${LOG_PREFIX} [REST] "${req.nomeTarefa}" resultado PARCIAL: ` +
+          `${acumulado.length}/${total} processo(s) coletados ` +
+          `(faltam ${total - acumulado.length}). Pagina instavel no servidor.`
+      );
+    }
     if (duplicatasDescartadas > 0 || idsInvalidosDescartados > 0) {
-      console.warn(
+      console.debug(
         `${LOG_PREFIX} [REST] "${req.nomeTarefa}" encerrou com descartes: ` +
           `${duplicatasDescartadas} duplicata(s), ` +
           `${idsInvalidosDescartados} id(s) invalido(s).`
@@ -524,4 +586,161 @@ export async function montarUrlAutos(opts: {
   }
   const url = `${opts.legacyOrigin.replace(/\/+$/, '')}/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam?${params.toString()}`;
   return { ok: true, url };
+}
+
+function normalizarEtiquetaRaw(raw: PJeApiEtiquetaRaw): PJeApiEtiqueta {
+  const id = toNumberOrNull(raw.id) ?? 0;
+  return {
+    id,
+    nomeTag: typeof raw.nomeTag === 'string' ? raw.nomeTag.trim() : '',
+    nomeTagCompleto:
+      typeof raw.nomeTagCompleto === 'string' && raw.nomeTagCompleto.trim()
+        ? raw.nomeTagCompleto.trim()
+        : typeof raw.nomeTag === 'string'
+          ? raw.nomeTag.trim()
+          : '',
+    favorita: raw.favorita === true,
+    possuiFilhos: raw.possuiFilhos === true,
+    idTagFavorita: toNumberOrNull(raw.idTagFavorita)
+  };
+}
+
+/**
+ * Lista o catálogo completo de etiquetas disponíveis ao usuário autenticado.
+ *
+ * Estratégia: fazer UMA chamada com `maxResults` grande o suficiente para
+ * caber todo o catálogo. O endpoint legacy do PJe tem paginação instável —
+ * pedindo `maxResults` pequeno, páginas seguintes repetem blocos ou trazem
+ * poucos IDs novos por iteração e nunca convergem para o `count`. Mesmo
+ * problema documentado em `listarProcessosDaTarefa` ("Tamanhos menores ja
+ * foram testados e PIORAM"). Como o count observado é da ordem de 3k, um
+ * primeiro disparo com `maxResults` grande geralmente cabe tudo em uma
+ * resposta e elimina a paginação. Se ainda faltar, continuamos paginando,
+ * mas com detecção de páginas improdutivas para não girar no vazio.
+ *
+ * O `count` do servidor pode somar sub-itens (árvore de tags) maior do
+ * que os `entities` únicos retornados — nesse caso devolvemos o que
+ * conseguimos coletar como sucesso parcial.
+ */
+export async function listarEtiquetas(opts?: {
+  pageSize?: number;
+  onProgress?: (processed: number, total: number) => void;
+}): Promise<PJeApiEtiquetasListResponse> {
+  const snap = await obterSnapshot();
+  if (!snap) {
+    const msg =
+      'Sem snapshot de auth — abra o painel do PJe e clique em qualquer tarefa para capturar.';
+    console.warn(`${LOG_PREFIX} [REST] listarEtiquetas: ${msg}`);
+    return { ok: false, total: 0, etiquetas: [], error: msg };
+  }
+  const baseUrl = pjeBaseUrl(snap);
+  const url = `${baseUrl}/painelUsuario/etiquetas`;
+  const headers = montarHeaders(snap, { withJsonBody: true }) as Record<
+    string,
+    string
+  >;
+  // Default agora é 5000 — cobre um catálogo grande (3k+) em um único
+  // disparo. O servidor costuma silenciosamente capar em 500/1000; quando
+  // capa, detectamos via `entities.length < pageSize` e tentamos paginação
+  // convencional como fallback.
+  const pageSize = Math.max(1, Math.min(10_000, opts?.pageSize ?? 5000));
+  const MAX_PAGINAS = 60;
+  const LIMIAR_NOVIDADE_RATIO = 0.05;
+  const MAX_PAGINAS_IMPRODUTIVAS_SEGUIDAS = 2;
+
+  const acumulado: PJeApiEtiqueta[] = [];
+  const idsVistos = new Set<number>();
+  let total = 0;
+  let page = 0;
+  let paginasImprodutivasSeguidas = 0;
+
+  try {
+    for (let pagCount = 0; pagCount < MAX_PAGINAS; pagCount++) {
+      const body = {
+        page,
+        maxResults: pageSize,
+        tagsString: null,
+        somenteFavoritas: null
+      };
+      const resp = await fetchComTimeout(
+        url,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          credentials: 'include'
+        },
+        60_000
+      );
+      if (!resp.ok) {
+        return {
+          ok: false,
+          total,
+          etiquetas: acumulado,
+          error: `HTTP ${resp.status} listando etiquetas`
+        };
+      }
+      const raw = await resp.text();
+      if (!raw) {
+        return {
+          ok: false,
+          total,
+          etiquetas: acumulado,
+          error:
+            `HTTP 200 com corpo vazio listando etiquetas — provável ` +
+            `rejeição silenciosa de auth (headers: ${Object.keys(headers).join(', ')}).`
+        };
+      }
+      const json = JSON.parse(raw) as {
+        count?: number;
+        entities?: PJeApiEtiquetaRaw[];
+      };
+      total = typeof json.count === 'number' ? json.count : total;
+      const entities = Array.isArray(json.entities) ? json.entities : [];
+      let novos = 0;
+      for (const e of entities) {
+        const norm = normalizarEtiquetaRaw(e);
+        if (norm.id <= 0 || !norm.nomeTag) continue;
+        if (idsVistos.has(norm.id)) continue;
+        idsVistos.add(norm.id);
+        acumulado.push(norm);
+        novos += 1;
+      }
+      opts?.onProgress?.(acumulado.length, total);
+      console.log(
+        `${LOG_PREFIX} [REST] etiquetas pag ${page}: ` +
+          `count=${total} entities=${entities.length} novos=${novos} ` +
+          `acumulado=${acumulado.length} (pageSize=${pageSize})`
+      );
+      // Condições de parada:
+      //  - `entities` vazio: servidor não tem mais o que devolver.
+      //  - `acumulado >= total`: já cobrimos o total reportado.
+      if (entities.length === 0 || acumulado.length >= total) break;
+      // Safety net: páginas consecutivas quase sem IDs novos indicam cursor
+      // travado no servidor (mesmo padrão observado em tarefas grandes).
+      const razaoNovos = novos / Math.max(1, entities.length);
+      if (razaoNovos <= LIMIAR_NOVIDADE_RATIO) {
+        paginasImprodutivasSeguidas += 1;
+        if (paginasImprodutivasSeguidas >= MAX_PAGINAS_IMPRODUTIVAS_SEGUIDAS) {
+          console.debug(
+            `${LOG_PREFIX} [REST] etiquetas: encerrando paginação — ` +
+              `${paginasImprodutivasSeguidas} páginas com ≤${(LIMIAR_NOVIDADE_RATIO * 100).toFixed(0)}% de IDs novos. ` +
+              `Acumulado=${acumulado.length}/${total}.`
+          );
+          break;
+        }
+      } else {
+        paginasImprodutivasSeguidas = 0;
+      }
+      page += 1;
+    }
+    return { ok: true, total, etiquetas: acumulado };
+  } catch (err) {
+    return {
+      ok: false,
+      total,
+      etiquetas: acumulado,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
 }

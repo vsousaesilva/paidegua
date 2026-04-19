@@ -398,7 +398,7 @@ export async function coletarPrazosPorTarefasViaAPI(
   const todos: InternalProcessoTask[] = [];
   const errosPorTarefa: string[] = [];
   for (const nomeTarefa of opts.nomesTarefas) {
-    onProgress(`[API] listando processos da tarefa "${nomeTarefa}"...`);
+    onProgress(`Coletando processos da tarefa "${nomeTarefa}" — aguarde...`);
     const resp = await listarProcessosDaTarefa({
       nomeTarefa,
       maxProcessos: opts.maxProcessosPorTarefa
@@ -406,11 +406,11 @@ export async function coletarPrazosPorTarefasViaAPI(
     if (!resp?.ok) {
       const err = resp?.error ?? 'erro desconhecido';
       errosPorTarefa.push(`"${nomeTarefa}": ${err}`);
-      onProgress(`[API] falha listando "${nomeTarefa}": ${err}`);
+      onProgress(`Falha ao coletar "${nomeTarefa}": ${err}`);
       continue;
     }
     onProgress(
-      `[API] "${nomeTarefa}": ${resp.processos.length}/${resp.total} processo(s) descobertos.`
+      `Tarefa "${nomeTarefa}": ${resp.processos.length}/${resp.total} processo(s) descobertos.`
     );
     for (const p of resp.processos) {
       todos.push({ tarefaNome: nomeTarefa, processoApi: p });
@@ -436,7 +436,7 @@ export async function coletarPrazosPorTarefasViaAPI(
   }
   const unicos = Array.from(porId.values());
   onProgress(
-    `[API] ${unicos.length} processo(s) unicos a coletar (de ${todos.length} totais).`
+    `${unicos.length} processo(s) únicos a coletar (de ${todos.length} totais). Buscando expedientes — aguarde...`
   );
 
   // -- Fase 2: pool concorrente: resolver ca + montar URL + coletar expedientes --

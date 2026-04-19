@@ -57,7 +57,8 @@ export function defaultSettings(): PAIdeguaSettings {
     ocrMaxPages: 30,
     defaultProfile: DEFAULT_PROFILE,
     triagemCriterios: defaultTriagemCriterios(),
-    triagemCriteriosCustom: []
+    triagemCriteriosCustom: [],
+    etiquetasPromptCriterios: ''
   };
 }
 
@@ -133,6 +134,11 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
         .filter((x): x is NonNullable<typeof x> => x !== null)
     : [];
 
+  const storedEtiqCrit =
+    typeof stored.etiquetasPromptCriterios === 'string'
+      ? stored.etiquetasPromptCriterios
+      : '';
+
   return {
     ...base,
     ...stored,
@@ -140,7 +146,8 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
     maxTokens: storedMaxTokens,
     defaultProfile: storedProfile,
     triagemCriterios: mergedCriterios,
-    triagemCriteriosCustom: storedCustom
+    triagemCriteriosCustom: storedCustom,
+    etiquetasPromptCriterios: storedEtiqCrit
   };
 }
 

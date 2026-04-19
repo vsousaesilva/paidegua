@@ -348,3 +348,308 @@ button {
   text-align: center;
   background: linear-gradient(0deg, rgba(244, 247, 252, 0.6), transparent);
 }
+
+/* =============================================================
+   Etiquetas Inteligentes — aba de configuração
+   ============================================================= */
+
+.paidegua-popup__checkbox--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.paidegua-popup__btn--tiny {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  font-size: 10.5px;
+}
+
+.paidegua-etiquetas-intro {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.paidegua-etiquetas-prompt {
+  position: relative;
+  margin: 0 0 14px;
+  padding: 14px 16px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(12, 50, 111, 0.06);
+  overflow: hidden;
+}
+
+.paidegua-etiquetas-prompt::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--yellow) 0%, var(--primary) 100%);
+}
+
+.paidegua-etiquetas-prompt__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.paidegua-etiquetas-prompt__icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(255, 205, 7, 0.28), rgba(19, 81, 180, 0.18));
+  font-size: 13px;
+}
+
+.paidegua-etiquetas-prompt__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  letter-spacing: 0.1px;
+}
+
+.paidegua-etiquetas-prompt__hint {
+  margin: 0 0 10px;
+  padding-left: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.paidegua-etiquetas-prompt__field {
+  position: relative;
+}
+
+.paidegua-etiquetas-prompt__textarea {
+  width: 100%;
+  min-height: 140px;
+  max-height: 320px;
+  resize: vertical;
+  background: #ffffff;
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+  line-height: 1.55;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.paidegua-etiquetas-prompt__textarea::placeholder {
+  color: rgba(91, 107, 130, 0.72);
+  font-style: italic;
+}
+
+.paidegua-etiquetas-prompt__textarea:hover {
+  border-color: var(--primary-light);
+}
+
+.paidegua-etiquetas-prompt__textarea:focus {
+  border-color: var(--primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(19, 81, 180, 0.14);
+}
+
+.paidegua-etiquetas-prompt__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  min-height: 18px;
+}
+
+.paidegua-etiquetas-prompt__count {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+.paidegua-etiquetas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.paidegua-etiquetas-progress {
+  margin: 8px 0;
+}
+
+.paidegua-etiquetas-progress__bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(19, 81, 180, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.paidegua-etiquetas-progress__fill {
+  height: 100%;
+  width: 0%;
+  background: var(--gradient);
+  transition: width 180ms ease;
+}
+
+.paidegua-etiquetas-status {
+  margin: 6px 0 10px;
+  font-size: 11px;
+  min-height: 14px;
+  color: var(--muted);
+}
+.paidegua-etiquetas-status.is-ok    { color: var(--success); }
+.paidegua-etiquetas-status.is-error { color: var(--danger); }
+.paidegua-etiquetas-status.is-info  { color: var(--primary); }
+
+.paidegua-etiquetas-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.paidegua-etiquetas-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: rgba(244, 247, 252, 0.55);
+}
+
+.paidegua-etiquetas-col--selected {
+  background: rgba(19, 81, 180, 0.05);
+  border-color: var(--border-strong);
+}
+
+.paidegua-etiquetas-col__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.paidegua-etiquetas-col__header h3 {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--primary-dark);
+}
+
+.paidegua-etiquetas-col__count {
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.paidegua-etiquetas-col__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.paidegua-etiquetas-col__filters input[type="search"] {
+  flex: 1;
+  min-width: 120px;
+}
+
+.paidegua-etiquetas-col__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.paidegua-etiquetas-col__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  scrollbar-width: thin;
+}
+
+.paidegua-etiquetas-col__list--catalog {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 12px;
+  row-gap: 2px;
+  max-height: 320px;
+}
+
+.paidegua-etiquetas-col__list--selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+  min-height: 60px;
+  max-height: 180px;
+}
+
+.paidegua-etiquetas-col__item {
+  padding: 3px 2px;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.paidegua-etiquetas-col__item--pill {
+  padding: 0;
+}
+
+.paidegua-etiquetas-col__item label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.paidegua-etiquetas-col__item label span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paidegua-etiquetas-pill {
+  background: rgba(19, 81, 180, 0.08);
+  color: var(--primary-dark);
+  border: 1px solid rgba(19, 81, 180, 0.28);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.paidegua-etiquetas-pill:hover {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--danger);
+  border-color: rgba(192, 57, 43, 0.32);
+}

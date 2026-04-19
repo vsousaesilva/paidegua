@@ -37,7 +37,7 @@ import type {
   TriagemTarefaSnapshot
 } from '../../shared/types';
 
-const TAREFA_REGEX = /(analisar\s+inicial|triagem)/i;
+export const TAREFA_REGEX = /(analisar\s+inicial|triagem)/i;
 const SELETOR_LINK_TAREFA = 'a[href*="painel-usuario-interno/lista-processos-tarefa"]';
 const SELETOR_LISTA_PROCESSOS = 'ul.ui-datalist-data';
 const SELETOR_CARTAO = 'processo-datalist-card';
@@ -1072,6 +1072,11 @@ function lerCartao(cartao: HTMLElement, pjeOrigin: string): TriagemProcesso | nu
 
   return {
     idProcesso: idTaskInstance,
+    // No fallback DOM não temos como separar idProcesso real do
+    // idTaskInstance — ambos saem do mesmo span. Deixamos null para que
+    // o dashboard não exiba o botão "Abrir tarefa" nessas linhas (a URL
+    // `movimentar.seam` exige os dois IDs distintos).
+    idTaskInstance: null,
     numeroProcesso,
     assunto,
     orgao,

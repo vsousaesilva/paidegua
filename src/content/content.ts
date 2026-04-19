@@ -58,11 +58,13 @@ import {
 import { mountChat, type ChatBubbleAction, type ChatController } from './ui/chat';
 import { createTriagemPanel } from './ui/triagem-panel';
 import { createAnaliseProcessoBubble } from './ui/analise-processo-bubble';
+import { createEtiquetasSugestoesBubble } from './ui/etiquetas-sugestoes-bubble';
 import {
   executarAnalisarTarefasComBridge,
   instalarListenerTriagemNoIframe
 } from './triagem/triagem-bridge';
 import { executarAnalisarProcesso } from './triagem/analisar-processo';
+import { executarSugerirEtiquetas } from './triagem/sugerir-etiquetas';
 import {
   coletarTarefasSelecionadas,
   instalarListenerGestaoNoIframe
@@ -72,6 +74,7 @@ import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { computarIndicadoresGestao } from './gestao/gestao-indicadores';
 import { coletarPrazosPorTarefasViaAPI } from './gestao/prazos-fita-coordinator';
+import { listarEtiquetas } from './pje-api/pje-api-from-content';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
@@ -2526,7 +2529,9 @@ function handleTriagemInteligente(): void {
       onAnalisarProcesso: () => {
         void handleAnalisarProcesso(notice);
       },
-      onInserirEtiquetas: () => notice('Inserir etiquetas mágicas — em breve.')
+      onInserirEtiquetas: () => {
+        void handleInserirEtiquetas(notice);
+      }
     },
     { isPainelUsuario, isProcessoAberto }
   );
@@ -2608,6 +2613,89 @@ async function handleAnalisarProcesso(
     {
       onGerarEmenda: (providencias) => {
         void handleGerarEmendaInicial(providencias, notice);
+      }
+    }
+  );
+  chat.addCustomBubble(bubble);
+}
+
+/**
+ * Fluxo do botão "Inserir etiquetas mágicas" (perfil Secretaria →
+ * Triagem Inteligente):
+ *
+ *   1. Garante que os autos estejam extraídos (mesmo pipeline de
+ *      `handleAnalisarProcesso`).
+ *   2. Monta o contexto dos autos (linha do tempo + docs recentes).
+ *   3. Delega ao orquestrador, que envia ao background. O background
+ *      consulta a LLM para extrair marcadores semânticos e aplica BM25
+ *      contra as etiquetas sugestionáveis que o usuário marcou na aba
+ *      "Etiquetas Inteligentes" do popup.
+ *   4. Renderiza a bolha de sugestões na timeline. O servidor revisa as
+ *      sugestões, marca as que quer aplicar e copia os nomes — a
+ *      aplicação via API REST entra numa iteração futura (ainda não há
+ *      endpoint mapeado para anexar etiquetas a um processo específico).
+ */
+async function handleInserirEtiquetas(
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  if (!mounted || !memory.adapter || !memory.detection?.isProcessoPage) {
+    notice(
+      'Abra os autos digitais de um processo antes de usar "Inserir etiquetas mágicas".',
+      'error'
+    );
+    return;
+  }
+  if (!memory.settings) {
+    notice('Aguarde o carregamento das configurações e tente novamente.', 'error');
+    return;
+  }
+
+  const ok = await ensureDocumentosExtraidosParaAnalise(notice);
+  if (!ok) return;
+
+  const caseContext = buildAnaliseProcessoContextText(
+    memory.detection?.numeroProcesso ?? null
+  );
+  if (!caseContext) {
+    notice(
+      'Nenhum conteúdo textual disponível nos documentos extraídos.',
+      'error'
+    );
+    return;
+  }
+
+  notice('Sugerindo etiquetas para este processo…', 'info');
+  const resp = await executarSugerirEtiquetas({ caseContext });
+  if (!resp.ok) {
+    notice(resp.error ?? 'Falha ao sugerir etiquetas.', 'error');
+    return;
+  }
+  notice('', 'info');
+
+  const chat = ensureChatMounted();
+  const bubble = createEtiquetasSugestoesBubble(
+    mountShell().shadow,
+    resp.markers ?? [],
+    resp.matches ?? [],
+    {
+      onCopiarSelecionadas: (etiquetas) => {
+        if (etiquetas.length === 0) {
+          notice('Nenhuma etiqueta selecionada para copiar.', 'error');
+          return;
+        }
+        const texto = etiquetas.map((e) => e.nomeTag).join('\n');
+        void navigator.clipboard
+          .writeText(texto)
+          .then(() => {
+            notice(
+              `${etiquetas.length} etiqueta(s) copiada(s) para a área de transferência.`,
+              'info'
+            );
+          })
+          .catch((err) => {
+            console.warn(`${LOG_PREFIX} Falha ao copiar etiquetas:`, err);
+            notice('Falha ao copiar etiquetas para a área de transferência.', 'error');
+          });
       }
     }
   );
@@ -3027,6 +3115,11 @@ async function handlePrazosFitaRunColeta(
       payload: { requestId, dashboardPayload }
     });
   } catch (err) {
+    if (isContextInvalidatedError(err)) {
+      // Extensao recarregada no meio da coleta: a aba-painel ja foi
+      // reiniciada junto, nao ha para quem reportar. Silencio total.
+      return;
+    }
     console.warn(`${LOG_PREFIX} handlePrazosFitaRunColeta falhou:`, err);
     try {
       await chrome.runtime.sendMessage({
@@ -3093,6 +3186,9 @@ async function handleGestaoRunColeta(
       payload: { requestId, dashboardPayload }
     });
   } catch (err) {
+    if (isContextInvalidatedError(err)) {
+      return;
+    }
     console.warn(`${LOG_PREFIX} handleGestaoRunColeta falhou:`, err);
     try {
       await chrome.runtime.sendMessage({
@@ -3303,6 +3399,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Prazos na fita (Fase A2): background abriu esta aba apenas para
   // extrair os expedientes; extraímos e respondemos para o background
   // fechar a aba. Apenas no top frame e em host PJe.
+  // Etiquetas Inteligentes: background pede a listagem do catálogo do
+  // PJe. Rodamos same-origin (aba do PJe) porque o servidor exige o
+  // cookie JSESSIONID + headers X-pje-* que só são aceitos vindos do
+  // próprio domínio. Apenas o top frame da aba PJe executa.
+  if (message.channel === MESSAGE_CHANNELS.ETIQUETAS_RUN_FETCH) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      try {
+        const payload = message.payload as { pageSize?: number } | null;
+        const resp = await listarEtiquetas({
+          pageSize: payload?.pageSize,
+          onProgress: () => { /* reportado depois via canal separado */ }
+        });
+        sendResponse(resp);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          total: 0,
+          etiquetas: [],
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    })();
+    return true;
+  }
+
   if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_EXTRAIR_NA_ABA) {
     if (window !== window.top) return false;
     if (!isPJeHost(window.location.hostname)) return false;
@@ -3426,6 +3549,17 @@ function mountGlobalNavbarButton(): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Detecta o erro "Extension context invalidated" que o Chrome emite quando
+ * a extensao e recarregada/atualizada com um content script ainda rodando.
+ * Nao e um bug do nosso codigo — apenas a aba antiga que perdeu o runtime.
+ * Evita poluir o console com stacks vermelhos em um cenario esperado.
+ */
+function isContextInvalidatedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /extension context invalidated/i.test(msg);
 }
 
 function base64ToBlob(b64: string, mime: string): Blob {

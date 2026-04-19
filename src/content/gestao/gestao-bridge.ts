@@ -265,11 +265,11 @@ export async function coletarTarefasSelecionadas(opts: {
       return { ok: true, snapshots: resultadoApi.snapshots };
     }
     onProgress(
-      `[API] indisponível (${resultadoApi.error ?? 'sem detalhe'}) — usando DOM como fallback.`
+      `Coleta rápida indisponível (${resultadoApi.error ?? 'sem detalhe'}) — continuando pelo DOM, aguarde...`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    onProgress(`[API] erro inesperado (${msg}) — usando DOM como fallback.`);
+    onProgress(`Coleta rápida falhou inesperadamente (${msg}) — continuando pelo DOM, aguarde...`);
   }
 
   // -- Fallback DOM ------------------------------------------------------

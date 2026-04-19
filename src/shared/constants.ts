@@ -258,7 +258,55 @@ export const MESSAGE_CHANNELS = {
   PRAZOS_FITA_COLETA_PROG: 'paidegua/prazos-fita/coleta-prog',
   PRAZOS_FITA_COLETA_DONE: 'paidegua/prazos-fita/coleta-done',
   PRAZOS_FITA_COLETA_READY: 'paidegua/prazos-fita/coleta-ready',
-  PRAZOS_FITA_COLETA_FAIL: 'paidegua/prazos-fita/coleta-fail'
+  PRAZOS_FITA_COLETA_FAIL: 'paidegua/prazos-fita/coleta-fail',
+  /**
+   * Dashboard "Prazos na Fita" → background: pede para abrir a aba do PJe em
+   * `movimentar.seam` da tarefa alvo e automatizar o encerramento de todos os
+   * expedientes abertos. O background abre a aba com um marcador em `#hash`,
+   * o content script do PJe reconhece o marcador e dispara a automação em
+   * main world (monkey-patch de `confirm`, clique no header "selecionar todos"
+   * e no botão "Encerrar expedientes selecionados"). Progresso e resultado
+   * voltam ao dashboard via `PRAZOS_ENCERRAR_RESULT`.
+   */
+  PRAZOS_ENCERRAR_RUN: 'paidegua/prazos-fita/encerrar-run',
+  /**
+   * Content (aba do PJe na `movimentar.seam`) → background → dashboard: status
+   * de uma tentativa de encerramento automático. Estados possíveis no payload:
+   * `executando`, `sucesso`, `erro`, `nada-a-fazer`. O dashboard atualiza o
+   * ícone da coluna e persiste o resultado em `PRAZOS_ENCERRAMENTOS`.
+   */
+  PRAZOS_ENCERRAR_RESULT: 'paidegua/prazos-fita/encerrar-result',
+  /**
+   * Canais da feature "Etiquetas Inteligentes" (perfil Secretaria /
+   * Triagem Inteligente → botão Inserir etiquetas mágicas).
+   *
+   * O catálogo de etiquetas do PJe é buscado sob demanda a partir da
+   * página de opções. O background encaminha a chamada para o content
+   * script da aba PJe ativa (mesmo padrão do Painel Gerencial e do
+   * Prazos na Fita — rodar same-origin é o que permite que os cookies
+   * e o `X-pje-*` capturados pelo interceptor sejam aceitos pelo
+   * servidor).
+   */
+  /** Options → background: pede para buscar o catálogo completo via API. */
+  ETIQUETAS_FETCH_CATALOG: 'paidegua/etiquetas/fetch-catalog',
+  /**
+   * Background → content (aba PJe): executa a paginação do catálogo
+   * via `listarEtiquetas` e devolve a lista consolidada.
+   */
+  ETIQUETAS_RUN_FETCH: 'paidegua/etiquetas/run-fetch',
+  /**
+   * Options/Triagem → background: reconstrói o índice BM25 das
+   * etiquetas sugestionáveis após alteração no IndexedDB.
+   */
+  ETIQUETAS_INVALIDATE: 'paidegua/etiquetas/invalidate',
+  /**
+   * Content (Triagem Inteligente) → background: dada a lista de documentos
+   * extraídos do processo em curso, pede à LLM a extração de marcadores
+   * semânticos e roda o BM25 contra as etiquetas sugestionáveis. Devolve
+   * os marcadores produzidos + as etiquetas ranqueadas (com a métrica de
+   * similaridade e os marcadores que contribuíram para cada match).
+   */
+  ETIQUETAS_SUGERIR: 'paidegua/etiquetas/sugerir'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -335,7 +383,24 @@ export const STORAGE_KEYS = {
    * do painel "Prazos na Fita". Gravada pelo background ao receber
    * PRAZOS_FITA_COLETA_DONE e lida pela aba do dashboard.
    */
-  PRAZOS_FITA_DASHBOARD_PAYLOAD: 'paidegua.prazosFita.dashboardPayload'
+  PRAZOS_FITA_DASHBOARD_PAYLOAD: 'paidegua.prazosFita.dashboardPayload',
+  /**
+   * Mapa em `chrome.storage.local` com o estado por tarefa do encerramento
+   * automatico acionado pelo painel "Prazos na Fita". Chave do mapa:
+   * `${idProcesso}:${idTaskInstance}`. Valor: `{ estado, atualizadoEm,
+   * quantidade?, mensagem? }`. Persistir em `local` (nao `session`) permite
+   * que o dashboard, ao ser recarregado apos um F5, ja saiba quais linhas
+   * ficaram verdes (sucesso) ou amarelas (erro) na ultima tentativa.
+   */
+  PRAZOS_ENCERRAMENTOS: 'paidegua.prazosFita.encerramentos',
+  /**
+   * Log de auditoria em `chrome.storage.local` com o historico de
+   * encerramentos automaticos (timestamp, CNJ, idProcesso, idTaskInstance,
+   * quantidade encerrada, estado final). Mantido apenas localmente — nao
+   * vai para a LLM nem para nuvem. Serve para o proprio usuario conferir,
+   * depois, o que foi fechado automaticamente pelo painel.
+   */
+  PRAZOS_ENCERRAR_AUDIT: 'paidegua.prazosFita.encerrarAudit'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

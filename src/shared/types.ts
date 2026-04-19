@@ -83,6 +83,13 @@ export interface PAIdeguaSettings {
    * livre que o juiz escreveu.
    */
   triagemCriteriosCustom: TriagemCriterioCustom[];
+  /**
+   * Orientações em texto livre que o usuário redige na aba "Etiquetas
+   * Inteligentes" para guiar a extração de MARCADORES pela LLM antes do
+   * de-para BM25. Fica vazio por padrão; quando preenchido, é injetado
+   * no prompt do extrator de marcadores.
+   */
+  etiquetasPromptCriterios: string;
 }
 
 /** Critério livre criado pelo magistrado, fora do conjunto da NT 1/2025. */
@@ -162,6 +169,13 @@ export interface SynthesizeSpeechResult {
 export interface TriagemProcesso {
   /** ID interno do PJe (extraído do `<span class="hidden" id="...">`). */
   idProcesso: string;
+  /**
+   * ID da TaskInstance corrente (equivalente ao `newTaskId` que o PJe usa
+   * em `movimentar.seam?idProcesso=X&newTaskId=Y` para abrir a tarefa).
+   * Populado apenas no caminho da API REST — o fallback DOM não consegue
+   * separar `idProcesso` de `idTaskInstance`, então aqui vem null.
+   */
+  idTaskInstance: string | null;
   /** Número CNJ (ex: "PJEC 0001019-74.2026.4.05.8109"). */
   numeroProcesso: string;
   /** Classe / assunto curto (linha logo após o número, ex: "Indenização por Dano Moral"). */
@@ -682,6 +696,76 @@ export interface PJeApiResolveCaResponse {
   ok: boolean;
   /** Hash `ca` para anexar como query string da URL dos autos. */
   ca: string | null;
+  error?: string;
+}
+
+/**
+ * Shape bruto de uma etiqueta na resposta de
+ * `POST /painelUsuario/etiquetas`. Parsing tolera campos ausentes — só
+ * `id` e `nomeTag` são obrigatórios para formar um `EtiquetaRecord`.
+ */
+export interface PJeApiEtiquetaRaw {
+  id: number;
+  nomeTag: string;
+  nomeTagCompleto?: string | null;
+  favorita?: boolean | null;
+  possuiFilhos?: boolean | null;
+  idTagFavorita?: number | null;
+}
+
+/** Item normalizado retornado pelo cliente REST. */
+export interface PJeApiEtiqueta {
+  id: number;
+  nomeTag: string;
+  nomeTagCompleto: string;
+  favorita: boolean;
+  possuiFilhos: boolean;
+  idTagFavorita: number | null;
+}
+
+/** Resposta consolidada da listagem de etiquetas (todas as páginas). */
+export interface PJeApiEtiquetasListResponse {
+  ok: boolean;
+  total: number;
+  etiquetas: PJeApiEtiqueta[];
+  error?: string;
+}
+
+/**
+ * Uma etiqueta sugerida pelo pipeline "Inserir etiquetas mágicas".
+ * Formato "leve" — carrega apenas o mínimo que a UI precisa exibir e o
+ * `content.ts` precisa para aplicar a etiqueta no futuro.
+ */
+export interface EtiquetaSugerida {
+  /** `id` do PJe (idTag). Necessário para aplicação/dedupe. */
+  id: number;
+  /** Nome exibível (usa `nomeTag` do registro). */
+  nomeTag: string;
+  /** Caminho hierárquico (ex.: "Previdenciário > Aposentadoria > Rural"). */
+  nomeTagCompleto: string;
+  /** True quando o usuário marcou a etiqueta como favorita no PJe. */
+  favorita: boolean;
+  /** Similaridade normalizada 0..100 relativa ao top-1 do ranking. */
+  similarity: number;
+  /** Score BM25 bruto (somado por marcador, com boost aplicado). */
+  score: number;
+  /** Marcadores (gerados pela LLM) que contribuíram com este match. */
+  matchedMarkers: string[];
+}
+
+/** Envelope enviado do content para o background na ação "sugerir etiquetas". */
+export interface SugerirEtiquetasRequest {
+  /** Trecho consolidado dos autos (já truncado pelo chamador). */
+  caseContext: string;
+}
+
+/** Resposta consolidada da ação "sugerir etiquetas". */
+export interface SugerirEtiquetasResponse {
+  ok: boolean;
+  /** Marcadores gerados pelo extrator LLM (antes do de-para BM25). */
+  markers?: string[];
+  /** Etiquetas sugestionáveis ranqueadas, já ordenadas por score. */
+  matches?: EtiquetaSugerida[];
   error?: string;
 }
 

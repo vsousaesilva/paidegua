@@ -985,3 +985,92 @@ export function buildEmendaInicialPrompt(
     `${MINUTA_FORMAT_RULES}`
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+//  ETIQUETAS INTELIGENTES — extração de MARCADORES semânticos do processo
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Limite de contexto enviado ao LLM para extrair marcadores. */
+const MARCADORES_CASE_CONTEXT_LIMIT = 16_000;
+
+/**
+ * Monta o prompt que pede à LLM uma lista curta de MARCADORES semânticos
+ * sobre o processo — termos/frases curtos que descrevem o caso (matéria,
+ * benefício, fase, providência central). Esses marcadores são depois
+ * mapeados pelo BM25 para as etiquetas sugestionáveis que o usuário
+ * selecionou no popup.
+ *
+ * O prompt NÃO conhece o catálogo de etiquetas — produz marcadores
+ * livres em vocabulário natural do Judiciário, para o BM25 fazer o
+ * casamento. Isso mantém o LLM desvinculado do catálogo (não precisa
+ * re-enviar milhares de nomes) e o matcher explicável.
+ *
+ * `userHints` é o texto livre que o usuário escreveu na aba "Etiquetas
+ * Inteligentes" do popup (`etiquetasPromptCriterios`). Quando presente,
+ * orienta o foco dos marcadores. Vazio = comportamento padrão.
+ */
+export function buildEtiquetasMarkersPrompt(
+  caseContext: string,
+  userHints: string,
+  criteriosBlock: string
+): string {
+  const hints = (userHints ?? '').trim();
+  const hintsBlock = hints
+    ? `\n## ORIENTAÇÕES DO USUÁRIO (prioridade na escolha dos marcadores)\n${hints}\n`
+    : '';
+  const critBlock = (criteriosBlock ?? '').trim() ? `\n${criteriosBlock}\n` : '';
+
+  return (
+    `Você é um assistente que LÊ o processo e produz uma lista curta de MARCADORES semânticos descrevendo-o — termos ou frases curtas (2 a 6 palavras cada) que resumem a natureza da causa, o benefício pleiteado, a fase processual, as providências pendentes e outros aspectos relevantes para CLASSIFICAÇÃO do processo.\n\n` +
+    `Os marcadores serão depois casados automaticamente com um catálogo de etiquetas do PJe — NÃO tente adivinhar os nomes exatos das etiquetas. Sua saída é a descrição DO CASO em vocabulário jurídico natural; o casamento fica com um algoritmo determinístico posterior.\n\n` +
+    `## PRINCÍPIOS\n` +
+    `- Produza entre 5 e 15 marcadores. Nem menos (perde recall), nem mais (gera ruído).\n` +
+    `- Cada marcador deve ser CURTO (2 a 6 palavras), em minúsculas, sem artigo/preposição inicial, sem pontuação final. Ex.: "aposentadoria por idade rural", "revisão da vida toda", "indeferimento de tutela de urgência".\n` +
+    `- Vocabulário em PT-BR forense; evite abreviações idiossincráticas.\n` +
+    `- Use somente o que estiver FUNDAMENTADO no contexto dos autos abaixo. Não invente fatos.\n` +
+    `- Não inclua dados pessoais (nomes, CPFs, números de benefício) — marcadores descrevem a natureza do caso, não identificam partes.\n` +
+    `- Quando a fase processual for clara, inclua UM marcador sobre a fase (ex.: "fase postulatória", "cumprimento de sentença", "fase recursal").\n` +
+    `- Quando houver providência central pendente, inclua UM marcador sobre ela (ex.: "decisão sobre tutela", "despacho de saneamento", "sentença de mérito").\n` +
+    hintsBlock +
+    critBlock +
+    `\n## CONTEXTO DOS AUTOS\n` +
+    '```\n' +
+    caseContext.slice(0, MARCADORES_CASE_CONTEXT_LIMIT) +
+    '\n```\n\n' +
+    `## FORMATO DE RESPOSTA\n` +
+    `Responda SEMPRE em JSON puro, sem markdown, sem comentários, no formato exato:\n` +
+    `{"marcadores": ["marcador 1", "marcador 2", "..."]}\n\n` +
+    `NÃO inclua nada além do JSON.`
+  );
+}
+
+/**
+ * Extrai o array de marcadores da resposta bruta do LLM. Tolera markdown
+ * ou texto em volta. Normaliza cada marcador (lowercase, trim, colapsa
+ * espaços). Descarta entradas vazias, duplicadas ou longas demais.
+ */
+export function parseEtiquetasMarkersResponse(raw: string): string[] {
+  if (!raw) return [];
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end < 0 || end <= start) return [];
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return [];
+  }
+  const arr = (obj as { marcadores?: unknown })?.marcadores;
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of arr) {
+    if (typeof item !== 'string') continue;
+    const norm = item.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!norm || norm.length > 80) continue;
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out.slice(0, 20); // cap de segurança
+}

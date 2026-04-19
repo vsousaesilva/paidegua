@@ -94,44 +94,55 @@ a:hover { text-decoration: underline; }
   padding: 48px;
 }
 
-.resumo {
+/*
+ * Cards numericos do topo — mesmo layout/estilo usados em
+ * `dashboard` (Analisar tarefas) e `gestao-dashboard` (Painel
+ * Gerencial). Variante `metric--{danger|warning|success}` adiciona
+ * uma faixa colorida a esquerda e tinge o valor.
+ */
+.metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
 }
 
-.kpi {
+.metric {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px 18px;
   box-shadow: var(--shadow-soft);
+  position: relative;
 }
 
-.kpi__label {
-  color: var(--muted);
-  font-size: 11px;
+.metric__label {
+  font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  color: var(--primary);
   margin-bottom: 6px;
 }
 
-.kpi__value {
-  font-size: 28px;
-  font-weight: 600;
+.metric__value {
+  font-size: 26px;
+  font-weight: 700;
   color: var(--primary-dark);
   line-height: 1;
 }
 
-.kpi__value--warning { color: var(--warning); }
-.kpi__value--danger  { color: var(--danger); }
-.kpi__value--success { color: var(--success); }
-
-.kpi__sub {
-  margin-top: 4px;
+.metric__hint {
   font-size: 11px;
   color: var(--muted);
+  margin-top: 6px;
 }
+
+.metric--danger { border-left: 3px solid var(--danger); }
+.metric--danger .metric__value { color: var(--danger); }
+.metric--warning { border-left: 3px solid var(--warning); }
+.metric--warning .metric__value { color: var(--warning); }
+.metric--success { border-left: 3px solid var(--success); }
+.metric--success .metric__value { color: var(--success); }
 
 .card {
   background: var(--bg-card);
@@ -162,6 +173,19 @@ a:hover { text-decoration: underline; }
 .table-wrap--scroll {
   max-height: 580px;
   overflow-y: auto;
+}
+
+/*
+ * Variante do wrapper para tabelas pequenas (ex.: Diagnóstico de coleta):
+ * encolhe para o conteúdo e fica alinhado à esquerda do card — mesmo
+ * comportamento da tabela equivalente em "Analisar tarefas".
+ */
+.table-wrap--auto {
+  display: inline-block;
+  max-width: 100%;
+}
+.table-wrap--auto .table--auto {
+  width: auto;
 }
 
 .grupos {
@@ -216,13 +240,20 @@ th, td {
 }
 
 thead th {
-  background: rgba(19, 81, 180, 0.05);
+  /*
+   * Fundo opaco (nao rgba) e obrigatorio porque o cabecalho e `position:
+   * sticky` — com transparencia, as linhas do tbody passam por tras do
+   * cabecalho enquanto a lista rola, deixando o texto ilegivel.
+   */
+  background: #eef3fb;
   color: var(--primary-dark);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   position: sticky;
   top: 0;
+  z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 tbody tr:hover { background: rgba(19, 81, 180, 0.04); }
@@ -273,6 +304,26 @@ td.col-tar { color: var(--muted); font-size: 12px; }
 .proc-copy:hover { background: rgba(19, 81, 180, 0.08); color: var(--primary); border-color: var(--primary-light); }
 .proc-copy:active { background: rgba(19, 81, 180, 0.16); }
 .proc-copy:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+
+.proc-open-task {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  line-height: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.proc-open-task:hover { background: rgba(19, 81, 180, 0.08); color: var(--primary); border-color: var(--primary-light); }
+.proc-open-task:active { background: rgba(19, 81, 180, 0.16); }
+.proc-open-task:focus-visible {
   outline: 2px solid var(--primary-light);
   outline-offset: 2px;
 }
@@ -363,3 +414,140 @@ details.card[open] summary { margin-bottom: 12px; }
 }
 
 .btn:hover { background: rgba(19, 81, 180, 0.06); border-color: var(--primary); }
+
+/* =====================================================================
+ * Coluna "Encerrar" — botão 5-estados e tooltip "?" no cabeçalho
+ * ===================================================================== */
+
+.th-encerrar {
+  text-align: center;
+  width: 150px;
+}
+
+.th-wrap--encerrar {
+  justify-content: center;
+}
+
+.th-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  line-height: 1;
+  user-select: none;
+}
+
+.th-help:hover,
+.th-help:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+  outline: none;
+}
+
+.col-encerrar {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.proc-encerrar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  color: var(--primary-dark);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.proc-encerrar:hover:not([disabled]) {
+  background: rgba(19, 81, 180, 0.06);
+  border-color: var(--primary);
+}
+
+.proc-encerrar[disabled] {
+  cursor: default;
+  opacity: 0.95;
+}
+
+.proc-encerrar__icon {
+  flex-shrink: 0;
+}
+
+.proc-encerrar__label {
+  white-space: nowrap;
+}
+
+/* Estados */
+.proc-encerrar--pronto {
+  /* default — cinza/azul neutro */
+}
+
+.proc-encerrar--executando {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(19, 81, 180, 0.06);
+}
+
+.proc-encerrar--sucesso {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(30, 126, 52, 0.10);
+}
+
+.proc-encerrar--erro {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: rgba(180, 106, 0, 0.10);
+}
+
+.proc-encerrar--erro:hover {
+  background: rgba(180, 106, 0, 0.18);
+}
+
+.proc-encerrar--vazio {
+  border-color: var(--border);
+  color: var(--muted);
+  background: rgba(91, 107, 130, 0.06);
+}
+
+.proc-encerrar__icon--spin {
+  animation: paidegua-spin 900ms linear infinite;
+}
+
+@keyframes paidegua-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Variante compacta: linhas da mesma tarefa que não foram clicadas
+ * refletem o andamento/resultado só pelo ícone, sem o rótulo, para
+ * deixar claro qual foi a linha clicada. */
+.proc-encerrar--compact {
+  padding: 4px 6px;
+  opacity: 0.85;
+  /* Mantém clicável (pronto/erro) para permitir re-tentativa a partir de
+   * qualquer linha da tarefa. O estado `disabled` é controlado pelo
+   * atributo `disabled` do próprio <button>. */
+}
+
+.proc-encerrar--compact .proc-encerrar__label {
+  display: none;
+}

@@ -12,6 +12,12 @@
  */
 
 import { MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
+import {
+  abrirTarefaPopup,
+  OPEN_TASK_ICON_SVG,
+  podeAbrirTarefa
+} from '../shared/pje-task-popup';
+import { makeTableSortable, type TableSortColumn } from '../shared/table-sort';
 import { sanitizePayloadForLLM } from '../shared/triagem-anonymize';
 import type {
   TriagemDashboardPayload,
@@ -206,6 +212,14 @@ function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
     return sec;
   }
 
+  const table = buildProcTableBase(ord);
+  makeTableSortable(table, ord, procTableColumns());
+  sec.appendChild(wrapScroll(table));
+  attachCopyButton(sec, () => procsToText(ord), 'Copiar lista de processos');
+  return sec;
+}
+
+function buildProcTableBase(procs: TriagemProcesso[]): HTMLTableElement {
   const table = document.createElement('table');
   table.className = 'proc-table';
   table.innerHTML = `
@@ -220,7 +234,7 @@ function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
     <tbody></tbody>
   `;
   const tbody = table.querySelector('tbody') as HTMLElement;
-  for (const p of ord) {
+  for (const p of procs) {
     const tr = document.createElement('tr');
     tr.appendChild(tdProcNum(p));
     tr.appendChild(tdText(p.assunto));
@@ -228,9 +242,16 @@ function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
     tr.appendChild(tdDias(p.diasNaTarefa));
     tbody.appendChild(tr);
   }
-  sec.appendChild(wrapScroll(table));
-  attachCopyButton(sec, () => procsToText(ord), 'Copiar lista de processos');
-  return sec;
+  return table;
+}
+
+function procTableColumns(): TableSortColumn<TriagemProcesso>[] {
+  return [
+    { type: 'alpha', value: (p) => extractCNJ(p.numeroProcesso) || p.numeroProcesso || null },
+    { type: 'alpha', value: (p) => p.assunto || null },
+    { type: 'alpha', value: (p) => p.poloPassivo || null },
+    { type: 'num',   value: (p) => p.diasNaTarefa }
+  ];
 }
 
 // =====================================================================
@@ -412,28 +433,8 @@ function buildProcLista(procs: TriagemProcesso[]): HTMLElement {
   if (procs.length === 0) {
     return elText('p', 'section__hint', 'Nenhum processo nessa categoria.');
   }
-  const table = document.createElement('table');
-  table.className = 'proc-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Processo</th>
-        <th>Assunto</th>
-        <th>Polo passivo</th>
-        <th style="text-align:right">Dias</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  `;
-  const tbody = table.querySelector('tbody') as HTMLElement;
-  for (const p of procs) {
-    const tr = document.createElement('tr');
-    tr.appendChild(tdProcNum(p));
-    tr.appendChild(tdText(p.assunto));
-    tr.appendChild(tdText(p.poloPassivo));
-    tr.appendChild(tdDias(p.diasNaTarefa));
-    tbody.appendChild(tr);
-  }
+  const table = buildProcTableBase(procs);
+  makeTableSortable(table, procs, procTableColumns());
   return wrapScroll(table);
 }
 
@@ -566,7 +567,6 @@ function buildDiagnostico(payload: TriagemDashboardPayload): HTMLElement {
     '<thead><tr>' +
     '<th>Tarefa</th>' +
     '<th style="text-align:right">Lidos</th>' +
-    '<th style="text-align:right">Páginas</th>' +
     '</tr></thead>';
   const tbody = document.createElement('tbody');
   for (const t of payload.tarefas) {
@@ -575,12 +575,13 @@ function buildDiagnostico(payload: TriagemDashboardPayload): HTMLElement {
     const tdLido = tdText(String(t.totalLido));
     tdLido.style.textAlign = 'right';
     tr.appendChild(tdLido);
-    const tdPag = tdText(String(t.paginasLidas ?? '—'));
-    tdPag.style.textAlign = 'right';
-    tr.appendChild(tdPag);
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
+  makeTableSortable(table, payload.tarefas, [
+    { type: 'alpha', value: (t) => t.tarefaNome || null },
+    { type: 'num',   value: (t) => t.totalLido }
+  ]);
   sec.appendChild(wrapScroll(table));
   return sec;
 }
@@ -650,6 +651,26 @@ function procNumberSpan(p: TriagemProcesso): HTMLElement {
     void copyToClipboard(cnj, `Número copiado: ${cnj}`);
   });
   wrap.appendChild(btn);
+
+  if (podeAbrirTarefa(p.idProcesso, p.idTaskInstance) && p.url) {
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'proc-open-task';
+    openBtn.title = 'Abrir tarefa no PJe';
+    openBtn.setAttribute('aria-label', `Abrir tarefa do processo ${cnj}`);
+    openBtn.innerHTML = OPEN_TASK_ICON_SVG;
+    openBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const ok = abrirTarefaPopup({
+        idProcesso: p.idProcesso,
+        idTaskInstance: p.idTaskInstance!,
+        referenciaUrlAutos: p.url
+      });
+      if (!ok) showToast('Não foi possível abrir a tarefa (popup bloqueado?).');
+    });
+    wrap.appendChild(openBtn);
+  }
 
   return wrap;
 }

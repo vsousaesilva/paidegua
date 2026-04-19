@@ -16,6 +16,7 @@ import {
   CHAT_PORT_MSG,
   LOG_PREFIX,
   MESSAGE_CHANNELS,
+  PJE_HOST_PATTERNS,
   PORT_NAMES,
   STORAGE_KEYS,
   type ProviderId
@@ -28,8 +29,11 @@ import {
   SYSTEM_PROMPT,
   buildAnaliseProcessoPrompt,
   buildDocumentContext,
+  buildEtiquetasMarkersPrompt,
+  buildTriagemCriteriosBlock,
   buildTriagemPrompt,
   parseAnaliseProcessoResponse,
+  parseEtiquetasMarkersResponse,
   parseTriagemResponse,
   getTemplateActionsForGrau,
   type CriterioResolvido,
@@ -48,6 +52,10 @@ import {
   searchTemplates,
   type SearchOptions
 } from '../shared/templates-search';
+import {
+  invalidateSugestionaveisIndex,
+  rankEtiquetasSugestionaveis
+} from '../shared/etiquetas-matcher';
 import type { SaveTemplatePayload } from '../shared/templates-save';
 import type {
   AnaliseProcessoResult,
@@ -63,6 +71,8 @@ import type {
   PAIdeguaSettings,
   PJeAuthSnapshot,
   PrazosFitaDashboardPayload,
+  SugerirEtiquetasRequest,
+  SugerirEtiquetasResponse,
   SynthesizeSpeechPayload,
   SynthesizeSpeechResult,
   TestConnectionResult,
@@ -366,9 +376,35 @@ chrome.runtime.onMessage.addListener(
         );
         return true;
 
+      case MESSAGE_CHANNELS.PRAZOS_ENCERRAR_RUN:
+        void handlePrazosEncerrarRun(
+          message.payload as PrazosEncerrarRequest,
+          sendResponse
+        );
+        return true;
+
       case MESSAGE_CHANNELS.PJE_AUTH_CAPTURED:
         void handlePjeAuthCaptured(
           message.payload as PJeAuthSnapshot,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.ETIQUETAS_FETCH_CATALOG:
+        void handleEtiquetasFetchCatalog(
+          message.payload as { pageSize?: number } | null,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.ETIQUETAS_INVALIDATE:
+        invalidateSugestionaveisIndex();
+        sendResponse({ ok: true });
+        return true;
+
+      case MESSAGE_CHANNELS.ETIQUETAS_SUGERIR:
+        void handleEtiquetasSugerir(
+          message.payload as SugerirEtiquetasRequest,
           sendResponse
         );
         return true;
@@ -2869,6 +2905,236 @@ function parseGestaoInsightsResponse(raw: string): GestaoInsightsLLM | null {
 }
 
 // =====================================================================
+// Etiquetas Inteligentes — busca do catálogo via content script do PJe
+// =====================================================================
+
+/**
+ * Localiza uma aba aberta do PJe (qualquer host `*.jus.br` casando com
+ * os padrões conhecidos) e devolve seu `tabId`. Escolhe a aba ativa
+ * quando houver; do contrário, a primeira aba PJe encontrada. Retorna
+ * `null` quando nenhuma aba estiver aberta — nesse caso a página de
+ * opções deve orientar o usuário a entrar no PJe antes.
+ */
+async function localizarAbaPjeParaApi(): Promise<number | null> {
+  const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+  const pjeTabs = tabs.filter((t) => {
+    if (t.id === undefined || !t.url) return false;
+    try {
+      const host = new URL(t.url).hostname;
+      return PJE_HOST_PATTERNS.some((re) => re.test(host));
+    } catch {
+      return false;
+    }
+  });
+  if (pjeTabs.length === 0) return null;
+  const ativa = pjeTabs.find((t) => t.active);
+  return ativa?.id ?? pjeTabs[0].id ?? null;
+}
+
+/**
+ * Options → background → content (aba do PJe): pede a listagem completa
+ * do catálogo de etiquetas. Encaminha a chamada ao content script da aba
+ * PJe (rodar same-origin é o que permite que os cookies + headers
+ * `X-pje-*` capturados pelo interceptor sejam aceitos pelo servidor).
+ */
+async function handleEtiquetasFetchCatalog(
+  payload: { pageSize?: number } | null,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const tabId = await localizarAbaPjeParaApi();
+    if (tabId == null) {
+      sendResponse({
+        ok: false,
+        total: 0,
+        etiquetas: [],
+        error:
+          'Nenhuma aba do PJe aberta. Abra o painel do usuário no PJe ' +
+          '(qualquer tarefa) e tente novamente — o snapshot de auth é ' +
+          'capturado a partir da primeira chamada do Angular.'
+      });
+      return;
+    }
+    let resp: { ok?: boolean; [k: string]: unknown } | undefined;
+    try {
+      resp = await sendToTabWithRetry(
+        tabId,
+        {
+          channel: MESSAGE_CHANNELS.ETIQUETAS_RUN_FETCH,
+          payload: payload ?? {}
+        },
+        { attempts: 6, intervalMs: 500 }
+      );
+    } catch (err) {
+      // "Could not establish connection. Receiving end does not exist."
+      // significa que o content script não está vivo na aba — tipicamente
+      // quando a aba do PJe foi aberta ANTES da instalação/atualização da
+      // extensão. Tentamos injetar programaticamente o content.js e
+      // repetir; se ainda assim falhar, orientamos o usuário a recarregar.
+      const msg = errorMessage(err);
+      if (
+        msg.includes('Receiving end does not exist') ||
+        msg.includes('Could not establish connection')
+      ) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId, allFrames: false },
+            files: ['content.js']
+          });
+          resp = await sendToTabWithRetry(
+            tabId,
+            {
+              channel: MESSAGE_CHANNELS.ETIQUETAS_RUN_FETCH,
+              payload: payload ?? {}
+            },
+            { attempts: 8, intervalMs: 500 }
+          );
+        } catch (err2) {
+          console.warn(
+            `${LOG_PREFIX} handleEtiquetasFetchCatalog: fallback inject falhou:`,
+            err2
+          );
+          sendResponse({
+            ok: false,
+            total: 0,
+            etiquetas: [],
+            error:
+              'A aba do PJe não está respondendo. Recarregue a aba do PJe ' +
+              '(F5) e clique em qualquer tarefa do painel para capturar o ' +
+              'snapshot de auth, e então tente novamente.'
+          });
+          return;
+        }
+      } else {
+        throw err;
+      }
+    }
+    if (!resp) {
+      sendResponse({
+        ok: false,
+        total: 0,
+        etiquetas: [],
+        error: 'Aba do PJe não respondeu dentro do timeout.'
+      });
+      return;
+    }
+    sendResponse(resp);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleEtiquetasFetchCatalog:`, err);
+    sendResponse({
+      ok: false,
+      total: 0,
+      etiquetas: [],
+      error: errorMessage(err)
+    });
+  }
+}
+
+/**
+ * Content (Triagem Inteligente) → background: pipeline "Inserir etiquetas
+ * mágicas".
+ *
+ * 1. Monta o prompt do extrator de marcadores com o contexto dos autos, as
+ *    orientações livres do usuário (`etiquetasPromptCriterios`) e o bloco
+ *    de critérios de triagem.
+ * 2. Chama a LLM ativa; parseia a resposta JSON em lista de marcadores.
+ * 3. Roda o BM25 contra o índice das etiquetas sugestionáveis e devolve o
+ *    ranking para a UI exibir.
+ *
+ * Erros comuns (sem API key, catálogo vazio, contexto vazio) são
+ * traduzidos para mensagens humanas — a UI apenas exibe `error`.
+ */
+async function handleEtiquetasSugerir(
+  payload: SugerirEtiquetasRequest,
+  sendResponse: (response: SugerirEtiquetasResponse) => void
+): Promise<void> {
+  try {
+    const caseContext = (payload?.caseContext ?? '').trim();
+    if (!caseContext) {
+      sendResponse({
+        ok: false,
+        error: 'Sem contexto dos autos — carregue e extraia os documentos antes.'
+      });
+      return;
+    }
+
+    const settings = await getSettings();
+    const providerId = settings.activeProvider;
+    const apiKey = await getApiKey(providerId);
+    if (!apiKey) {
+      sendResponse({
+        ok: false,
+        error: `API key não cadastrada para ${providerId}.`
+      });
+      return;
+    }
+
+    const criteriosBlock = buildTriagemCriteriosBlock(settings);
+    const userHints = settings.etiquetasPromptCriterios ?? '';
+    const prompt = buildEtiquetasMarkersPrompt(caseContext, userHints, criteriosBlock);
+
+    const provider = getProvider(providerId);
+    const controller = new AbortController();
+    const generator = provider.sendMessage({
+      apiKey,
+      model: settings.models[providerId],
+      systemPrompt:
+        'Você é um classificador que lê um processo judicial e produz uma lista curta de ' +
+        'MARCADORES semânticos (2 a 6 palavras cada). Responda SEMPRE em JSON puro, sem ' +
+        'markdown, sem comentários.',
+      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      temperature: 0.1,
+      // Marcadores são curtos; 1024 cobre com folga 15 marcadores de 6 palavras.
+      maxTokens: 1024,
+      signal: controller.signal
+    });
+
+    let raw = '';
+    for await (const chunk of generator) {
+      raw += chunk.delta;
+    }
+
+    const markers = parseEtiquetasMarkersResponse(raw);
+    if (markers.length === 0) {
+      sendResponse({
+        ok: false,
+        error:
+          'A IA não produziu marcadores utilizáveis para este processo. ' +
+          'Tente novamente ou ajuste as orientações na aba "Etiquetas Inteligentes".'
+      });
+      return;
+    }
+
+    const ranked = await rankEtiquetasSugestionaveis(markers, { topK: 8 });
+    if (ranked.length === 0) {
+      sendResponse({
+        ok: true,
+        markers,
+        matches: []
+      });
+      return;
+    }
+
+    sendResponse({
+      ok: true,
+      markers,
+      matches: ranked.map((m) => ({
+        id: m.etiqueta.id,
+        nomeTag: m.etiqueta.nomeTag,
+        nomeTagCompleto: m.etiqueta.nomeTagCompleto,
+        favorita: m.etiqueta.favorita,
+        similarity: m.similarity,
+        score: m.score,
+        matchedMarkers: m.matchedMarkers
+      }))
+    });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleEtiquetasSugerir:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+// =====================================================================
 // Prazos na fita — Fase A2 (coleta por aba isolada)
 // =====================================================================
 
@@ -2962,6 +3228,360 @@ async function handlePrazosFitaColetarProcesso(
       chrome.tabs.remove(tabId).catch(() => { /* aba já fechada */ });
     }
   }
+}
+
+// =====================================================================
+// Prazos na fita — Encerrar todos os expedientes da tarefa (main world)
+// =====================================================================
+
+interface PrazosEncerrarRequest {
+  /** URL `movimentar.seam?idProcesso=X&newTaskId=Y` da tarefa alvo. */
+  url: string;
+  /** Número CNJ do processo (para o log de auditoria — não é enviado à LLM). */
+  numeroProcesso: string;
+  idProcesso: string;
+  idTaskInstance: string;
+}
+
+interface PrazosEncerrarResult {
+  ok: boolean;
+  /** Estado final a ser pintado na coluna do dashboard. */
+  estado: 'sucesso' | 'erro' | 'nada-a-fazer';
+  /** Quantos expedientes foram encerrados nesta execução. */
+  quantidade: number;
+  /** Mensagem de erro (quando `estado === 'erro'`). */
+  error?: string;
+  /** Timestamp (ms) de quando a tentativa terminou. */
+  terminouEm: number;
+  duracaoMs: number;
+}
+
+interface PrazosEncerrarAuditEntry {
+  ts: number;
+  numeroProcesso: string;
+  idProcesso: string;
+  idTaskInstance: string;
+  estado: PrazosEncerrarResult['estado'];
+  quantidade: number;
+  error?: string;
+  duracaoMs: number;
+}
+
+/** Máximo de entradas no log de auditoria. FIFO — o dashboard pode exibir depois. */
+const PRAZOS_ENCERRAR_AUDIT_MAX = 500;
+
+async function handlePrazosEncerrarRun(
+  payload: PrazosEncerrarRequest,
+  sendResponse: (resp: PrazosEncerrarResult) => void
+): Promise<void> {
+  const inicio = Date.now();
+  const url = payload?.url ?? '';
+  const idProcesso = payload?.idProcesso ?? '';
+  const idTaskInstance = payload?.idTaskInstance ?? '';
+
+  if (!url || !idProcesso || !idTaskInstance) {
+    const result: PrazosEncerrarResult = {
+      ok: false,
+      estado: 'erro',
+      quantidade: 0,
+      error: 'Parâmetros ausentes (url / idProcesso / idTaskInstance).',
+      terminouEm: Date.now(),
+      duracaoMs: Date.now() - inicio
+    };
+    sendResponse(result);
+    return;
+  }
+
+  let tabId: number | null = null;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    if (tab.id == null) {
+      const result: PrazosEncerrarResult = {
+        ok: false,
+        estado: 'erro',
+        quantidade: 0,
+        error: 'chrome.tabs.create não retornou tabId.',
+        terminouEm: Date.now(),
+        duracaoMs: Date.now() - inicio
+      };
+      sendResponse(result);
+      return;
+    }
+    tabId = tab.id;
+
+    await waitTabComplete(tabId, 45_000);
+
+    // Respiro curto: RichFaces inicializa em setTimeout(0) e o tbody de
+    // expedientes pode ainda não estar colado quando o tab.status vira
+    // 'complete'. 500ms é barato e cobre o caso geral.
+    await new Promise<void>((r) => setTimeout(r, 500));
+
+    const [inj] = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: false },
+      world: 'MAIN',
+      func: encerrarExpedientesNoFrame
+    });
+
+    const raw = inj?.result as EncerrarExpedientesOutput | undefined;
+    if (!raw) {
+      const result: PrazosEncerrarResult = {
+        ok: false,
+        estado: 'erro',
+        quantidade: 0,
+        error: 'Injeção main-world não retornou resultado (página sem expedientes?).',
+        terminouEm: Date.now(),
+        duracaoMs: Date.now() - inicio
+      };
+      await registrarAuditoriaEncerramento(result, payload);
+      sendResponse(result);
+      return;
+    }
+
+    let result: PrazosEncerrarResult;
+    if (raw.ok && raw.empty) {
+      result = {
+        ok: true,
+        estado: 'nada-a-fazer',
+        quantidade: 0,
+        terminouEm: Date.now(),
+        duracaoMs: Date.now() - inicio
+      };
+    } else if (raw.ok) {
+      result = {
+        ok: true,
+        estado: 'sucesso',
+        quantidade: raw.count ?? 0,
+        terminouEm: Date.now(),
+        duracaoMs: Date.now() - inicio
+      };
+    } else {
+      result = {
+        ok: false,
+        estado: 'erro',
+        quantidade: raw.count ?? 0,
+        error: raw.error ?? 'Falha desconhecida na automação.',
+        terminouEm: Date.now(),
+        duracaoMs: Date.now() - inicio
+      };
+    }
+
+    await registrarAuditoriaEncerramento(result, payload);
+    sendResponse(result);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePrazosEncerrarRun:`, err);
+    const result: PrazosEncerrarResult = {
+      ok: false,
+      estado: 'erro',
+      quantidade: 0,
+      error: errorMessage(err),
+      terminouEm: Date.now(),
+      duracaoMs: Date.now() - inicio
+    };
+    await registrarAuditoriaEncerramento(result, payload).catch(() => { /* ignora */ });
+    sendResponse(result);
+  } finally {
+    if (tabId != null) {
+      chrome.tabs.remove(tabId).catch(() => { /* aba já fechada */ });
+    }
+  }
+
+  async function registrarAuditoriaEncerramento(
+    res: PrazosEncerrarResult,
+    p: PrazosEncerrarRequest
+  ): Promise<void> {
+    try {
+      const key = STORAGE_KEYS.PRAZOS_ENCERRAR_AUDIT;
+      const stored = await chrome.storage.local.get([key]);
+      const list: PrazosEncerrarAuditEntry[] = Array.isArray(stored[key])
+        ? stored[key]
+        : [];
+      list.unshift({
+        ts: res.terminouEm,
+        numeroProcesso: p.numeroProcesso ?? '',
+        idProcesso: p.idProcesso ?? '',
+        idTaskInstance: p.idTaskInstance ?? '',
+        estado: res.estado,
+        quantidade: res.quantidade,
+        error: res.error,
+        duracaoMs: res.duracaoMs
+      });
+      if (list.length > PRAZOS_ENCERRAR_AUDIT_MAX) {
+        list.length = PRAZOS_ENCERRAR_AUDIT_MAX;
+      }
+      await chrome.storage.local.set({ [key]: list });
+    } catch (e) {
+      console.warn(`${LOG_PREFIX} falha ao registrar auditoria de encerramento:`, e);
+    }
+  }
+}
+
+/** Shape do retorno da função injetada em main world. */
+interface EncerrarExpedientesOutput {
+  ok: boolean;
+  /** `true` quando não havia expedientes abertos (coluna vira "nada-a-fazer"). */
+  empty?: boolean;
+  /** Quantidade de expedientes que estavam abertos antes da automação. */
+  count?: number;
+  /** Mensagem de erro legível. */
+  error?: string;
+}
+
+/**
+ * Executada em MAIN world na aba recém-aberta de `movimentar.seam`.
+ *
+ * Fluxo:
+ *   1. Localiza o checkbox do header (`id` termina em `:fechadoHeader`) e
+ *      conta os checkboxes de linha (mesma coluna, sem o sufixo Header).
+ *   2. Monkey-patch em `window.confirm` para pular o `confirm('Confirma o
+ *      encerramento...?')` do botão.
+ *   3. Marca o header e dispara o onchange (A4J.AJAX.Submit) — o PJe
+ *      replica para as linhas e habilita o botão "Encerrar".
+ *   4. Aguarda um respiro curto, clica no botão (o onclick corre
+ *      `confirm(...)` — já monkey-patcheado — e dispara o Submit).
+ *   5. Polling até os checkboxes de linha zerarem ou o deadline estourar.
+ *
+ * Todos os resultados (inclusive erro) voltam pelo `resolve` da Promise —
+ * `chrome.scripting.executeScript` aceita Promise como retorno.
+ */
+function encerrarExpedientesNoFrame(): Promise<EncerrarExpedientesOutput> {
+  return new Promise((resolve) => {
+    const DEADLINE_CONFIRM_MS = 25_000;
+    const ORIGINAL_CONFIRM = window.confirm;
+    const restaurar = (): void => {
+      try {
+        window.confirm = ORIGINAL_CONFIRM;
+      } catch {
+        /* ignora */
+      }
+    };
+
+    const acabou = (out: EncerrarExpedientesOutput): void => {
+      restaurar();
+      resolve(out);
+    };
+
+    try {
+      window.confirm = () => true;
+
+      const header = document.querySelector(
+        'input[type="checkbox"][id$=":fechadoHeader"]'
+      ) as HTMLInputElement | null;
+
+      if (!header) {
+        acabou({
+          ok: false,
+          error:
+            'Checkbox "fechadoHeader" não encontrada — a aba de expedientes pode não ter carregado ou a sessão expirou.'
+        });
+        return;
+      }
+
+      const escopo: ParentNode =
+        header.closest('table') ??
+        header.closest('form') ??
+        document;
+
+      const seletorLinhas =
+        'input[type="checkbox"][id*=":fechado"]:not([id$=":fechadoHeader"])';
+      const linhasIniciais = Array.from(
+        escopo.querySelectorAll<HTMLInputElement>(seletorLinhas)
+      );
+      const total = linhasIniciais.length;
+
+      if (total === 0) {
+        acabou({ ok: true, empty: true, count: 0 });
+        return;
+      }
+
+      header.checked = true;
+      header.dispatchEvent(new Event('change', { bubbles: true }));
+      header.dispatchEvent(new Event('click', { bubbles: true }));
+
+      // Algumas versões do RichFaces só respondem ao handler inline.
+      const onchangeAttr = header.getAttribute('onchange');
+      if (onchangeAttr) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-implied-eval
+          new Function('event', onchangeAttr).call(header);
+        } catch {
+          /* ignora — o change/click acima pode ter bastado */
+        }
+      }
+
+      // Aguarda a AJAX do select-all e então clica no botão Encerrar.
+      setTimeout(() => {
+        const btn = localizarBotaoEncerrar();
+        if (!btn) {
+          acabou({
+            ok: false,
+            count: 0,
+            error: 'Botão "Encerrar expedientes selecionados" não encontrado.'
+          });
+          return;
+        }
+
+        try {
+          btn.click();
+        } catch (err) {
+          acabou({
+            ok: false,
+            count: 0,
+            error:
+              'Falha ao clicar no botão Encerrar: ' +
+              (err instanceof Error ? err.message : String(err))
+          });
+          return;
+        }
+
+        const deadline = Date.now() + DEADLINE_CONFIRM_MS;
+        const poll = (): void => {
+          const abertas = Array.from(
+            escopo.querySelectorAll<HTMLInputElement>(seletorLinhas)
+          );
+          const restantes = abertas.length;
+          if (restantes === 0) {
+            acabou({ ok: true, count: total });
+            return;
+          }
+          if (Date.now() > deadline) {
+            acabou({
+              ok: false,
+              count: total - restantes,
+              error:
+                `Tempo esgotado aguardando encerramento — ` +
+                `${restantes}/${total} expedientes ainda aparecem como abertos.`
+            });
+            return;
+          }
+          setTimeout(poll, 600);
+        };
+        setTimeout(poll, 1200);
+      }, 1500);
+
+      function localizarBotaoEncerrar(): HTMLElement | null {
+        // Tentativa 1: input type=button com value exato.
+        const inputs = document.querySelectorAll<HTMLInputElement>(
+          'input[type="button"], input[type="submit"]'
+        );
+        for (const el of Array.from(inputs)) {
+          const v = (el.value ?? '').trim();
+          if (v === 'Encerrar expedientes selecionados') return el;
+        }
+        // Tentativa 2: <button> com textContent equivalente.
+        const botoes = document.querySelectorAll<HTMLButtonElement>('button');
+        for (const el of Array.from(botoes)) {
+          const t = (el.textContent ?? '').trim();
+          if (t === 'Encerrar expedientes selecionados') return el;
+        }
+        return null;
+      }
+    } catch (err) {
+      acabou({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  });
 }
 
 /**

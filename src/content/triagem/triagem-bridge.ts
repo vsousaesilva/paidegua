@@ -17,11 +17,15 @@
  *     (ambiente onde o painel não está em iframe).
  */
 
-import { LOG_PREFIX } from '../../shared/constants';
+import { LOG_PREFIX, MESSAGE_CHANNELS } from '../../shared/constants';
+import type { TriagemDashboardPayload } from '../../shared/types';
 import {
   executarAnalisarTarefas,
+  TAREFA_REGEX,
   type AnalisarTarefasResult
 } from './analisar-tarefas';
+import { listarTarefasDoPainel } from '../gestao/gestao-bridge';
+import { coletarSnapshotsViaAPI } from '../gestao/triagem-from-api';
 
 const MSG_INICIAR = 'paidegua/triagem-iniciar';
 const MSG_PROGRESSO = 'paidegua/triagem-progresso';
@@ -137,19 +141,120 @@ export function localizarIframePainel(): Window | null {
   return null;
 }
 
+async function pedirAberturaDashboard(
+  payload: TriagemDashboardPayload
+): Promise<boolean> {
+  try {
+    const resp = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.TRIAGEM_OPEN_DASHBOARD,
+      payload
+    });
+    return Boolean(resp?.ok);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} pedirAberturaDashboard (bridge) falhou:`, err);
+    return false;
+  }
+}
+
 /**
- * Versão "top" da ação: se o painel estiver em iframe, delega via
- * postMessage; senão roda local.
+ * Caminho REST-first no top frame — espelha o padrão do Gestão:
+ *   1. Pede ao iframe a lista de tarefas do painel (só DOM read).
+ *   2. Filtra por `TAREFA_REGEX`.
+ *   3. Chama `coletarSnapshotsViaAPI` (REST + gerarChaveAcesso → URL direta
+ *      para `listAutosDigitais.seam?idProcesso=X&ca=Y`).
+ *   4. Persiste payload + abre dashboard.
+ *
+ * Retorna `null` quando o REST não está disponível (sem auth snapshot ou
+ * nenhuma tarefa match) — caller cai no fallback DOM.
+ */
+async function tentarViaApiRest(
+  onProgress: (msg: string) => void
+): Promise<AnalisarTarefasResult | null> {
+  const listagem = await listarTarefasDoPainel();
+  if (!listagem.ok) {
+    onProgress(`Não foi possível listar tarefas (${listagem.error ?? 'sem detalhe'}) — tentando pelo DOM, aguarde...`);
+    return null;
+  }
+  const nomes = listagem.tarefas
+    .map((t) => t.nome)
+    .filter((n) => TAREFA_REGEX.test(n));
+  if (nomes.length === 0) {
+    return {
+      ok: false,
+      totalTarefas: 0,
+      totalProcessos: 0,
+      error:
+        'Nenhuma tarefa contendo "Analisar inicial" ou "Triagem" foi encontrada no painel.'
+    };
+  }
+
+  onProgress(`Analisando ${nomes.length} tarefa(s) via API REST...`);
+  const pjeOrigin = window.location.origin;
+  const resultado = await coletarSnapshotsViaAPI({
+    nomes,
+    pjeOrigin,
+    onProgress
+  });
+  if (!resultado.ok) {
+    onProgress(
+      `Coleta rápida indisponível (${resultado.error ?? 'sem detalhe'}) — continuando pelo DOM, aguarde...`
+    );
+    return null;
+  }
+
+  const totalProcessos = resultado.snapshots.reduce((s, t) => s + t.totalLido, 0);
+  const payload: TriagemDashboardPayload = {
+    geradoEm: new Date().toISOString(),
+    hostnamePJe: new URL(pjeOrigin).hostname,
+    tarefas: resultado.snapshots,
+    totalProcessos,
+    insightsLLM: null
+  };
+
+  onProgress('Abrindo dashboard...');
+  const ok = await pedirAberturaDashboard(payload);
+  if (!ok) {
+    return {
+      ok: false,
+      totalTarefas: resultado.snapshots.length,
+      totalProcessos,
+      error: 'Falha ao abrir o dashboard. Veja o console para detalhes.'
+    };
+  }
+  return {
+    ok: true,
+    totalTarefas: resultado.snapshots.length,
+    totalProcessos
+  };
+}
+
+/**
+ * Versão "top" da ação. Estratégia em duas camadas:
+ *   1. REST-first (preferido): roda no top frame, devolve URLs autenticadas
+ *      diretas para os autos. Mesmo padrão do Gestão/Prazos na Fita.
+ *   2. Fallback DOM via postMessage para o iframe do painel quando o
+ *      snapshot de auth ainda não foi capturado pelo interceptor.
  */
 export async function executarAnalisarTarefasComBridge(opts: {
   onProgress?: (msg: string) => void;
 }): Promise<AnalisarTarefasResult> {
+  const onProgress = opts.onProgress ?? (() => {});
+
+  // -- Caminho REST (preferido) -----------------------------------------
+  try {
+    const restResult = await tentarViaApiRest(onProgress);
+    if (restResult) return restResult;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    onProgress(`Coleta rápida falhou inesperadamente (${msg}) — continuando pelo DOM, aguarde...`);
+  }
+
+  // -- Fallback DOM -----------------------------------------------------
   const iframeWin = localizarIframePainel();
   if (!iframeWin) {
     // Sem iframe — executa direto no contexto atual (compatibilidade).
     return executarAnalisarTarefas(opts);
   }
-  const onProgress = opts.onProgress ?? (() => {});
   const requestId = `triagem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   return new Promise<AnalisarTarefasResult>((resolve) => {

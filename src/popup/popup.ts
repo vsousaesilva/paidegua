@@ -24,9 +24,23 @@ import {
 } from '../shared/constants';
 import type {
   PAIdeguaSettings,
+  PJeApiEtiqueta,
+  PJeApiEtiquetasListResponse,
   TestConnectionResult,
   TriagemCriterioCustom
 } from '../shared/types';
+import {
+  clearAllEtiquetas,
+  clearCatalogMeta,
+  countEtiquetas,
+  listEtiquetas,
+  listSugestionaveis,
+  loadCatalogMeta,
+  replaceSugestionaveis,
+  saveCatalogMeta,
+  saveEtiquetas,
+  type EtiquetaRecord
+} from '../shared/etiquetas-store';
 import {
   detectGrauFromHostname,
   isGestaoProfileAvailable,
@@ -201,11 +215,15 @@ async function applyGrauRestrictions(): Promise<void> {
   $<HTMLSelectElement>('default-profile-select').value = valorInicial;
 
   if (!secretariaOk) {
-    // Aba "Triagem Inteligente" é específica da Secretaria.
+    // Abas "Triagem Inteligente" e "Etiquetas Inteligentes" são específicas da Secretaria.
     const tabTriagem = document.getElementById('tab-triagem');
     if (tabTriagem) tabTriagem.setAttribute('hidden', '');
-    const triagemSelected = tabTriagem?.getAttribute('aria-selected') === 'true';
-    if (triagemSelected) setActiveTab('tab-geral');
+    const tabEtiquetas = document.getElementById('tab-etiquetas');
+    if (tabEtiquetas) tabEtiquetas.setAttribute('hidden', '');
+    const secretariaTabSelected =
+      tabTriagem?.getAttribute('aria-selected') === 'true' ||
+      tabEtiquetas?.getAttribute('aria-selected') === 'true';
+    if (secretariaTabSelected) setActiveTab('tab-geral');
     // Persistir perfil padrão como Gabinete se estiver em Secretaria.
     if (stored === 'secretaria') {
       const response = (await chrome.runtime.sendMessage({
@@ -351,7 +369,9 @@ async function removeApiKey(): Promise<void> {
 // Abas (Geral / Triagem Inteligente)
 // =====================================================================
 
-function setActiveTab(tabId: 'tab-geral' | 'tab-triagem'): void {
+type TabId = 'tab-geral' | 'tab-triagem' | 'tab-etiquetas';
+
+function setActiveTab(tabId: TabId): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>('.paidegua-popup__tab');
   const panels = document.querySelectorAll<HTMLElement>('.paidegua-popup__tabpanel');
   tabs.forEach((t) => {
@@ -367,12 +387,18 @@ function setActiveTab(tabId: 'tab-geral' | 'tab-triagem'): void {
       p.setAttribute('hidden', '');
     }
   });
+  // Carregamento lazy: o catálogo de etiquetas só é lido do IndexedDB
+  // quando o usuário abre a aba. Renderizar ~3k linhas toda vez que o
+  // popup abre seria desperdício.
+  if (tabId === 'tab-etiquetas') {
+    void loadEtiquetasTab();
+  }
 }
 
 function bindTabs(): void {
   document.querySelectorAll<HTMLButtonElement>('.paidegua-popup__tab').forEach((t) => {
     t.addEventListener('click', () => {
-      setActiveTab(t.id as 'tab-geral' | 'tab-triagem');
+      setActiveTab(t.id as TabId);
     });
   });
 }
@@ -664,5 +690,448 @@ document.addEventListener('DOMContentLoaded', () => {
   bindTabs();
   bindEvents();
   bindTriagemExtras();
+  bindEtiquetasEvents();
   void loadAll();
 });
+
+// =====================================================================
+// Etiquetas Inteligentes — catálogo + seleção de sugestionáveis
+// =====================================================================
+
+/**
+ * Estado local da aba. Mantido em memória porque o popup é curto
+ * (fecha ao perder foco); persistência real fica no IndexedDB
+ * (`paidegua.etiquetas`).
+ */
+interface EtiquetasTabState {
+  /** Já carregamos o catálogo do IndexedDB nesta abertura do popup? */
+  loaded: boolean;
+  /** Catálogo completo em memória, indexado por id. */
+  catalogo: EtiquetaRecord[];
+  /** Set com os ids marcados como sugestionáveis (coluna B). */
+  selecionados: Set<number>;
+  /** Estado inicial dos selecionados — usado para detectar dirty. */
+  selecionadosOriginais: Set<number>;
+}
+
+const etiqState: EtiquetasTabState = {
+  loaded: false,
+  catalogo: [],
+  selecionados: new Set(),
+  selecionadosOriginais: new Set()
+};
+
+function setEtiqStatus(text: string, kind: 'ok' | 'error' | 'info' | '' = ''): void {
+  const el = document.getElementById('etiq-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'paidegua-etiquetas-status' + (kind ? ` is-${kind}` : '');
+}
+
+function setEtiqProgress(visible: boolean, processed = 0, total = 0, hint = ''): void {
+  const wrap = document.getElementById('etiq-progress-wrap');
+  const fill = document.getElementById('etiq-progress-fill');
+  const text = document.getElementById('etiq-progress-text');
+  if (!wrap || !fill || !text) return;
+  if (!visible) {
+    wrap.setAttribute('hidden', '');
+    return;
+  }
+  wrap.removeAttribute('hidden');
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  fill.style.width = `${pct}%`;
+  text.textContent = hint || `Coletados ${processed}/${total} etiquetas.`;
+}
+
+function setEtiqButtonsForState(hasCatalogo: boolean, dirty: boolean): void {
+  const btnReindex = document.getElementById('btn-etiq-reindex') as HTMLButtonElement | null;
+  const btnClear = document.getElementById('btn-etiq-clear') as HTMLButtonElement | null;
+  const btnSave = document.getElementById('btn-etiq-save') as HTMLButtonElement | null;
+  if (btnReindex) btnReindex.disabled = !hasCatalogo;
+  if (btnClear) btnClear.disabled = !hasCatalogo;
+  if (btnSave) btnSave.disabled = !hasCatalogo || !dirty;
+}
+
+function etiqSelecionadosEstaoDirty(): boolean {
+  if (etiqState.selecionados.size !== etiqState.selecionadosOriginais.size) {
+    return true;
+  }
+  for (const id of etiqState.selecionados) {
+    if (!etiqState.selecionadosOriginais.has(id)) return true;
+  }
+  return false;
+}
+
+async function loadEtiquetasTab(): Promise<void> {
+  hydrateEtiqPromptCriterios();
+  if (etiqState.loaded) {
+    renderEtiquetas();
+    return;
+  }
+  try {
+    const [catalogo, meta, selecionados] = await Promise.all([
+      listEtiquetas(),
+      loadCatalogMeta(),
+      listSugestionaveis()
+    ]);
+    etiqState.catalogo = catalogo;
+    etiqState.selecionados = new Set(selecionados.map((s) => s.idTag));
+    etiqState.selecionadosOriginais = new Set(etiqState.selecionados);
+    etiqState.loaded = true;
+    if (catalogo.length === 0) {
+      setEtiqStatus('Nenhum catálogo carregado ainda.');
+    } else {
+      const quando = meta?.lastFetchedAt
+        ? new Date(meta.lastFetchedAt).toLocaleString('pt-BR')
+        : '—';
+      setEtiqStatus(
+        `${catalogo.length} etiqueta(s) no catálogo · última busca: ${quando}.`,
+        'ok'
+      );
+    }
+    renderEtiquetas();
+    setEtiqButtonsForState(catalogo.length > 0, false);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} popup loadEtiquetasTab:`, err);
+    setEtiqStatus('Falha ao carregar catálogo local.', 'error');
+  }
+}
+
+function obterFiltroColA(): { termo: string; apenasFavoritas: boolean } {
+  const inputTermo = document.getElementById('etiq-col-a-filter') as HTMLInputElement | null;
+  const inputFav = document.getElementById('etiq-col-a-only-favoritas') as HTMLInputElement | null;
+  return {
+    termo: (inputTermo?.value ?? '').trim().toLowerCase(),
+    apenasFavoritas: inputFav?.checked === true
+  };
+}
+
+function etiquetasFiltradas(): EtiquetaRecord[] {
+  const { termo, apenasFavoritas } = obterFiltroColA();
+  let lista = etiqState.catalogo;
+  if (apenasFavoritas) lista = lista.filter((e) => e.favorita);
+  if (termo) {
+    lista = lista.filter((e) => {
+      const hay =
+        e.nomeTag.toLowerCase() + ' ' + (e.nomeTagCompleto ?? '').toLowerCase();
+      return hay.includes(termo);
+    });
+  }
+  return lista
+    .slice()
+    .sort((a, b) => a.nomeTag.localeCompare(b.nomeTag, 'pt-BR'));
+}
+
+function renderEtiquetas(): void {
+  renderColA();
+  renderColB();
+  setEtiqButtonsForState(
+    etiqState.catalogo.length > 0,
+    etiqSelecionadosEstaoDirty()
+  );
+}
+
+function renderColA(): void {
+  const list = document.getElementById('etiq-col-a-list') as HTMLUListElement | null;
+  const count = document.getElementById('etiq-col-a-count');
+  if (!list || !count) return;
+  const filtradas = etiquetasFiltradas();
+  count.textContent = String(filtradas.length);
+  list.innerHTML = '';
+  // 3000+ linhas com innerHTML direto é pesado mas aceitável (~80ms em
+  // máquina típica). Filtros rápidos reduzem bastante; virtualização é
+  // melhoria futura se necessário.
+  const frag = document.createDocumentFragment();
+  for (const e of filtradas) {
+    const li = document.createElement('li');
+    li.className = 'paidegua-etiquetas-col__item';
+    const label = document.createElement('label');
+    label.className = 'paidegua-popup__checkbox paidegua-popup__checkbox--inline';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.dataset.idTag = String(e.id);
+    input.checked = etiqState.selecionados.has(e.id);
+    input.addEventListener('change', () => {
+      if (input.checked) etiqState.selecionados.add(e.id);
+      else etiqState.selecionados.delete(e.id);
+      renderColB();
+      setEtiqButtonsForState(true, etiqSelecionadosEstaoDirty());
+    });
+    const span = document.createElement('span');
+    const nome = e.nomeTag + (e.favorita ? ' ★' : '');
+    span.textContent = nome;
+    span.title = e.nomeTagCompleto || e.nomeTag;
+    label.append(input, span);
+    li.append(label);
+    frag.append(li);
+  }
+  list.append(frag);
+}
+
+function renderColB(): void {
+  const list = document.getElementById('etiq-col-b-list') as HTMLUListElement | null;
+  const count = document.getElementById('etiq-col-b-count');
+  if (!list || !count) return;
+  count.textContent = String(etiqState.selecionados.size);
+  list.innerHTML = '';
+  const byId = new Map(etiqState.catalogo.map((e) => [e.id, e]));
+  const selecionadas = Array.from(etiqState.selecionados)
+    .map((id) => byId.get(id))
+    .filter((x): x is EtiquetaRecord => !!x)
+    .sort((a, b) => a.nomeTag.localeCompare(b.nomeTag, 'pt-BR'));
+  const frag = document.createDocumentFragment();
+  for (const e of selecionadas) {
+    const li = document.createElement('li');
+    li.className = 'paidegua-etiquetas-col__item paidegua-etiquetas-col__item--pill';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'paidegua-etiquetas-pill';
+    btn.textContent = e.nomeTag + ' ×';
+    btn.title = `Remover "${e.nomeTag}"`;
+    btn.addEventListener('click', () => {
+      etiqState.selecionados.delete(e.id);
+      // Refletir no checkbox da coluna A se estiver visível.
+      const colA = document.getElementById('etiq-col-a-list');
+      const inp = colA?.querySelector<HTMLInputElement>(
+        `input[data-id-tag="${e.id}"]`
+      );
+      if (inp) inp.checked = false;
+      renderColB();
+      setEtiqButtonsForState(true, etiqSelecionadosEstaoDirty());
+    });
+    li.append(btn);
+    frag.append(li);
+  }
+  list.append(frag);
+}
+
+async function fetchCatalogoEtiquetas(): Promise<void> {
+  const btnFetch = document.getElementById('btn-etiq-fetch') as HTMLButtonElement | null;
+  const btnReindex = document.getElementById('btn-etiq-reindex') as HTMLButtonElement | null;
+  if (btnFetch) btnFetch.disabled = true;
+  if (btnReindex) btnReindex.disabled = true;
+  setEtiqProgress(true, 0, 0, 'Consultando PJe…');
+  setEtiqStatus('Buscando catálogo no PJe…', 'info');
+  try {
+    const resp = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.ETIQUETAS_FETCH_CATALOG,
+      payload: { pageSize: 5000 }
+    })) as PJeApiEtiquetasListResponse | undefined;
+    if (!resp || !resp.ok) {
+      setEtiqStatus(resp?.error ?? 'Falha na busca do catálogo.', 'error');
+      return;
+    }
+    setEtiqProgress(true, resp.etiquetas.length, resp.total, 'Gravando local…');
+    const now = new Date().toISOString();
+    const records: EtiquetaRecord[] = resp.etiquetas.map(
+      (e: PJeApiEtiqueta) => ({
+        id: e.id,
+        nomeTag: e.nomeTag,
+        nomeTagCompleto: e.nomeTagCompleto,
+        favorita: e.favorita,
+        possuiFilhos: e.possuiFilhos,
+        idTagFavorita: e.idTagFavorita,
+        ingestedAt: now
+      })
+    );
+    // Sobrescreve catálogo: o clear também zera sugestionáveis (documento
+    // na camada de storage). Fica explícito para o usuário no status.
+    await clearAllEtiquetas();
+    await saveEtiquetas(records);
+    await saveCatalogMeta({
+      lastFetchedAt: now,
+      count: records.length,
+      ojLocalizacao: null
+    });
+    etiqState.catalogo = records;
+    etiqState.selecionados = new Set();
+    etiqState.selecionadosOriginais = new Set();
+    setEtiqStatus(
+      `${records.length} etiqueta(s) salva(s) localmente.` +
+        (resp.total > records.length
+          ? ` O servidor reportou ${resp.total}; diferença indica duplicatas ou truncamento.`
+          : ''),
+      'ok'
+    );
+    renderEtiquetas();
+    await notificarInvalidateIndex();
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} fetchCatalogoEtiquetas:`, err);
+    setEtiqStatus(
+      err instanceof Error ? err.message : 'Falha desconhecida.',
+      'error'
+    );
+  } finally {
+    setEtiqProgress(false);
+    if (btnFetch) btnFetch.disabled = false;
+    setEtiqButtonsForState(etiqState.catalogo.length > 0, false);
+  }
+}
+
+async function salvarSugestionaveis(): Promise<void> {
+  try {
+    await replaceSugestionaveis(Array.from(etiqState.selecionados));
+    etiqState.selecionadosOriginais = new Set(etiqState.selecionados);
+    setEtiqStatus(
+      `${etiqState.selecionados.size} etiqueta(s) sugestionável(is) salva(s).`,
+      'ok'
+    );
+    setEtiqButtonsForState(true, false);
+    await notificarInvalidateIndex();
+  } catch (err) {
+    setEtiqStatus(
+      err instanceof Error ? err.message : 'Falha ao salvar.',
+      'error'
+    );
+  }
+}
+
+async function removerCatalogo(): Promise<void> {
+  const confirmed = confirm(
+    'Remover o catálogo de etiquetas e a seleção de sugestionáveis? ' +
+      'Você pode buscar novamente a qualquer momento.'
+  );
+  if (!confirmed) return;
+  try {
+    await clearAllEtiquetas();
+    await clearCatalogMeta();
+    etiqState.catalogo = [];
+    etiqState.selecionados = new Set();
+    etiqState.selecionadosOriginais = new Set();
+    setEtiqStatus('Catálogo removido.', 'ok');
+    renderEtiquetas();
+    setEtiqButtonsForState(false, false);
+    await notificarInvalidateIndex();
+  } catch (err) {
+    setEtiqStatus(
+      err instanceof Error ? err.message : 'Falha ao remover catálogo.',
+      'error'
+    );
+  }
+}
+
+async function notificarInvalidateIndex(): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.ETIQUETAS_INVALIDATE,
+      payload: null
+    });
+  } catch (err) {
+    // Best-effort — se o service worker não tiver handler ainda, não é
+    // crítico: na próxima busca o índice é reconstruído sob demanda.
+    console.debug(`${LOG_PREFIX} notificarInvalidateIndex:`, err);
+  }
+}
+
+function hydrateEtiqPromptCriterios(): void {
+  const ta = document.getElementById('etiq-prompt-criterios') as HTMLTextAreaElement | null;
+  if (!ta || !currentSettings) return;
+  // Só sobrescreve se o usuário ainda não começou a digitar nesta abertura.
+  if (!ta.dataset.hydrated) {
+    ta.value = currentSettings.etiquetasPromptCriterios ?? '';
+    ta.dataset.hydrated = '1';
+  }
+  atualizarContadorEtiqPrompt();
+}
+
+function atualizarContadorEtiqPrompt(): void {
+  const ta = document.getElementById('etiq-prompt-criterios') as HTMLTextAreaElement | null;
+  const el = document.getElementById('etiq-prompt-count');
+  if (!ta || !el) return;
+  const len = ta.value.length;
+  el.textContent = len === 1 ? '1 caractere' : `${len} caracteres`;
+}
+
+let etiqPromptSaveTimer: number | null = null;
+function scheduleSaveEtiqPromptCriterios(): void {
+  if (etiqPromptSaveTimer !== null) {
+    window.clearTimeout(etiqPromptSaveTimer);
+  }
+  etiqPromptSaveTimer = window.setTimeout(() => {
+    void saveEtiqPromptCriterios();
+  }, 500);
+}
+
+async function saveEtiqPromptCriterios(): Promise<void> {
+  if (!currentSettings) return;
+  const ta = document.getElementById('etiq-prompt-criterios') as HTMLTextAreaElement | null;
+  const statusEl = document.getElementById('etiq-prompt-status') as HTMLElement | null;
+  if (!ta) return;
+  const value = ta.value;
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
+      payload: { etiquetasPromptCriterios: value }
+    })) as { ok: boolean; settings?: PAIdeguaSettings; error?: string };
+    if (response?.ok && response.settings) {
+      currentSettings = response.settings;
+      if (statusEl) {
+        statusEl.textContent = 'Orientações salvas.';
+        statusEl.className = 'paidegua-popup__status is-ok';
+        window.setTimeout(() => {
+          if (statusEl.textContent === 'Orientações salvas.') {
+            statusEl.textContent = '';
+            statusEl.className = 'paidegua-popup__status';
+          }
+        }, 2000);
+      }
+    } else if (statusEl) {
+      statusEl.textContent = response?.error ?? 'Falha ao salvar orientações.';
+      statusEl.className = 'paidegua-popup__status is-error';
+    }
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} saveEtiqPromptCriterios:`, err);
+  }
+}
+
+function bindEtiquetasEvents(): void {
+  document.getElementById('etiq-prompt-criterios')?.addEventListener('input', () => {
+    atualizarContadorEtiqPrompt();
+    scheduleSaveEtiqPromptCriterios();
+  });
+  document.getElementById('btn-etiq-fetch')?.addEventListener('click', () => {
+    void fetchCatalogoEtiquetas();
+  });
+  document.getElementById('btn-etiq-reindex')?.addEventListener('click', () => {
+    void fetchCatalogoEtiquetas();
+  });
+  document.getElementById('btn-etiq-save')?.addEventListener('click', () => {
+    void salvarSugestionaveis();
+  });
+  document.getElementById('btn-etiq-clear')?.addEventListener('click', () => {
+    void removerCatalogo();
+  });
+  document.getElementById('etiq-col-a-filter')?.addEventListener('input', () => {
+    renderColA();
+  });
+  document
+    .getElementById('etiq-col-a-only-favoritas')
+    ?.addEventListener('change', () => {
+      renderColA();
+    });
+  document
+    .getElementById('etiq-col-a-select-visible')
+    ?.addEventListener('click', () => {
+      for (const e of etiquetasFiltradas()) etiqState.selecionados.add(e.id);
+      renderEtiquetas();
+    });
+  document
+    .getElementById('etiq-col-a-deselect-visible')
+    ?.addEventListener('click', () => {
+      for (const e of etiquetasFiltradas()) etiqState.selecionados.delete(e.id);
+      renderEtiquetas();
+    });
+  document
+    .getElementById('etiq-col-a-select-favoritas')
+    ?.addEventListener('click', () => {
+      for (const e of etiqState.catalogo)
+        if (e.favorita) etiqState.selecionados.add(e.id);
+      renderEtiquetas();
+    });
+}
+
+async function _debugCountEtiquetas(): Promise<number> {
+  // Helper reservado para diagnóstico pelo console.
+  return countEtiquetas();
+}
+void _debugCountEtiquetas;

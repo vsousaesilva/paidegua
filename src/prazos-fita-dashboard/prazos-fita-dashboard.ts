@@ -13,7 +13,14 @@
  * Sem LLM, sem filtros, sem export — iterações futuras tratam disso.
  */
 
-import { LOG_PREFIX, STORAGE_KEYS } from '../shared/constants';
+import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
+import {
+  abrirTarefaPopup,
+  montarUrlTarefa,
+  OPEN_TASK_ICON_SVG,
+  podeAbrirTarefa
+} from '../shared/pje-task-popup';
+import { makeTableSortable } from '../shared/table-sort';
 import type {
   PrazosFitaDashboardPayload,
   ProcessoExpediente,
@@ -24,13 +31,57 @@ interface LinhaExpediente {
   tarefaNome: string;
   numeroProcesso: string;
   url: string | null;
+  /** ID interno do processo no PJe (ou null quando indisponível). */
+  idProcesso: string | null;
+  /** ID da TaskInstance (`newTaskId` do PJe) ou null. */
+  idTaskInstance: string | null;
   exp: ProcessoExpediente;
   diasRestantes: number | null;
 }
 
 type ColKey =
   | 'processo' | 'tarefa' | 'ato' | 'ciencia'
-  | 'dataLimite' | 'dias' | 'natureza' | 'status' | 'anomalias';
+  | 'dataLimite' | 'dias' | 'natureza' | 'status' | 'anomalias'
+  | 'encerrar';
+
+/**
+ * Estados do botão "encerrar expedientes" por tarefa (chave:
+ * `${idProcesso}:${idTaskInstance}`). Múltiplas linhas do mesmo
+ * expediente compartilham a mesma chave — todas as linhas são
+ * atualizadas simultaneamente quando o estado muda.
+ */
+type EncerrarEstado =
+  | 'pronto'
+  | 'executando'
+  | 'sucesso'
+  | 'erro'
+  | 'nada-a-fazer';
+
+interface EncerrarState {
+  estado: EncerrarEstado;
+  atualizadoEm: number;
+  quantidade?: number;
+  mensagem?: string;
+  /**
+   * `idDocumento` da linha que iniciou o clique. Como múltiplas linhas
+   * compartilham o mesmo `(idProcesso, idTaskInstance)` e a automação, no
+   * PJe, fecha todos os expedientes pendentes da tarefa de uma só vez,
+   * todas as linhas precisam refletir a execução — mas apenas a linha
+   * clicada exibe a mensagem completa. As demais ficam em modo compacto
+   * (só ícone, sem rótulo) para não parecer que o usuário clicou em todas.
+   */
+  iniciadoPor?: string | null;
+}
+
+interface EncerrarQueueItem {
+  key: string;
+  url: string;
+  numeroProcesso: string;
+  idProcesso: string;
+  idTaskInstance: string;
+  /** `idDocumento` da linha clicada — grava no estado como `iniciadoPor`. */
+  idDocumento: string;
+}
 
 type SortDir = 'asc' | 'desc';
 interface SortState { key: ColKey; dir: SortDir; }
@@ -50,17 +101,22 @@ const COLUNAS: Coluna[] = [
   { key: 'dias',       label: 'Dias',                 value: (l) => l.diasRestantes },
   { key: 'natureza',   label: 'Natureza',             value: (l) => l.exp.naturezaPrazoLiteral ?? null },
   { key: 'status',     label: 'Status',               value: (l) => l.exp.status },
-  { key: 'anomalias',  label: 'Anomalias',            value: (l) => l.exp.anomalias.length }
+  { key: 'anomalias',  label: 'Anomalias',            value: (l) => l.exp.anomalias.length },
+  { key: 'encerrar',   label: 'Encerrar',             value: () => null }
 ];
 
 const linhasPorTarefa = new Map<string, LinhaExpediente[]>();
 const sortStates = new Map<string, SortState>();
+const encerramentos = new Map<string, EncerrarState>();
+const encerrarQueue: EncerrarQueueItem[] = [];
+let encerrarRunningKey: string | null = null;
 
 void main();
 
 async function main(): Promise<void> {
   const root = document.getElementById('main') as HTMLElement;
   const meta = document.getElementById('meta') as HTMLElement;
+  await restaurarEstadoEncerramento();
   instalarCopyDelegation();
   instalarSortDelegation();
   try {
@@ -146,13 +202,13 @@ function renderDashboard(
   root.appendChild(
     section(
       'div',
-      'resumo',
-      kpi('Processos', String(payload.resultado.consolidado.length), `${comAbertos.length} com expedientes abertos`) +
-      kpi('Expedientes abertos', String(totalAbertos), '') +
-      kpi('Prazo correndo', String(correndo), '', 'success') +
-      kpi('Próximos 7 dias', String(proximos7), '', 'warning') +
-      kpi('Vencidos (aberto)', String(vencidos), 'possível Quartz', vencidos > 0 ? 'danger' : undefined) +
-      kpi('Com anomalia', String(anomalias), '', anomalias > 0 ? 'warning' : undefined)
+      'metrics',
+      metric('Processos', String(payload.resultado.consolidado.length), `${comAbertos.length} com expedientes abertos`) +
+      metric('Expedientes abertos', String(totalAbertos), '') +
+      metric('Prazo correndo', String(correndo), '', 'success') +
+      metric('Próximos 7 dias', String(proximos7), '', 'warning') +
+      metric('Vencidos (aberto)', String(vencidos), 'possível Quartz', vencidos > 0 ? 'danger' : undefined) +
+      metric('Com anomalia', String(anomalias), '', anomalias > 0 ? 'warning' : undefined)
     )
   );
 
@@ -177,6 +233,53 @@ function renderDashboard(
       renderListaFalhas(falhas)
     ));
   }
+
+  root.appendChild(renderDiagnosticoColeta(payload));
+}
+
+function renderDiagnosticoColeta(payload: PrazosFitaDashboardPayload): HTMLElement {
+  const card = document.createElement('section');
+  card.className = 'card';
+
+  const contagem = new Map<string, number>();
+  for (const t of payload.tarefasSelecionadas) contagem.set(t, 0);
+  for (const c of payload.resultado.consolidado) {
+    contagem.set(c.tarefaNome, (contagem.get(c.tarefaNome) ?? 0) + 1);
+  }
+
+  const entries = Array.from(contagem.entries()).map(([tarefa, lidos]) => ({ tarefa, lidos }));
+
+  card.innerHTML =
+    '<h2 class="card__title">Diagnóstico de coleta</h2>' +
+    '<p class="card__sub">Detalhes técnicos por tarefa para entender o resultado da varredura ' +
+    '(útil quando o total parece menor do que o esperado).</p>';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap table-wrap--auto';
+  const table = document.createElement('table');
+  table.className = 'table--auto';
+  table.innerHTML =
+    '<thead><tr><th>Tarefa</th><th style="text-align:right">Lidos</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const e of entries) {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td');
+    td1.textContent = e.tarefa;
+    const td2 = document.createElement('td');
+    td2.style.textAlign = 'right';
+    td2.textContent = String(e.lidos);
+    tr.appendChild(td1);
+    tr.appendChild(td2);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  makeTableSortable(table, entries, [
+    { type: 'alpha', value: (e) => e.tarefa || null },
+    { type: 'num',   value: (e) => e.lidos }
+  ]);
+  wrap.appendChild(table);
+  card.appendChild(wrap);
+  return card;
 }
 
 function construirLinhasExpediente(
@@ -186,11 +289,19 @@ function construirLinhasExpediente(
   for (const c of payload.resultado.consolidado) {
     const abertos = c.coleta?.extracao?.abertos ?? [];
     const numero = c.coleta?.numeroProcesso ?? c.processoApi.numeroProcesso ?? '';
+    const idProcesso =
+      c.processoApi.idProcesso > 0 ? String(c.processoApi.idProcesso) : null;
+    const idTaskInstance =
+      c.processoApi.idTaskInstance != null
+        ? String(c.processoApi.idTaskInstance)
+        : null;
     for (const exp of abertos) {
       out.push({
         tarefaNome: c.tarefaNome,
         numeroProcesso: numero,
         url: c.url,
+        idProcesso,
+        idTaskInstance,
         exp,
         diasRestantes: calcularDiasRestantes(exp.dataLimite)
       });
@@ -288,6 +399,23 @@ function renderCardTarefaInner(tarefa: string): string {
 }
 
 function renderTh(col: Coluna, state: SortState): string {
+  // Coluna "Encerrar" é ação, não ordenável. Ela exibe, ao lado do rótulo,
+  // um "?" com tooltip explicando que o clique fecha TODOS os expedientes
+  // abertos da tarefa — a transparência que evita o confirm por clique.
+  if (col.key === 'encerrar') {
+    const dica =
+      'Ao clicar, o pAIdegua fecha TODOS os expedientes pendentes desta ' +
+      'tarefa de uma só vez. Para encerrar parcialmente, use o ícone de ' +
+      '"Abrir tarefa" e faça pelo PJe.';
+    return (
+      '<th class="th-encerrar" aria-sort="none">' +
+      '<span class="th-wrap th-wrap--encerrar">' +
+      `<span class="th-label">${escapeHtml(col.label)}</span>` +
+      `<span class="th-help" title="${escapeAttr(dica)}" ` +
+      `aria-label="${escapeAttr(dica)}" tabindex="0">?</span>` +
+      '</span></th>'
+    );
+  }
   const active = state.key === col.key;
   const dir = active ? state.dir : null;
   const cls = 'th-sort' + (active ? ' th-sort--active' : '');
@@ -368,7 +496,7 @@ function instalarSortDelegation(): void {
 
 function renderLinhaExpediente(l: LinhaExpediente): string {
   const numero = l.numeroProcesso || '—';
-  const processoCol = renderProcCell(numero, l.url);
+  const processoCol = renderProcCell(numero, l.url, l.idProcesso, l.idTaskInstance);
   const ciencia = l.exp.cienciaRegistrada
     ? (l.exp.cienciaAutor === 'servidor'
         ? escapeHtml(l.exp.cienciaServidor ?? 'servidor')
@@ -390,6 +518,7 @@ function renderLinhaExpediente(l: LinhaExpediente): string {
     `<td class="col-tar">${escapeHtml(l.exp.naturezaPrazoLiteral ?? '—')}</td>` +
     `<td>${renderStatus(l.exp.status)}</td>` +
     `<td>${renderAnomalias(l.exp.anomalias)}</td>` +
+    `<td class="col-encerrar">${renderEncerrarCell(l)}</td>` +
     '</tr>'
   );
 }
@@ -427,68 +556,100 @@ function renderAnomalias(anoms: readonly string[]): string {
     .join(' ');
 }
 
-function renderColapsivel(titulo: string, bodyHtml: string): HTMLElement {
+function renderColapsivel(titulo: string, body: HTMLElement): HTMLElement {
   const d = document.createElement('details');
   d.className = 'card';
-  d.innerHTML = `<summary>${escapeHtml(titulo)}<span class="col-tar">expandir/recolher</span></summary>${bodyHtml}`;
+  d.innerHTML = `<summary>${escapeHtml(titulo)}<span class="col-tar">expandir/recolher</span></summary>`;
+  d.appendChild(body);
   return d;
 }
 
 function renderListaSemAbertos(
   itens: PrazosFitaDashboardPayload['resultado']['consolidado']
-): string {
-  const linhas = itens
-    .map((c) => {
-      const numero = c.coleta?.numeroProcesso ?? c.processoApi.numeroProcesso ?? '—';
-      const fechados = c.coleta?.extracao?.fechados ?? 0;
-      const anomList = c.coleta?.anomaliasProcesso ?? [];
-      const anom = anomList.length === 0
-        ? '—'
-        : anomList.map((a) => `<span class="badge badge--warning" title="${escapeAttr(a)}">${escapeHtml(rotularAnomalia(a))}</span>`).join(' ');
-      const link = renderProcCell(numero, c.url);
-      return (
-        '<tr>' +
-        `<td class="col-num">${link}</td>` +
-        `<td class="col-tar">${escapeHtml(c.tarefaNome)}</td>` +
-        `<td class="col-dia">${fechados}</td>` +
-        `<td>${anom}</td>` +
-        '</tr>'
-      );
-    })
-    .join('');
-  return (
-    '<div class="table-wrap"><table><thead><tr>' +
+): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  const table = document.createElement('table');
+  table.innerHTML =
+    '<thead><tr>' +
     '<th>Processo</th>' +
     '<th>Tarefa</th>' +
     '<th>Expedientes fechados</th>' +
     '<th>Anomalias de processo</th>' +
-    '</tr></thead><tbody>' + linhas + '</tbody></table></div>'
-  );
+    '</tr></thead>';
+  const tbody = document.createElement('tbody');
+  const rows = itens.map((c) => {
+    const numero = c.coleta?.numeroProcesso ?? c.processoApi.numeroProcesso ?? '—';
+    const fechados = c.coleta?.extracao?.fechados ?? 0;
+    const anomList = c.coleta?.anomaliasProcesso ?? [];
+    const anom = anomList.length === 0
+      ? '—'
+      : anomList.map((a) => `<span class="badge badge--warning" title="${escapeAttr(a)}">${escapeHtml(rotularAnomalia(a))}</span>`).join(' ');
+    const idProcesso =
+      c.processoApi.idProcesso > 0 ? String(c.processoApi.idProcesso) : null;
+    const idTaskInstance =
+      c.processoApi.idTaskInstance != null
+        ? String(c.processoApi.idTaskInstance)
+        : null;
+    const link = renderProcCell(numero, c.url, idProcesso, idTaskInstance);
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="col-num">${link}</td>` +
+      `<td class="col-tar">${escapeHtml(c.tarefaNome)}</td>` +
+      `<td class="col-dia">${fechados}</td>` +
+      `<td>${anom}</td>`;
+    tbody.appendChild(tr);
+    return { c, numero, fechados, anomCount: anomList.length };
+  });
+  table.appendChild(tbody);
+  makeTableSortable(table, rows, [
+    { type: 'alpha', value: (r) => extractCNJ(r.numero) || r.numero || null },
+    { type: 'alpha', value: (r) => r.c.tarefaNome || null },
+    { type: 'num',   value: (r) => r.fechados },
+    { type: 'num',   value: (r) => r.anomCount }
+  ]);
+  wrap.appendChild(table);
+  return wrap;
 }
 
 function renderListaFalhas(
   itens: PrazosFitaDashboardPayload['resultado']['consolidado']
-): string {
-  const linhas = itens
-    .map((c) => {
-      const numero = c.coleta?.numeroProcesso ?? c.processoApi.numeroProcesso ?? '—';
-      const err = c.error ?? c.coleta?.error ?? 'erro desconhecido';
-      return (
-        '<tr>' +
-        `<td class="col-num">${renderProcCell(numero, c.url)}</td>` +
-        `<td class="col-tar">${escapeHtml(c.tarefaNome)}</td>` +
-        `<td>${escapeHtml(err)}</td>` +
-        '</tr>'
-      );
-    })
-    .join('');
-  return (
-    '<div class="table-wrap"><table><thead><tr>' +
+): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  const table = document.createElement('table');
+  table.innerHTML =
+    '<thead><tr>' +
     '<th>Processo</th>' +
     '<th>Tarefa</th>' +
     '<th>Erro</th>' +
-    '</tr></thead><tbody>' + linhas + '</tbody></table></div>'
-  );
+    '</tr></thead>';
+  const tbody = document.createElement('tbody');
+  const rows = itens.map((c) => {
+    const numero = c.coleta?.numeroProcesso ?? c.processoApi.numeroProcesso ?? '—';
+    const err = c.error ?? c.coleta?.error ?? 'erro desconhecido';
+    const idProcesso =
+      c.processoApi.idProcesso > 0 ? String(c.processoApi.idProcesso) : null;
+    const idTaskInstance =
+      c.processoApi.idTaskInstance != null
+        ? String(c.processoApi.idTaskInstance)
+        : null;
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="col-num">${renderProcCell(numero, c.url, idProcesso, idTaskInstance)}</td>` +
+      `<td class="col-tar">${escapeHtml(c.tarefaNome)}</td>` +
+      `<td>${escapeHtml(err)}</td>`;
+    tbody.appendChild(tr);
+    return { c, numero, err };
+  });
+  table.appendChild(tbody);
+  makeTableSortable(table, rows, [
+    { type: 'alpha', value: (r) => extractCNJ(r.numero) || r.numero || null },
+    { type: 'alpha', value: (r) => r.c.tarefaNome || null },
+    { type: 'alpha', value: (r) => r.err || null }
+  ]);
+  wrap.appendChild(table);
+  return wrap;
 }
 
 function section(tag: string, cls: string, innerHtml: string): HTMLElement {
@@ -498,18 +659,26 @@ function section(tag: string, cls: string, innerHtml: string): HTMLElement {
   return el;
 }
 
-function kpi(
+/**
+ * Card numerico do topo. Mesmo layout e classes dos demais relatorios
+ * ("Analisar tarefas" e "Painel Gerencial") para manter a apresentacao
+ * padronizada: rotulo bold uppercase em cor primaria, valor grande em
+ * primary-dark, hint discreto abaixo. A variante `kind` adiciona uma
+ * faixa colorida na borda esquerda e tinge o valor — mesmo padrao
+ * usado em `gestao-dashboard`.
+ */
+function metric(
   label: string,
   value: string,
-  sub: string,
+  hint: string,
   kind?: 'danger' | 'warning' | 'success'
 ): string {
-  const cls = kind ? ` kpi__value--${kind}` : '';
+  const cls = kind ? ` metric--${kind}` : '';
   return (
-    '<div class="kpi">' +
-    `<div class="kpi__label">${escapeHtml(label)}</div>` +
-    `<div class="kpi__value${cls}">${escapeHtml(value)}</div>` +
-    (sub ? `<div class="kpi__sub">${escapeHtml(sub)}</div>` : '') +
+    `<div class="metric${cls}">` +
+    `<div class="metric__label">${escapeHtml(label)}</div>` +
+    `<div class="metric__value">${escapeHtml(value)}</div>` +
+    (hint ? `<div class="metric__hint">${escapeHtml(hint)}</div>` : '') +
     '</div>'
   );
 }
@@ -534,7 +703,12 @@ function extractCNJ(raw: string): string {
   return m ? m[0] : raw.trim();
 }
 
-function renderProcCell(numero: string, url: string | null): string {
+function renderProcCell(
+  numero: string,
+  url: string | null,
+  idProcesso: string | null,
+  idTaskInstance: string | null
+): string {
   const cnj = extractCNJ(numero);
   const label = escapeHtml(numero || '—');
   const main = url
@@ -544,24 +718,439 @@ function renderProcCell(numero: string, url: string | null): string {
     `<button type="button" class="proc-copy" data-cnj="${escapeAttr(cnj)}" ` +
     `title="Copiar número do processo" aria-label="Copiar número do processo ${escapeAttr(cnj)}">` +
     `${COPY_ICON_SVG}</button>`;
-  return `<span class="proc-cell">${main}${copyBtn}</span>`;
+  let openTaskBtn = '';
+  if (podeAbrirTarefa(idProcesso, idTaskInstance) && url) {
+    openTaskBtn =
+      `<button type="button" class="proc-open-task" ` +
+      `data-id-processo="${escapeAttr(idProcesso!)}" ` +
+      `data-id-task="${escapeAttr(idTaskInstance!)}" ` +
+      `data-url-ref="${escapeAttr(url)}" ` +
+      `title="Abrir tarefa no PJe" aria-label="Abrir tarefa do processo ${escapeAttr(cnj)}">` +
+      `${OPEN_TASK_ICON_SVG}</button>`;
+  }
+  return `<span class="proc-cell">${main}${copyBtn}${openTaskBtn}</span>`;
 }
 
 function instalarCopyDelegation(): void {
   document.addEventListener('click', (ev) => {
     const target = ev.target as HTMLElement | null;
     if (!target) return;
-    const btn = target.closest<HTMLElement>('.proc-copy');
-    if (!btn) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const cnj = btn.dataset.cnj || '';
-    if (!cnj) return;
-    void navigator.clipboard
-      .writeText(cnj)
-      .then(() => showToast(`Número copiado: ${cnj}`))
-      .catch(() => showToast('Não foi possível copiar para a área de transferência.'));
+    const copyBtn = target.closest<HTMLElement>('.proc-copy');
+    if (copyBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const cnj = copyBtn.dataset.cnj || '';
+      if (!cnj) return;
+      void navigator.clipboard
+        .writeText(cnj)
+        .then(() => showToast(`Número copiado: ${cnj}`))
+        .catch(() => showToast('Não foi possível copiar para a área de transferência.'));
+      return;
+    }
+    const openBtn = target.closest<HTMLElement>('.proc-open-task');
+    if (openBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const idProcesso = openBtn.dataset.idProcesso || '';
+      const idTaskInstance = openBtn.dataset.idTask || '';
+      const urlRef = openBtn.dataset.urlRef || '';
+      if (!idProcesso || !idTaskInstance) return;
+      const ok = abrirTarefaPopup({
+        idProcesso,
+        idTaskInstance,
+        referenciaUrlAutos: urlRef
+      });
+      if (!ok) {
+        showToast('Não foi possível abrir a tarefa (popup bloqueado?).');
+      }
+      return;
+    }
+    const encerrarBtn = target.closest<HTMLElement>('.proc-encerrar');
+    if (encerrarBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (encerrarBtn.hasAttribute('disabled')) return;
+      const key = encerrarBtn.dataset.encerrarKey || '';
+      const idProcesso = encerrarBtn.dataset.idProcesso || '';
+      const idTaskInstance = encerrarBtn.dataset.idTask || '';
+      const idDocumento = encerrarBtn.dataset.idDocumento || '';
+      const urlRef = encerrarBtn.dataset.urlRef || '';
+      const numero = encerrarBtn.dataset.numero || '';
+      if (!key || !idProcesso || !idTaskInstance || !urlRef) return;
+      const urlTarefa = montarUrlTarefa({
+        idProcesso,
+        idTaskInstance,
+        referenciaUrlAutos: urlRef
+      });
+      if (!urlTarefa) {
+        showToast('Não foi possível montar a URL da tarefa no PJe.');
+        return;
+      }
+      enfileirarEncerramento({
+        key,
+        url: urlTarefa,
+        numeroProcesso: numero,
+        idProcesso,
+        idTaskInstance,
+        idDocumento
+      });
+    }
   });
+}
+
+// =====================================================================
+// Coluna "Encerrar" — estados, fila serial e ponte para o background
+// =====================================================================
+
+function renderEncerrarCell(l: LinhaExpediente): string {
+  if (
+    !l.url ||
+    !podeAbrirTarefa(l.idProcesso, l.idTaskInstance)
+  ) {
+    return '';
+  }
+  const cnj = extractCNJ(l.numeroProcesso || '');
+  // Chave por TAREFA (idProcesso+idTaskInstance) — todas as linhas da
+  // mesma tarefa compartilham o estado porque a automação fecha tudo
+  // junto. A diferenciação visual (quem clicou vs. espectadores) é feita
+  // em `renderEncerrarBtn` comparando `idDocumento` com `state.iniciadoPor`.
+  const key = buildEncerrarKey(l.idProcesso!, l.idTaskInstance!);
+  const state = encerramentos.get(key) ?? { estado: 'pronto', atualizadoEm: 0 };
+  return renderEncerrarBtn(
+    key,
+    l.idProcesso!,
+    l.idTaskInstance!,
+    l.exp.idDocumento,
+    l.url,
+    cnj,
+    state
+  );
+}
+
+function buildEncerrarKey(
+  idProcesso: string,
+  idTaskInstance: string
+): string {
+  return `${idProcesso}:${idTaskInstance}`;
+}
+
+function renderEncerrarBtn(
+  key: string,
+  idProcesso: string,
+  idTaskInstance: string,
+  idDocumento: string,
+  urlRef: string,
+  numeroCNJ: string,
+  state: EncerrarState
+): string {
+  const { estado } = state;
+  const isDisabled =
+    estado === 'executando' || estado === 'sucesso' || estado === 'nada-a-fazer';
+  // Modo "compacto": linhas da mesma tarefa que NÃO iniciaram o clique
+  // refletem o andamento/resultado só pelo ícone. Enquanto `pronto`
+  // (ninguém clicou ainda) todos são full. Depois que alguém clica,
+  // só a linha do `iniciadoPor` continua full.
+  const isClicker =
+    state.iniciadoPor == null || state.iniciadoPor === idDocumento;
+  const compact = estado !== 'pronto' && !isClicker;
+  const cls =
+    'proc-encerrar ' +
+    `proc-encerrar--${estado === 'nada-a-fazer' ? 'vazio' : estado}` +
+    (compact ? ' proc-encerrar--compact' : '');
+  const label = compact ? labelCompactEncerrar(state) : labelEncerrar(state);
+  const titulo = compact ? tooltipCompactEncerrar(state) : tooltipEncerrar(state);
+  const labelHtml = label
+    ? `<span class="proc-encerrar__label">${escapeHtml(label)}</span>`
+    : '';
+  return (
+    `<button type="button" class="${cls}" ` +
+    `data-encerrar-key="${escapeAttr(key)}" ` +
+    `data-id-processo="${escapeAttr(idProcesso)}" ` +
+    `data-id-task="${escapeAttr(idTaskInstance)}" ` +
+    `data-id-documento="${escapeAttr(idDocumento)}" ` +
+    `data-url-ref="${escapeAttr(urlRef)}" ` +
+    `data-numero="${escapeAttr(numeroCNJ)}" ` +
+    `title="${escapeAttr(titulo)}" aria-label="${escapeAttr(titulo)}"` +
+    (isDisabled ? ' disabled' : '') +
+    '>' +
+    iconeEncerrar(estado) +
+    labelHtml +
+    '</button>'
+  );
+}
+
+function labelCompactEncerrar(state: EncerrarState): string {
+  // Linhas espectadoras: só ícone. Sem rótulo para não parecer que o
+  // usuário clicou em todas. Ainda assim `sucesso`/`erro` têm um rótulo
+  // curto como dica visual redundante ao ícone.
+  switch (state.estado) {
+    case 'executando': return '';
+    case 'sucesso': return '';
+    case 'erro': return '';
+    case 'nada-a-fazer': return '';
+    default: return '';
+  }
+}
+
+function tooltipCompactEncerrar(state: EncerrarState): string {
+  switch (state.estado) {
+    case 'executando':
+      return 'Outra linha desta tarefa disparou o encerramento — aguarde.';
+    case 'sucesso':
+      return (
+        `Encerrado pela linha que foi clicada — ${state.quantidade ?? 0} ` +
+        'expediente(s) desta tarefa foram fechados.'
+      );
+    case 'erro':
+      return (
+        'Encerramento desta tarefa falhou: ' +
+        (state.mensagem || 'erro desconhecido') +
+        '. Clique em qualquer linha para tentar novamente.'
+      );
+    case 'nada-a-fazer':
+      return 'Todos os expedientes desta tarefa já estavam fechados.';
+    default:
+      return 'Fechar todos os expedientes desta tarefa no PJe.';
+  }
+}
+
+function labelEncerrar(state: EncerrarState): string {
+  switch (state.estado) {
+    case 'executando': return 'Encerrando…';
+    case 'sucesso':
+      return state.quantidade
+        ? `Encerrado (${state.quantidade})`
+        : 'Encerrado';
+    case 'erro': return 'Tentar novamente';
+    case 'nada-a-fazer': return 'Nada a fazer';
+    default: return 'Encerrar todos';
+  }
+}
+
+function tooltipEncerrar(state: EncerrarState): string {
+  const hora =
+    state.atualizadoEm > 0
+      ? new Date(state.atualizadoEm).toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      : '';
+  switch (state.estado) {
+    case 'executando':
+      return 'Fechando expedientes no PJe — aguarde.';
+    case 'sucesso':
+      return (
+        `Encerrado às ${hora} — ${state.quantidade ?? 0} expediente(s).`
+      );
+    case 'erro':
+      return (
+        `Falhou às ${hora}: ` +
+        (state.mensagem || 'erro desconhecido') +
+        '. Clique para tentar de novo.'
+      );
+    case 'nada-a-fazer':
+      return 'Todos os expedientes desta tarefa já estavam fechados.';
+    default:
+      return 'Fechar todos os expedientes desta tarefa no PJe.';
+  }
+}
+
+function iconeEncerrar(estado: EncerrarEstado): string {
+  if (estado === 'executando') {
+    return (
+      '<svg class="proc-encerrar__icon proc-encerrar__icon--spin" ' +
+      'width="14" height="14" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M21 12a9 9 0 1 1-6.2-8.55"/>' +
+      '</svg>'
+    );
+  }
+  if (estado === 'sucesso') {
+    return (
+      '<svg class="proc-encerrar__icon" width="14" height="14" ' +
+      'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<polyline points="20 6 9 17 4 12"/></svg>'
+    );
+  }
+  if (estado === 'erro') {
+    return (
+      '<svg class="proc-encerrar__icon" width="14" height="14" ' +
+      'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+      '<line x1="12" y1="9" x2="12" y2="13"/>' +
+      '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    );
+  }
+  if (estado === 'nada-a-fazer') {
+    return (
+      '<svg class="proc-encerrar__icon" width="14" height="14" ' +
+      'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<line x1="5" y1="12" x2="19" y2="12"/></svg>'
+    );
+  }
+  // pronto
+  return (
+    '<svg class="proc-encerrar__icon" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<polyline points="3 6 5 6 21 6"/>' +
+    '<path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>' +
+    '<path d="M10 11v6"/><path d="M14 11v6"/>' +
+    '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>'
+  );
+}
+
+function enfileirarEncerramento(item: EncerrarQueueItem): void {
+  // Se já está executando ou na fila, ignora o novo clique silenciosamente.
+  if (encerrarRunningKey === item.key) return;
+  if (encerrarQueue.some((q) => q.key === item.key)) return;
+  const atual = encerramentos.get(item.key);
+  if (atual?.estado === 'executando') return;
+  atualizarEstadoEncerramento(item.key, {
+    estado: 'executando',
+    atualizadoEm: Date.now(),
+    iniciadoPor: item.idDocumento
+  });
+  encerrarQueue.push(item);
+  void processarFilaEncerramento();
+}
+
+async function processarFilaEncerramento(): Promise<void> {
+  if (encerrarRunningKey !== null) return;
+  const prox = encerrarQueue.shift();
+  if (!prox) return;
+  encerrarRunningKey = prox.key;
+  try {
+    const resp = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.PRAZOS_ENCERRAR_RUN,
+      payload: {
+        url: prox.url,
+        numeroProcesso: prox.numeroProcesso,
+        idProcesso: prox.idProcesso,
+        idTaskInstance: prox.idTaskInstance
+      }
+    })) as
+      | {
+          ok: boolean;
+          estado: EncerrarEstado;
+          quantidade: number;
+          error?: string;
+          terminouEm: number;
+        }
+      | undefined;
+    if (!resp) {
+      atualizarEstadoEncerramento(prox.key, {
+        estado: 'erro',
+        atualizadoEm: Date.now(),
+        mensagem: 'Sem resposta do background.',
+        iniciadoPor: prox.idDocumento
+      });
+    } else {
+      atualizarEstadoEncerramento(prox.key, {
+        estado: resp.estado,
+        atualizadoEm: resp.terminouEm || Date.now(),
+        quantidade: resp.quantidade,
+        mensagem: resp.error,
+        iniciadoPor: prox.idDocumento
+      });
+    }
+  } catch (err) {
+    atualizarEstadoEncerramento(prox.key, {
+      estado: 'erro',
+      atualizadoEm: Date.now(),
+      mensagem: err instanceof Error ? err.message : String(err),
+      iniciadoPor: prox.idDocumento
+    });
+  } finally {
+    encerrarRunningKey = null;
+    if (encerrarQueue.length > 0) {
+      void processarFilaEncerramento();
+    }
+  }
+}
+
+function atualizarEstadoEncerramento(
+  key: string,
+  state: EncerrarState
+): void {
+  encerramentos.set(key, state);
+  persistirEstadoEncerramento();
+  repintarBotoesEncerrar(key);
+  if (state.estado === 'erro') {
+    showToast('Encerramento falhou: ' + (state.mensagem || 'erro desconhecido'));
+  } else if (state.estado === 'sucesso') {
+    showToast(`Encerrado: ${state.quantidade ?? 0} expediente(s).`);
+  } else if (state.estado === 'nada-a-fazer') {
+    showToast('Nenhum expediente aberto encontrado.');
+  }
+}
+
+function repintarBotoesEncerrar(key: string): void {
+  const botoes = document.querySelectorAll<HTMLButtonElement>(
+    `.proc-encerrar[data-encerrar-key="${escapeAttr(key)}"]`
+  );
+  botoes.forEach((btn) => {
+    const idProcesso = btn.dataset.idProcesso ?? '';
+    const idTask = btn.dataset.idTask ?? '';
+    const idDocumento = btn.dataset.idDocumento ?? '';
+    const urlRef = btn.dataset.urlRef ?? '';
+    const numero = btn.dataset.numero ?? '';
+    const state =
+      encerramentos.get(key) ?? { estado: 'pronto' as EncerrarEstado, atualizadoEm: 0 };
+    const html = renderEncerrarBtn(
+      key,
+      idProcesso,
+      idTask,
+      idDocumento,
+      urlRef,
+      numero,
+      state
+    );
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const novo = tmp.firstElementChild as HTMLButtonElement | null;
+    if (novo) btn.replaceWith(novo);
+  });
+}
+
+function persistirEstadoEncerramento(): void {
+  const obj: Record<string, EncerrarState> = {};
+  for (const [k, v] of encerramentos) obj[k] = v;
+  chrome.storage.local
+    .set({ [STORAGE_KEYS.PRAZOS_ENCERRAMENTOS]: obj })
+    .catch((e) =>
+      console.warn(`${LOG_PREFIX} falha ao persistir encerramentos:`, e)
+    );
+}
+
+async function restaurarEstadoEncerramento(): Promise<void> {
+  try {
+    const stored = await chrome.storage.local.get([
+      STORAGE_KEYS.PRAZOS_ENCERRAMENTOS
+    ]);
+    const raw = stored[STORAGE_KEYS.PRAZOS_ENCERRAMENTOS] as
+      | Record<string, EncerrarState>
+      | undefined;
+    if (!raw) return;
+    // "executando" ficou preso (F5 mid-run): rebaixa a "erro" para re-tentativa.
+    for (const [k, v] of Object.entries(raw)) {
+      if (v.estado === 'executando') {
+        encerramentos.set(k, {
+          estado: 'erro',
+          atualizadoEm: v.atualizadoEm,
+          mensagem: 'Recarregou a página durante o encerramento.'
+        });
+      } else {
+        encerramentos.set(k, v);
+      }
+    }
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} falha ao restaurar encerramentos:`, e);
+  }
 }
 
 let toastTimer: number | null = null;

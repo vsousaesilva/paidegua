@@ -107,6 +107,7 @@ export function triagemProcessoFromApi(
   const chegadaMs = toMsOrNull(p.dataChegadaTarefa);
   return {
     idProcesso: String(p.idProcesso),
+    idTaskInstance: p.idTaskInstance != null ? String(p.idTaskInstance) : null,
     numeroProcesso: p.numeroProcesso ?? '',
     assunto: p.assuntoPrincipal ?? '',
     orgao: p.orgaoJulgador ?? '',
@@ -137,7 +138,7 @@ export interface ColetarSnapshotsViaAPIOptions {
   pjeOrigin?: string;
   /** Limite de processos por tarefa. */
   maxProcessosPorTarefa?: number;
-  /** Paralelismo de resolução de `ca`. Default 5, clamp [1, 10]. */
+  /** Paralelismo de resolução de `ca`. Default 10, clamp [1, 10]. */
   concurrencyCa?: number;
   onProgress?: (msg: string) => void;
 }
@@ -164,12 +165,12 @@ export async function coletarSnapshotsViaAPI(
   const legacyOrigin = (
     opts.pjeOrigin ?? window.location.origin
   ).replace(/\/+$/, '');
-  const concurrencyCa = clamp(opts.concurrencyCa ?? 5, 1, 10);
+  const concurrencyCa = clamp(opts.concurrencyCa ?? 10, 1, 10);
 
   const snapshots: TriagemTarefaSnapshot[] = [];
 
   for (const nomeTarefa of opts.nomes) {
-    onProgress(`[API] listando "${nomeTarefa}"...`);
+    onProgress(`Coletando processos da tarefa "${nomeTarefa}" — aguarde...`);
     const lista = await listarProcessosDaTarefa({
       nomeTarefa,
       maxProcessos: opts.maxProcessosPorTarefa
@@ -182,7 +183,7 @@ export async function coletarSnapshotsViaAPI(
       };
     }
     onProgress(
-      `[API] "${nomeTarefa}": ${lista.processos.length}/${lista.total} processo(s).`
+      `Tarefa "${nomeTarefa}": ${lista.processos.length}/${lista.total} processo(s) identificados. Resolvendo autos...`
     );
 
     const processos: TriagemProcesso[] = new Array(lista.processos.length);
@@ -217,7 +218,7 @@ export async function coletarSnapshotsViaAPI(
         concluidos++;
         if (concluidos % 25 === 0 || concluidos === lista.processos.length) {
           onProgress(
-            `[API] "${nomeTarefa}": resolvendo autos ${concluidos}/${lista.processos.length}`
+            `Resolvendo autos em "${nomeTarefa}": ${concluidos}/${lista.processos.length}...`
           );
         }
       }

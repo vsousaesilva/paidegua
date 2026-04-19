@@ -353,6 +353,9 @@
       <button type="button" class="paidegua-popup__tab" role="tab" id="tab-triagem" aria-controls="panel-triagem" aria-selected="false">
         Triagem Inteligente
       </button>
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-etiquetas" aria-controls="panel-etiquetas" aria-selected="false">
+        Etiquetas Inteligentes
+      </button>
     </nav>
 
     <main class="paidegua-popup__main">
@@ -592,6 +595,114 @@
         </section>
 
         <p class="paidegua-triagem-status" id="triagem-status"></p>
+      </div>
+
+      <div class="paidegua-popup__tabpanel" role="tabpanel" id="panel-etiquetas" aria-labelledby="tab-etiquetas" hidden>
+        <p class="paidegua-etiquetas-intro">
+          Busque o cat&#225;logo de etiquetas do PJe uma &#250;nica vez &#8212; ele fica
+          guardado localmente no navegador, sem sair da sua esta&#231;&#227;o.
+          No <strong>painel superior</strong> voc&#234; v&#234; a sele&#231;&#227;o consolidada; no
+          <strong>painel inferior</strong>, marque no cat&#225;logo as etiquetas que a
+          Triagem Inteligente deve considerar ao sugerir <em>etiquetas m&#225;gicas</em>
+          para um processo.
+        </p>
+
+        <section class="paidegua-etiquetas-prompt">
+          <div class="paidegua-etiquetas-prompt__head">
+            <span class="paidegua-etiquetas-prompt__icon" aria-hidden="true">&#10024;</span>
+            <label for="etiq-prompt-criterios" class="paidegua-etiquetas-prompt__label">
+              Orienta&#231;&#245;es para a IA extrair marcadores do processo
+            </label>
+          </div>
+          <p class="paidegua-etiquetas-prompt__hint">
+            Texto livre injetado no prompt que pede &#224; IA uma lista curta de
+            marcadores sem&#226;nticos sobre o processo. Use para guiar o foco
+            (mat&#233;ria, benef&#237;cio, fase) e melhorar o de-para com as etiquetas.
+            Deixe em branco para usar apenas o comportamento padr&#227;o.
+          </p>
+          <div class="paidegua-etiquetas-prompt__field">
+            <textarea
+              id="etiq-prompt-criterios"
+              class="paidegua-etiquetas-prompt__textarea"
+              rows="7"
+              placeholder="Ex.: foco em mat&#233;ria previdenci&#225;ria e benef&#237;cios assistenciais; marque a fase processual (in&#237;cio, sanea&#231;&#227;o, senten&#231;a); destaque tutelas de urg&#234;ncia."
+            ></textarea>
+          </div>
+          <div class="paidegua-etiquetas-prompt__foot">
+            <p id="etiq-prompt-status" class="paidegua-popup__status"></p>
+            <span id="etiq-prompt-count" class="paidegua-etiquetas-prompt__count">0 caracteres</span>
+          </div>
+        </section>
+
+        <div class="paidegua-etiquetas-toolbar">
+          <button type="button" id="btn-etiq-fetch" class="paidegua-popup__btn paidegua-popup__btn--primary">
+            Buscar cat&#225;logo do PJe
+          </button>
+          <button type="button" id="btn-etiq-reindex" class="paidegua-popup__btn" disabled>
+            Reindexar agora
+          </button>
+          <button type="button" id="btn-etiq-save" class="paidegua-popup__btn paidegua-popup__btn--primary" disabled>
+            Salvar sele&#231;&#227;o
+          </button>
+          <button type="button" id="btn-etiq-clear" class="paidegua-popup__btn paidegua-popup__btn--danger" disabled>
+            Remover cat&#225;logo
+          </button>
+        </div>
+
+        <div id="etiq-progress-wrap" class="paidegua-etiquetas-progress" hidden>
+          <div class="paidegua-etiquetas-progress__bar">
+            <div id="etiq-progress-fill" class="paidegua-etiquetas-progress__fill"></div>
+          </div>
+          <p id="etiq-progress-text" class="paidegua-popup__hint paidegua-popup__hint--small"></p>
+        </div>
+
+        <p id="etiq-status" class="paidegua-etiquetas-status"></p>
+
+        <div class="paidegua-etiquetas-grid">
+          <section class="paidegua-etiquetas-col paidegua-etiquetas-col--selected" aria-labelledby="etiq-col-b-title">
+            <header class="paidegua-etiquetas-col__header">
+              <h3 id="etiq-col-b-title">Sugestion&#225;veis (selecionadas)</h3>
+              <span id="etiq-col-b-count" class="paidegua-etiquetas-col__count">0</span>
+            </header>
+            <p class="paidegua-popup__hint paidegua-popup__hint--small">
+              Estas s&#227;o as etiquetas que o de-para sem&#226;ntico usa para sugerir
+              aplica&#231;&#245;es &#224; sua tarefa de triagem. Clique em uma para remover.
+            </p>
+            <ul id="etiq-col-b-list" class="paidegua-etiquetas-col__list paidegua-etiquetas-col__list--selected" aria-live="polite"></ul>
+          </section>
+
+          <section class="paidegua-etiquetas-col paidegua-etiquetas-col--catalog" aria-labelledby="etiq-col-a-title">
+            <header class="paidegua-etiquetas-col__header">
+              <h3 id="etiq-col-a-title">Cat&#225;logo completo</h3>
+              <span id="etiq-col-a-count" class="paidegua-etiquetas-col__count">0</span>
+            </header>
+            <div class="paidegua-etiquetas-col__filters">
+              <input
+                type="search"
+                id="etiq-col-a-filter"
+                class="paidegua-popup__input"
+                placeholder="Filtrar por nome..."
+                autocomplete="off"
+              />
+              <label class="paidegua-popup__checkbox paidegua-popup__checkbox--inline">
+                <input type="checkbox" id="etiq-col-a-only-favoritas" />
+                <span>Apenas favoritas</span>
+              </label>
+            </div>
+            <div class="paidegua-etiquetas-col__actions">
+              <button type="button" id="etiq-col-a-select-visible" class="paidegua-popup__btn paidegua-popup__btn--tiny">
+                Marcar vis&#237;veis
+              </button>
+              <button type="button" id="etiq-col-a-deselect-visible" class="paidegua-popup__btn paidegua-popup__btn--tiny">
+                Desmarcar vis&#237;veis
+              </button>
+              <button type="button" id="etiq-col-a-select-favoritas" class="paidegua-popup__btn paidegua-popup__btn--tiny">
+                Marcar todas favoritas
+              </button>
+            </div>
+            <ul id="etiq-col-a-list" class="paidegua-etiquetas-col__list paidegua-etiquetas-col__list--catalog" aria-live="polite"></ul>
+          </section>
+        </div>
       </div>
     </main>
 
