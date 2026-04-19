@@ -9,7 +9,16 @@
  */
 
 import { LOG_PREFIX, NUMERO_PROCESSO_REGEX } from '../../shared/constants';
-import type { ProcessoDocumento } from '../../shared/types';
+import type {
+  CienciaAutor,
+  ExpedientesExtracao,
+  NaturezaPrazo,
+  ProcessoAnomalia,
+  ProcessoDocumento,
+  ProcessoExpediente,
+  ProcessoExpedienteAnomalia,
+  StatusPrazo
+} from '../../shared/types';
 import type { BaseAdapter } from './base-adapter';
 
 /**
@@ -670,4 +679,560 @@ export class PJeLegacyAdapter implements BaseAdapter {
     const match = text.match(NUMERO_PROCESSO_REGEX);
     return match ? match[0] : null;
   }
+
+  // ===================================================================
+  // Aba Expedientes — usado pelo painel "Prazos na fita".
+  // O PJe carrega essa aba lazy via A4J.AJAX.Submit; quando o usuário
+  // entra na tela do processo o tbody dos expedientes ainda não existe.
+  // ===================================================================
+
+  async ensureAbaExpedientes(): Promise<boolean> {
+    if (queryExpedientesTbody() !== null) {
+      return true;
+    }
+    const tab = document.querySelector<HTMLAnchorElement>(
+      'a[id^="navbar:linkAbaExpedientes"]'
+    );
+    if (!tab) {
+      console.warn(`${LOG_PREFIX} ensureAbaExpedientes: link da aba não encontrado.`);
+      return false;
+    }
+    try {
+      tab.click();
+      await waitForDom(() => queryExpedientesTbody() !== null, 8000);
+      return true;
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} ensureAbaExpedientes: timeout/erro:`, err);
+      return false;
+    }
+  }
+
+  extractExpedientes(): ExpedientesExtracao {
+    const tbody = queryExpedientesTbody();
+    if (!tbody) {
+      return { abertos: [], fechados: 0 };
+    }
+    const rows = Array.from(
+      tbody.querySelectorAll<HTMLTableRowElement>(':scope > tr')
+    );
+    const agora = Date.now();
+    const abertos: ProcessoExpediente[] = [];
+    let fechados = 0;
+    for (const tr of rows) {
+      // Ler PRIMEIRO a coluna FECHADO — economiza o parser inteiro nas
+      // linhas SIM, que viram apenas contagem.
+      if (extrairFechado(tr)) {
+        fechados++;
+        continue;
+      }
+      const e = parseExpedienteRow(tr, agora);
+      if (e) abertos.push(e);
+    }
+    console.log(
+      `${LOG_PREFIX} extractExpedientes: ${abertos.length} aberto(s) + ` +
+        `${fechados} fechado(s), ${rows.length} linha(s) totais.`
+    );
+    return { abertos, fechados };
+  }
+}
+
+// =====================================================================
+// Helpers para Expedientes (escopo de módulo, testáveis isoladamente)
+// =====================================================================
+
+/**
+ * Localiza o tbody dos expedientes no DOM. O id contém
+ * `processoParteExpedienteMenu` e termina em `:tb` (padrão RichFaces).
+ *
+ * Aceita um Document arbitrário (default `document`) para permitir reuso
+ * a partir de um iframe same-origin, quando o coletor abre a pagina do
+ * processo sem criar uma aba nova (`listAutosDigitais.seam` via
+ * `<iframe>` hidden).
+ */
+function queryExpedientesTbody(
+  doc: Document = document
+): HTMLTableSectionElement | null {
+  return doc.querySelector<HTMLTableSectionElement>(
+    'tbody[id*="processoParteExpedienteMenu"][id$=":tb"]'
+  );
+}
+
+/**
+ * Versão local de waitForCondition (gêmea da que existe em
+ * triagem/analisar-tarefas.ts) para não criar dependência cruzada
+ * entre o adapter e o módulo de triagem.
+ */
+async function waitForDom(
+  cond: () => boolean,
+  timeoutMs: number,
+  pollMs = 120
+): Promise<void> {
+  const start = Date.now();
+  if (cond()) return;
+  await new Promise<void>((resolve, reject) => {
+    const id = window.setInterval(() => {
+      if (cond()) {
+        window.clearInterval(id);
+        resolve();
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        window.clearInterval(id);
+        reject(new Error(`Timeout (${timeoutMs}ms) aguardando tbody de expedientes.`));
+      }
+    }, pollMs);
+  });
+}
+
+/** Regex auxiliares reaproveitados pelo parser de uma linha. */
+const EXPEDIENTE_TIPO_ID_REGEX = /^\s*([^()\n]+?)\s*\((\d{5,})\)/;
+const EXPEDIENTE_REPRESENTANTE_REGEX = /Representante:\s*([^\n\r]+)/i;
+const EXPEDIENTE_MEIO_REGEX =
+  /(Expedição eletrônica|Diário Eletrônico|Central de Mandados|Postal|Carta\s+(?:AR|simples|registrada)|Edital|Mandado)\s*\((\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}:\d{2})?)\)/i;
+const EXPEDIENTE_CIENCIA_REGEX =
+  /(O sistema|[^\n\r]+?)\s+registrou ciência em\s+(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2})/;
+const EXPEDIENTE_PRAZO_REGEX = /Prazo:\s*(?:(\d+)\s*dias?|sem\s+prazo)/i;
+const EXPEDIENTE_DATA_LIMITE_REGEX =
+  /^(\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}:\d{2})?)$/;
+const EXPEDIENTE_NATUREZA_TITLE_REGEX = /Data limite prevista para\s+(.+?)\s*$/i;
+const EXPEDIENTE_PPE_ID_REGEX = /idProcessoParteExpediente[^0-9]*(\d{5,})/i;
+
+/**
+ * Parser de uma única linha (`tr`) da tabela de expedientes. Retorna
+ * `null` quando a estrutura mínima falta (sem tipo + idDocumento).
+ *
+ * `agoraMs` é injetado para tornar a derivação de status/anomalias
+ * determinística e testável.
+ */
+function parseExpedienteRow(
+  tr: HTMLTableRowElement,
+  agoraMs: number
+): ProcessoExpediente | null {
+  const infoSpan = tr.querySelector<HTMLElement>(
+    'span[id*="processoParteExpedienteMenuGridList"]'
+  );
+  if (!infoSpan) return null;
+
+  const text = (infoSpan.innerText ?? infoSpan.textContent ?? '').trim();
+  if (!text) return null;
+
+  const tipoMatch = text.match(EXPEDIENTE_TIPO_ID_REGEX);
+  if (!tipoMatch) return null;
+  const tipoAto = tipoMatch[1].trim();
+  const idDocumento = tipoMatch[2];
+
+  const destH6 = infoSpan.querySelector('h6');
+  const destinatario = (destH6?.textContent ?? '').trim();
+
+  const repMatch = text.match(EXPEDIENTE_REPRESENTANTE_REGEX);
+  const representante = repMatch ? repMatch[1].trim() : null;
+
+  let meio = '';
+  let dataExpedicao = '';
+  const meioMatch = text.match(EXPEDIENTE_MEIO_REGEX);
+  if (meioMatch) {
+    meio = meioMatch[1].trim();
+    dataExpedicao = meioMatch[2].trim();
+  }
+
+  let cienciaRegistrada = false;
+  let cienciaAutor: CienciaAutor | null = null;
+  let cienciaServidor: string | null = null;
+  let cienciaDataHora: string | null = null;
+  const cienciaMatch = text.match(EXPEDIENTE_CIENCIA_REGEX);
+  if (cienciaMatch) {
+    cienciaRegistrada = true;
+    const autor = cienciaMatch[1].trim();
+    if (/^O\s+sistema$/i.test(autor)) {
+      cienciaAutor = 'sistema';
+      cienciaServidor = null;
+    } else if (/domic[íi]lio\s+eletr[ôo]nico/i.test(autor)) {
+      // "Usuário Domicílio Eletrônico" — ciência automática pelo portal do
+      // Domicílio Judicial Eletrônico (perfil automatizado, não servidor).
+      cienciaAutor = 'domicilio_eletronico';
+      cienciaServidor = null;
+    } else {
+      cienciaAutor = 'servidor';
+      cienciaServidor = autor;
+    }
+    cienciaDataHora = cienciaMatch[2];
+  }
+
+  let prazoDias: number | null = null;
+  const prazoMatch = text.match(EXPEDIENTE_PRAZO_REGEX);
+  if (prazoMatch && prazoMatch[1]) {
+    const n = parseInt(prazoMatch[1], 10);
+    prazoDias = Number.isFinite(n) ? n : null;
+  }
+  // Quando o regex bate na alternativa "sem prazo" prazoMatch[1] é
+  // undefined e prazoDias permanece null — comportamento correto.
+
+  const { dataLimite, naturezaPrazoLiteral, naturezaPrazo } =
+    extrairBlocoDataLimite(tr);
+
+  let idProcessoParteExpediente: string | null = null;
+  const ppeDiv = tr.querySelector<HTMLElement>('div[id$=":infoPPE"]');
+  if (ppeDiv) {
+    const ppeText = ppeDiv.textContent ?? '';
+    const m = ppeText.match(EXPEDIENTE_PPE_ID_REGEX);
+    if (m) idProcessoParteExpediente = m[1];
+  }
+  if (!idProcessoParteExpediente) {
+    const onclickEl = tr.querySelector<HTMLElement>(
+      '[onclick*="idProcessoParteExpediente"]'
+    );
+    if (onclickEl) {
+      const onclick = onclickEl.getAttribute('onclick') ?? '';
+      const m = onclick.match(EXPEDIENTE_PPE_ID_REGEX);
+      if (m) idProcessoParteExpediente = m[1];
+    }
+  }
+
+  const bruto = {
+    idDocumento,
+    idProcessoParteExpediente,
+    tipoAto,
+    destinatario,
+    representante,
+    meio,
+    dataExpedicao,
+    cienciaRegistrada,
+    cienciaAutor,
+    cienciaServidor,
+    cienciaDataHora,
+    prazoDias,
+    dataLimite,
+    naturezaPrazoLiteral,
+    naturezaPrazo
+  };
+
+  return {
+    ...bruto,
+    status: derivarStatus(bruto, agoraMs),
+    anomalias: derivarAnomalias(bruto, agoraMs)
+  };
+}
+
+/**
+ * Extrai dataLimite, literal e enum da natureza a partir do `div#r`
+ * dentro da `tr`. Crítico: o `span[title^="Data limite prevista"]` pode
+ * estar em qualquer um dos três `h6` (não é estável); por isso
+ * localizamos por presença de atributo, nunca por posição.
+ */
+function extrairBlocoDataLimite(tr: HTMLTableRowElement): {
+  dataLimite: string | null;
+  naturezaPrazoLiteral: string | null;
+  naturezaPrazo: NaturezaPrazo | null;
+} {
+  const divR = tr.querySelector<HTMLElement>('div[id="r"]');
+  if (!divR) {
+    return { dataLimite: null, naturezaPrazoLiteral: null, naturezaPrazo: null };
+  }
+  let dataLimite: string | null = null;
+  for (const h6 of Array.from(divR.querySelectorAll('h6'))) {
+    const t = (h6.textContent ?? '').trim();
+    if (!t) continue;
+    const m = t.match(EXPEDIENTE_DATA_LIMITE_REGEX);
+    if (m) {
+      dataLimite = m[1];
+      break;
+    }
+  }
+  let naturezaPrazoLiteral: string | null = null;
+  const titleSpan = divR.querySelector<HTMLElement>(
+    'span[title^="Data limite prevista"]'
+  );
+  if (titleSpan) {
+    const titleAttr = titleSpan.getAttribute('title') ?? '';
+    const titleMatch = titleAttr.match(EXPEDIENTE_NATUREZA_TITLE_REGEX);
+    if (titleMatch) {
+      naturezaPrazoLiteral = titleMatch[1].trim();
+    } else {
+      const inner = (titleSpan.textContent ?? '').trim();
+      naturezaPrazoLiteral = inner
+        .replace(/^\(/, '')
+        .replace(/\)$/, '')
+        .replace(/^para\s+/i, '')
+        .trim() || null;
+    }
+  }
+  return {
+    dataLimite,
+    naturezaPrazoLiteral,
+    naturezaPrazo: classificarNatureza(naturezaPrazoLiteral)
+  };
+}
+
+/** Mapeia o literal cru do PJe para o enum normalizado. */
+function classificarNatureza(literal: string | null): NaturezaPrazo | null {
+  if (!literal) return null;
+  const lit = literal.toLowerCase();
+  if (lit.includes('ciência') || lit.includes('ciencia')) return 'ciencia';
+  if (lit.includes('manifestação') || lit.includes('manifestacao')) {
+    return 'manifestacao';
+  }
+  return 'outro';
+}
+
+/**
+ * Lê a coluna FECHADO. O PJe renderiza o texto SIM/NÃO dentro de uma
+ * `div.col-sm-12.text-center` no último `td` da linha. Aceitamos pequenas
+ * variações de whitespace e cercamos com `\b` para não confundir com SIM
+ * dentro de outra palavra.
+ */
+function extrairFechado(tr: HTMLTableRowElement): boolean {
+  const lastTd = tr.querySelector<HTMLElement>(':scope > td:last-of-type');
+  const txt = (lastTd?.textContent ?? '').toUpperCase();
+  if (/\bSIM\b/.test(txt)) return true;
+  if (/\bNÃO\b|\bNAO\b/.test(txt)) return false;
+  return false;
+}
+
+/**
+ * Tipo intermediário: o que o parser produziu ANTES de derivar status e
+ * anomalias. As funções `derivarStatus`/`derivarAnomalias` são puras e
+ * operam sobre essa forma — assim podem ser testadas sem montar o objeto
+ * final completo.
+ */
+type ExpedienteBruto = Omit<ProcessoExpediente, 'status' | 'anomalias'>;
+
+/**
+ * Converte string do PJe (`dd/mm/aaaa[ hh:mm:ss]`) para timestamp ms.
+ * Quando só vem a data, assume final do dia (23:59:59), que é como o
+ * próprio PJe renderiza os limites no painel.
+ */
+function parseDataLimiteToMs(s: string): number | null {
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const [, dd, mm, yyyy, hh = '23', mi = '59', ss = '59'] = m;
+  const d = new Date(
+    Number(yyyy),
+    Number(mm) - 1,
+    Number(dd),
+    Number(hh),
+    Number(mi),
+    Number(ss)
+  );
+  const t = d.getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Status derivado puro. Como o parser só chama esta função para linhas
+ * FECHADO=NÃO, todas as checagens assumem expediente aberto.
+ *
+ * - "sem prazo" precede tudo (caso o PJe tenha emitido só ciência sem
+ *   prazo formal a controlar).
+ * - "indeterminado" cobre os casos em que faltam campos obrigatórios
+ *   (natureza/dataLimite) OU em que a regra de negócio do PJe deveria
+ *   já ter convertido o expediente (ciência expressa após o prazo;
+ *   manifestação aberta com data limite no passado). Esses casos
+ *   também disparam anomalia.
+ */
+function derivarStatus(e: ExpedienteBruto, agoraMs: number): StatusPrazo {
+  if (e.prazoDias === null && e.dataLimite === null) {
+    return 'sem_prazo';
+  }
+  if (e.naturezaPrazo === null || e.dataLimite === null) {
+    return 'indeterminado';
+  }
+  const limiteMs = parseDataLimiteToMs(e.dataLimite);
+  if (e.naturezaPrazo === 'ciencia') {
+    if (limiteMs !== null && limiteMs < agoraMs) return 'indeterminado';
+    return 'aguardando_ciencia';
+  }
+  if (e.naturezaPrazo === 'manifestacao') {
+    if (limiteMs !== null && limiteMs < agoraMs) return 'indeterminado';
+    return 'prazo_correndo';
+  }
+  return 'indeterminado';
+}
+
+/**
+ * Anomalias por expediente — derivadas puras. Como só rodamos sobre
+ * linhas abertas, as regras que originalmente checavam `!fechado`
+ * tornam-se incondicionais.
+ */
+function derivarAnomalias(
+  e: ExpedienteBruto,
+  agoraMs: number
+): ProcessoExpedienteAnomalia[] {
+  const a: ProcessoExpedienteAnomalia[] = [];
+  const limiteMs = e.dataLimite ? parseDataLimiteToMs(e.dataLimite) : null;
+
+  if (
+    e.naturezaPrazo === 'manifestacao' &&
+    limiteMs !== null &&
+    limiteMs < agoraMs
+  ) {
+    a.push('prazo_vencido_aberto');
+  }
+
+  if (
+    e.naturezaPrazo === 'ciencia' &&
+    limiteMs !== null &&
+    limiteMs < agoraMs
+  ) {
+    a.push('ciencia_nao_convertida');
+  }
+
+  if (
+    e.prazoDias !== null &&
+    e.prazoDias > 0 &&
+    (e.dataLimite === null || e.naturezaPrazo === null)
+  ) {
+    a.push('prazo_definido_sem_data_limite');
+  }
+
+  if (e.prazoDias === null && e.dataLimite !== null) {
+    a.push('prazo_sem_prazo_com_data');
+  }
+
+  return a;
+}
+
+/**
+ * Anomalia de nível PROCESSO — agregação simples sobre o resultado da
+ * varredura. Dispara `todos_prazos_encerrados` quando o processo tem
+ * pelo menos um expediente fechado e nenhum aberto (ou seja, está numa
+ * tarefa de "Controle de prazo" sem nenhum prazo ativo).
+ *
+ * Pura por design para que a Fase A2 (pipeline de scan) possa
+ * reaproveitar sem depender do DOM.
+ */
+export function derivarAnomaliasProcesso(
+  extracao: ExpedientesExtracao
+): ProcessoAnomalia[] {
+  const a: ProcessoAnomalia[] = [];
+  if (extracao.abertos.length === 0 && extracao.fechados > 0) {
+    a.push('todos_prazos_encerrados');
+  }
+  return a;
+}
+
+// =====================================================================
+// Variantes iframe-friendly: extraem de um Document arbitrario.
+// Usadas pelo caminho `coletarExpedientesViaIframe` do coordinator, que
+// abre `listAutosDigitais.seam` num iframe oculto same-origin em vez de
+// uma `chrome.tabs.create` por processo. Permitem reuso da mesma logica
+// de parsing sem depender do `document` global do top frame.
+// =====================================================================
+
+/**
+ * Clica no link da aba "Expedientes" dentro do Document fornecido e
+ * aguarda o tbody popular. Equivalente a
+ * `PJeLegacyAdapter.ensureAbaExpedientes`, mas opera sobre o documento
+ * do iframe em vez do `document` do top frame.
+ */
+export async function ensureAbaExpedientesInDoc(
+  doc: Document,
+  timeoutMs = 8_000
+): Promise<boolean> {
+  if (queryExpedientesTbody(doc) !== null) return true;
+  const tab = doc.querySelector<HTMLAnchorElement>(
+    'a[id^="navbar:linkAbaExpedientes"]'
+  );
+  if (!tab) return false;
+  try {
+    tab.click();
+    await waitForDomInDoc(
+      () => queryExpedientesTbody(doc) !== null,
+      timeoutMs
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extrai expedientes a partir de um Document arbitrario. Reusa a mesma
+ * normalizacao de `PJeLegacyAdapter.extractExpedientes` (abertos parseados,
+ * fechados contados).
+ */
+export function extractExpedientesFromDoc(doc: Document): ExpedientesExtracao {
+  const tbody = queryExpedientesTbody(doc);
+  if (!tbody) return { abertos: [], fechados: 0 };
+  const rows = Array.from(
+    tbody.querySelectorAll<HTMLTableRowElement>(':scope > tr')
+  );
+  const agora = Date.now();
+  const abertos: ProcessoExpediente[] = [];
+  let fechados = 0;
+  for (const tr of rows) {
+    if (extrairFechado(tr)) {
+      fechados++;
+      continue;
+    }
+    const e = parseExpedienteRow(tr, agora);
+    if (e) abertos.push(e);
+  }
+  return { abertos, fechados };
+}
+
+/**
+ * Numero do processo a partir de um Document arbitrario. Estrategias em
+ * ordem: `<title>`, seletores conhecidos de cabecalho, varredura do
+ * body (limitada). Usa as mesmas regras do adapter.
+ */
+export function extractNumeroProcessoFromDoc(doc: Document): string | null {
+  const match = (text: string): string | null => {
+    if (!text) return null;
+    const m = text.match(NUMERO_PROCESSO_REGEX);
+    return m ? m[0] : null;
+  };
+  const fromTitle = match(doc.title);
+  if (fromTitle) return fromTitle;
+  const headerSelectors = [
+    '#nomeProcesso',
+    '[id*="numeroProcesso"]',
+    '[id*="processoTitulo"]',
+    '.numeroProcesso',
+    '.processo-numero',
+    'h1, h2, h3'
+  ];
+  for (const selector of headerSelectors) {
+    const els = doc.querySelectorAll<HTMLElement>(selector);
+    for (const el of Array.from(els)) {
+      const m = match(el.textContent ?? '');
+      if (m) return m;
+    }
+  }
+  const bodyText = (doc.body?.innerText ?? '').slice(0, 20_000);
+  return match(bodyText);
+}
+
+/**
+ * Variante de `waitForDom` que polla sem depender do `window` do top
+ * frame — util quando o consumidor esta esperando mudancas no DOM de um
+ * iframe que pode ser removido (e levar junto seu `window.setInterval`)
+ * a qualquer momento.
+ */
+async function waitForDomInDoc(
+  cond: () => boolean,
+  timeoutMs: number,
+  pollMs = 120
+): Promise<void> {
+  const start = Date.now();
+  if (cond()) return;
+  await new Promise<void>((resolve, reject) => {
+    const id = window.setInterval(() => {
+      try {
+        if (cond()) {
+          window.clearInterval(id);
+          resolve();
+          return;
+        }
+      } catch (err) {
+        // iframe removido durante o poll -> doc invalido
+        window.clearInterval(id);
+        reject(err);
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        window.clearInterval(id);
+        reject(new Error(`Timeout (${timeoutMs}ms) aguardando tbody de expedientes.`));
+      }
+    }, pollMs);
+  });
 }

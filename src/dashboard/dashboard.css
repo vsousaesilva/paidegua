@@ -240,19 +240,48 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
-/* Número do processo clicável (copia para a área de transferência). */
-.proc-num {
-  cursor: pointer;
+/* Célula do número: hiperlink para os autos + botão de copiar CNJ. */
+.proc-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.proc-link {
   color: var(--primary);
-  border-bottom: 1px dashed currentColor;
-  user-select: none;
-  transition: background 0.15s, color 0.15s;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
   padding: 0 1px;
   border-radius: 3px;
+  transition: background 0.15s, color 0.15s;
 }
-.proc-num:hover { background: rgba(19, 81, 180, 0.10); color: var(--primary-dark); }
-.proc-num:active { background: rgba(19, 81, 180, 0.18); }
-.proc-num:focus-visible {
+.proc-link:hover { background: rgba(19, 81, 180, 0.10); color: var(--primary-dark); }
+.proc-link:active { background: rgba(19, 81, 180, 0.18); }
+.proc-link:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+.proc-link--disabled {
+  color: var(--muted);
+  border-bottom-style: dashed;
+  cursor: not-allowed;
+}
+.proc-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  line-height: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.proc-copy:hover { background: rgba(19, 81, 180, 0.08); color: var(--primary); border-color: var(--primary-light); }
+.proc-copy:active { background: rgba(19, 81, 180, 0.16); }
+.proc-copy:focus-visible {
   outline: 2px solid var(--primary-light);
   outline-offset: 2px;
 }

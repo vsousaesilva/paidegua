@@ -221,7 +221,44 @@ export const MESSAGE_CHANNELS = {
    * Content (aba PJe) → background → aba-painel: varredura falhou. A
    * aba-painel exibe o erro e oferece nova tentativa / voltar ao seletor.
    */
-  GESTAO_COLETA_FAIL: 'paidegua/gestao/coleta-fail'
+  GESTAO_COLETA_FAIL: 'paidegua/gestao/coleta-fail',
+  /**
+   * Caller (qualquer content/painel) → background: pede para coletar os
+   * expedientes abertos de UM processo a partir da URL dos autos. O
+   * background abre uma aba inativa com a URL, aguarda o content script
+   * daquela aba sinalizar pronto, envia `PRAZOS_FITA_EXTRAIR_NA_ABA` e
+   * devolve ao chamador o resultado estruturado. Base da Fase A2 do
+   * painel "Prazos na fita".
+   */
+  PRAZOS_FITA_COLETAR_PROCESSO: 'paidegua/prazos-fita/coletar-processo',
+  /**
+   * Background → content (aba recém-aberta do processo): comanda a
+   * extração dos expedientes via adapter ativo. Content responde com
+   * `{ ok, extracao, anomaliasProcesso }` ou `{ ok: false, error }`.
+   */
+  PRAZOS_FITA_EXTRAIR_NA_ABA: 'paidegua/prazos-fita/extrair-na-aba',
+  /**
+   * Bridge isolated-world → background: relay do snapshot de auth do
+   * PJe capturado pelo interceptor page-world (`pje-auth-interceptor-page`)
+   * a partir das chamadas REST reais do Angular do painel. Permite ao
+   * background repetir essas chamadas com os mesmos headers (Authorization
+   * Bearer + X-pje-cookies + X-pje-usuario-localizacao). Sem este snapshot,
+   * o painel "Prazos na fita" cai de volta para o caminho de scraping.
+   */
+  PJE_AUTH_CAPTURED: 'paidegua/pje-api/auth-captured',
+  /**
+   * Canais do painel "Prazos na Fita pAIdegua" (perfil Gestão). Mesma
+   * topologia do Painel Gerencial: o content abre a aba-painel (seletor
+   * filtrado em "Controle de prazo") e, ao confirmar, o background
+   * dispara a coleta via API REST no content do PJe.
+   */
+  PRAZOS_FITA_OPEN_PAINEL: 'paidegua/prazos-fita/open-painel',
+  PRAZOS_FITA_START_COLETA: 'paidegua/prazos-fita/start-coleta',
+  PRAZOS_FITA_RUN_COLETA: 'paidegua/prazos-fita/run-coleta',
+  PRAZOS_FITA_COLETA_PROG: 'paidegua/prazos-fita/coleta-prog',
+  PRAZOS_FITA_COLETA_DONE: 'paidegua/prazos-fita/coleta-done',
+  PRAZOS_FITA_COLETA_READY: 'paidegua/prazos-fita/coleta-ready',
+  PRAZOS_FITA_COLETA_FAIL: 'paidegua/prazos-fita/coleta-fail'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -284,7 +321,21 @@ export const STORAGE_KEYS = {
    * progresso é suficiente) — se dependêssemos de um Map em memória,
    * perderíamos a rota e `GESTAO_COLETA_DONE` chegaria sem destinatário.
    */
-  GESTAO_PAINEL_ROUTE_PREFIX: 'paidegua.gestao.painelRoute.'
+  GESTAO_PAINEL_ROUTE_PREFIX: 'paidegua.gestao.painelRoute.',
+  /**
+   * Chave em `chrome.storage.session` (volatil, sobrevive a hibernacao
+   * do service worker mas nao a fechamento do navegador) com o ultimo
+   * snapshot de auth do PJe capturado pelo interceptor. Permite ao
+   * background reidratar a memoria apos hibernar sem precisar esperar o
+   * usuario disparar uma nova chamada no painel.
+   */
+  PJE_AUTH_SNAPSHOT: 'paidegua.pjeAuth.snapshot',
+  /**
+   * Chave em `chrome.storage.session` (volatil) com o payload consolidado
+   * do painel "Prazos na Fita". Gravada pelo background ao receber
+   * PRAZOS_FITA_COLETA_DONE e lida pela aba do dashboard.
+   */
+  PRAZOS_FITA_DASHBOARD_PAYLOAD: 'paidegua.prazosFita.dashboardPayload'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

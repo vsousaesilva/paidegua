@@ -10,8 +10,15 @@
  *   2. Progresso — barra + log ao vivo enquanto a aba PJe varre as
  *      tarefas escolhidas (o content script reporta por mensagens
  *      roteadas pelo background).
- *   3. Conclusão — ao receber `GESTAO_COLETA_READY`, navega para
- *      `gestao-dashboard.html` na mesma aba.
+ *   3. Conclusão — ao receber `*_COLETA_READY`, navega para o dashboard
+ *      correspondente ao modo (Painel Gerencial ou Prazos na Fita).
+ *
+ * Dois modos de uso, selecionados via query `?modo=`:
+ *   - `gestao` (default): Painel Gerencial pAIdegua — lista todas as
+ *     tarefas e dispara a coleta agregada de indicadores.
+ *   - `prazos`: Prazos na Fita pAIdegua — filtra apenas tarefas cujo
+ *     nome contém "Controle de prazo" (case-insensitive) e dispara a
+ *     coleta de expedientes via API REST.
  *
  * Esta página NÃO dialoga diretamente com o content script do PJe: todo
  * o roteamento passa pelo background, que conhece o par
@@ -20,6 +27,56 @@
 
 import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
 import type { GestaoTarefaInfo } from '../shared/types';
+
+type ModoPainel = 'gestao' | 'prazos';
+
+interface ModoConfig {
+  titulo: string;
+  subtitulo: string;
+  filtraTarefas: (tarefas: GestaoTarefaInfo[]) => GestaoTarefaInfo[];
+  vazioMsg: string;
+  startChannel: string;
+  progChannel: string;
+  doneChannel: string;
+  readyChannel: string;
+  failChannel: string;
+  dashboardUrl: string;
+}
+
+const MODOS: Record<ModoPainel, ModoConfig> = {
+  gestao: {
+    titulo: 'Painel Gerencial pAIdegua',
+    subtitulo:
+      'Selecione as tarefas a varrer para gerar o panorama da unidade.',
+    filtraTarefas: (t) => t,
+    vazioMsg:
+      'Nenhuma tarefa foi encontrada no painel atual. Confirme que a aba ' +
+      'do PJe está no Painel do Usuário e tente novamente.',
+    startChannel: MESSAGE_CHANNELS.GESTAO_START_COLETA,
+    progChannel: MESSAGE_CHANNELS.GESTAO_COLETA_PROG,
+    doneChannel: MESSAGE_CHANNELS.GESTAO_COLETA_DONE,
+    readyChannel: MESSAGE_CHANNELS.GESTAO_COLETA_READY,
+    failChannel: MESSAGE_CHANNELS.GESTAO_COLETA_FAIL,
+    dashboardUrl: 'gestao-dashboard/gestao-dashboard.html'
+  },
+  prazos: {
+    titulo: 'Prazos na Fita pAIdegua',
+    subtitulo:
+      'Somente tarefas de "Controle de prazo" aparecem aqui. ' +
+      'Selecione e confirme para extrair os expedientes em curso.',
+    filtraTarefas: (t) =>
+      t.filter((x) => /controle\s+de\s+prazo/i.test(x.nome)),
+    vazioMsg:
+      'Nenhuma tarefa de "Controle de prazo" foi encontrada no painel atual. ' +
+      'Confirme que a aba do PJe está no Painel do Usuário e tente novamente.',
+    startChannel: MESSAGE_CHANNELS.PRAZOS_FITA_START_COLETA,
+    progChannel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_PROG,
+    doneChannel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_DONE,
+    readyChannel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_READY,
+    failChannel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL,
+    dashboardUrl: 'prazos-fita-dashboard/prazos-fita-dashboard.html'
+  }
+};
 
 interface PainelState {
   requestId: string;
@@ -53,16 +110,24 @@ let requestId = '';
 let stateAtual: PainelState | null = null;
 let totalSelecionadas = 0;
 let concluidasAtual = 0;
+let modo: ModoPainel = 'gestao';
+let modoConfig: ModoConfig = MODOS.gestao;
 
 void main();
 
 async function main(): Promise<void> {
   try {
-    requestId = new URLSearchParams(window.location.search).get('rid') ?? '';
+    const params = new URLSearchParams(window.location.search);
+    requestId = params.get('rid') ?? '';
+    const modoParam = params.get('modo');
+    modo = modoParam === 'prazos' ? 'prazos' : 'gestao';
+    modoConfig = MODOS[modo];
+    aplicarTextosDoModo();
+
     if (!requestId) {
       exibirErro(
-        'Identificador de requisição ausente. Feche esta aba e abra o Painel ' +
-          'Gerencial novamente a partir do PJe.'
+        'Identificador de requisição ausente. Feche esta aba e abra a ' +
+          'ferramenta novamente a partir do PJe.'
       );
       return;
     }
@@ -71,19 +136,30 @@ async function main(): Promise<void> {
     if (!state) {
       exibirErro(
         'Não encontrei os dados desta sessão. Talvez a aba do PJe tenha sido ' +
-          'fechada ou a sessão do navegador tenha expirado. Abra o Painel ' +
-          'Gerencial novamente a partir do PJe.'
+          'fechada ou a sessão do navegador tenha expirado. Abra a ferramenta ' +
+          'novamente a partir do PJe.'
       );
       return;
     }
-    stateAtual = state;
-    montarMeta(state);
+    stateAtual = {
+      ...state,
+      tarefas: modoConfig.filtraTarefas(state.tarefas)
+    };
+    montarMeta(stateAtual);
     registrarListenerBackground();
-    await renderizarSeletor(state);
+    await renderizarSeletor(stateAtual);
   } catch (err) {
-    console.error(`${LOG_PREFIX} painel gerencial falhou ao montar:`, err);
+    console.error(`${LOG_PREFIX} painel (modo=${modo}) falhou ao montar:`, err);
     exibirErro(err instanceof Error ? err.message : String(err));
   }
+}
+
+function aplicarTextosDoModo(): void {
+  document.title = modoConfig.titulo;
+  const tituloEl = document.querySelector<HTMLElement>('[data-modo-titulo]');
+  if (tituloEl) tituloEl.textContent = modoConfig.titulo;
+  const subEl = document.querySelector<HTMLElement>('[data-modo-subtitulo]');
+  if (subEl) subEl.textContent = modoConfig.subtitulo;
 }
 
 async function carregarEstado(rid: string): Promise<PainelState | null> {
@@ -122,9 +198,7 @@ async function renderizarSeletor(state: PainelState): Promise<void> {
   if (state.tarefas.length === 0) {
     const li = document.createElement('li');
     li.className = 'lista-vazia';
-    li.textContent =
-      'Nenhuma tarefa foi encontrada no painel atual. Confirme que a aba ' +
-      'do PJe está no Painel do Usuário e tente novamente.';
+    li.textContent = modoConfig.vazioMsg;
     elLista.appendChild(li);
     elBtnConfirmar.disabled = true;
     elBtnTodas.disabled = true;
@@ -210,7 +284,7 @@ async function iniciarColeta(nomes: string[]): Promise<void> {
 
   try {
     const resp = await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.GESTAO_START_COLETA,
+      channel: modoConfig.startChannel,
       payload: { requestId, nomes }
     });
     if (!resp?.ok) {
@@ -226,38 +300,45 @@ async function iniciarColeta(nomes: string[]): Promise<void> {
 }
 
 function registrarListenerBackground(): void {
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || typeof message.channel !== 'string') return false;
+    // Esta pagina e uma "extension view" e, como tal, recebe DUAS copias
+    // de cada mensagem que o content script envia via `chrome.runtime.
+    // sendMessage`: (1) diretamente, pelo broadcast do runtime para todas
+    // as views da extensao — com `sender.tab` apontando para a aba do
+    // content; (2) indiretamente, pelo relay que o background faz via
+    // `chrome.tabs.sendMessage(painelTabId, ...)` — com `sender.tab`
+    // ausente (mensagem vinda do service worker). Aceitamos apenas o
+    // caminho (2) para deduplicar; o relay pelo background e o canonico,
+    // ja valida a rota pelo requestId.
+    if (sender?.tab) return false;
     const payload = message.payload as { requestId?: string } | undefined;
     if (!payload || payload.requestId !== requestId) return false;
 
-    switch (message.channel) {
-      case MESSAGE_CHANNELS.GESTAO_COLETA_PROG: {
-        const msg = (payload as { msg?: string }).msg ?? '';
-        logLinha(msg);
-        avancarBarra(msg);
-        sendResponse({ ok: true });
-        return false;
-      }
-      case MESSAGE_CHANNELS.GESTAO_COLETA_READY: {
-        logLinha('Varredura concluída — abrindo dashboard...', 'ok');
-        const url = chrome.runtime.getURL('gestao-dashboard/gestao-dashboard.html');
-        window.setTimeout(() => {
-          window.location.replace(url);
-        }, 300);
-        sendResponse({ ok: true });
-        return false;
-      }
-      case MESSAGE_CHANNELS.GESTAO_COLETA_FAIL: {
-        const err = (payload as { error?: string }).error ?? 'Erro desconhecido.';
-        logLinha(`Falha: ${err}`, 'err');
-        exibirErro(err);
-        sendResponse({ ok: true });
-        return false;
-      }
-      default:
-        return false;
+    if (message.channel === modoConfig.progChannel) {
+      const msg = (payload as { msg?: string }).msg ?? '';
+      logLinha(msg);
+      avancarBarra(msg);
+      sendResponse({ ok: true });
+      return false;
     }
+    if (message.channel === modoConfig.readyChannel) {
+      logLinha('Varredura concluída — abrindo dashboard...', 'ok');
+      const url = chrome.runtime.getURL(modoConfig.dashboardUrl);
+      window.setTimeout(() => {
+        window.location.replace(url);
+      }, 300);
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (message.channel === modoConfig.failChannel) {
+      const err = (payload as { error?: string }).error ?? 'Erro desconhecido.';
+      logLinha(`Falha: ${err}`, 'err');
+      exibirErro(err);
+      sendResponse({ ok: true });
+      return false;
+    }
+    return false;
   });
 }
 

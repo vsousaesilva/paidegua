@@ -43,6 +43,7 @@ import type {
   ChatStartPayload,
   PJeDetection,
   PAIdeguaSettings,
+  PrazosFitaDashboardPayload,
   ProcessoDocumento,
   SynthesizeSpeechResult
 } from '../shared/types';
@@ -66,8 +67,11 @@ import {
   coletarTarefasSelecionadas,
   instalarListenerGestaoNoIframe
 } from './gestao/gestao-bridge';
+import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
+import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { computarIndicadoresGestao } from './gestao/gestao-indicadores';
+import { coletarPrazosPorTarefasViaAPI } from './gestao/prazos-fita-coordinator';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
@@ -86,6 +90,7 @@ import {
 import { startRecording, blobToBase64, type RecorderHandle } from './audio-recorder';
 import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
 import type { BaseAdapter } from './adapters/base-adapter';
+import { derivarAnomaliasProcesso } from './adapters/pje-legacy';
 
 interface MountedUI {
   sidebar: SidebarController;
@@ -2474,6 +2479,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     event.preventDefault();
     void handlePainelGerencial();
   });
+
+  els.prazosFitaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handlePrazosFita();
+  });
 }
 
 /**
@@ -2900,6 +2910,137 @@ async function handlePainelGerencial(): Promise<void> {
  * microtask — progresso e resultado finais vão por mensagens separadas
  * (`GESTAO_COLETA_PROG`, `GESTAO_COLETA_DONE`, `GESTAO_COLETA_FAIL`).
  */
+/**
+ * Espera o content script desta aba estar totalmente pronto para uma
+ * coleta isolada da Fase A2: `memory.adapter` populado E detecção
+ * indicando tela de processo. Polling curto porque o content pode ter
+ * bootstrapado antes do handler ser chamado.
+ */
+async function waitAdapterPronto(
+  timeoutMs: number
+): Promise<BaseAdapter | null> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    if (
+      memory.adapter &&
+      memory.detection?.isProcessoPage === true
+    ) {
+      return memory.adapter;
+    }
+    await new Promise<void>((r) => setTimeout(r, 150));
+  }
+  return memory.adapter;
+}
+
+/**
+ * Fluxo do botão "Prazos na Fita pAIdegua" (perfil Gestão):
+ *   1. Lista as tarefas disponíveis (mesma rotina do Painel Gerencial).
+ *   2. Pede ao background para abrir a aba intermediária em modo `prazos`,
+ *      que aplica o filtro "Controle de prazo" antes de renderizar.
+ *
+ * A coleta posterior (via API REST) é disparada por
+ * `PRAZOS_FITA_RUN_COLETA` — ver `handlePrazosFitaRunColeta`.
+ */
+async function handlePrazosFita(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo "Prazos na Fita pAIdegua" em nova aba...');
+  try {
+    const result = await abrirPrazosFitaPainel({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Prazos na Fita pAIdegua".', 'error');
+      return;
+    }
+    notice(
+      `"Prazos na Fita pAIdegua" aberto em nova aba (${result.totalTarefas} tarefa(s) disponíveis).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePrazosFita falhou:`, err);
+    notice(`Falha em "Prazos na Fita pAIdegua": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Handler do `PRAZOS_FITA_RUN_COLETA` — gêmeo do `handleGestaoRunColeta`,
+ * mas dispara `coletarPrazosPorTarefasViaAPI` (caminho via REST) e
+ * empacota o resultado como `PrazosFitaDashboardPayload` para o
+ * dashboard "Prazos na Fita pAIdegua".
+ */
+// Idempotencia: chrome.tabs.sendMessage pode, em cenarios pontuais,
+// disparar o handler duas vezes (observado: "Coleta iniciada" e
+// "[API] listando..." aparecendo duplicados no registro do painel).
+// O trabalho pesado — listar 300+ processos e depois abrir um fetch por
+// processo para extrair expedientes — e caro e nao-idempotente do lado
+// do servidor (gerarChaveAcesso gasta recursos). Um Set de requestIds
+// em curso descarta entradas repetidas com o mesmo identificador.
+const prazosFitaEmCurso = new Set<string>();
+
+async function handlePrazosFitaRunColeta(
+  payload: { requestId: string; nomes: string[] }
+): Promise<void> {
+  const { requestId, nomes } = payload;
+  if (prazosFitaEmCurso.has(requestId)) {
+    console.warn(
+      `${LOG_PREFIX} handlePrazosFitaRunColeta: requestId ${requestId} ja em curso — ignorando disparo duplicado.`
+    );
+    return;
+  }
+  prazosFitaEmCurso.add(requestId);
+  try {
+    const postProg = (msg: string): void => {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_PROG,
+          payload: { requestId, msg }
+        })
+        .catch(() => { /* aba-painel pode ter fechado; ignoramos */ });
+    };
+
+    postProg(
+      `Coleta iniciada em ${nomes.length} tarefa(s) "Controle de prazo". Pode levar alguns minutos.`
+    );
+
+    const resultado = await coletarPrazosPorTarefasViaAPI({
+      nomesTarefas: nomes,
+      onProgress: postProg
+    });
+
+    const dashboardPayload: PrazosFitaDashboardPayload = {
+      geradoEm: new Date().toISOString(),
+      hostnamePJe: new URL(window.location.origin).hostname,
+      tarefasSelecionadas: nomes,
+      resultado
+    };
+
+    postProg(
+      `Coleta concluída: ${resultado.consolidado.length} processo(s) únicos em ${(resultado.tempoTotalMs / 1000).toFixed(1)}s.`
+    );
+
+    await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_DONE,
+      payload: { requestId, dashboardPayload }
+    });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaRunColeta falhou:`, err);
+    try {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL,
+        payload: { requestId, error: errorMessage(err) }
+      });
+    } catch {
+      /* aba-painel pode ter sido fechada */
+    }
+  } finally {
+    prazosFitaEmCurso.delete(requestId);
+  }
+}
+
 async function handleGestaoRunColeta(
   payload: { requestId: string; nomes: string[] }
 ): Promise<void> {
@@ -3144,6 +3285,65 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  // Prazos na Fita pAIdegua: gêmeo de GESTAO_RUN_COLETA, dispara o
+  // pipeline via API REST (`coletarPrazosPorTarefasViaAPI`).
+  if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as { requestId: string; nomes: string[] };
+    if (!payload || !payload.requestId || !Array.isArray(payload.nomes)) {
+      sendResponse({ ok: false, error: 'Payload de coleta inválido.' });
+      return false;
+    }
+    sendResponse({ ok: true });
+    void handlePrazosFitaRunColeta(payload);
+    return false;
+  }
+
+  // Prazos na fita (Fase A2): background abriu esta aba apenas para
+  // extrair os expedientes; extraímos e respondemos para o background
+  // fechar a aba. Apenas no top frame e em host PJe.
+  if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_EXTRAIR_NA_ABA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      try {
+        const adapter = await waitAdapterPronto(8000);
+        if (!adapter) {
+          sendResponse({
+            ok: false,
+            error: 'Adapter não ficou pronto nesta aba dentro do timeout.'
+          });
+          return;
+        }
+        const numeroProcesso = adapter.extractNumeroProcesso();
+        const okAba = await adapter.ensureAbaExpedientes();
+        if (!okAba) {
+          sendResponse({
+            ok: false,
+            numeroProcesso,
+            error: 'Aba Expedientes não carregou.'
+          });
+          return;
+        }
+        const extracao = adapter.extractExpedientes();
+        const anomaliasProcesso = derivarAnomaliasProcesso(extracao);
+        sendResponse({
+          ok: true,
+          numeroProcesso,
+          extracao,
+          anomaliasProcesso
+        });
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    })();
+    return true; // resposta assíncrona
+  }
+
   return false;
 });
 
@@ -3176,6 +3376,9 @@ function bootstrap(): void {
       );
       instalarListenerTriagemNoIframe();
       instalarListenerGestaoNoIframe();
+      // Bridge isolated-world: relaya o snapshot de auth do PJe que o
+      // interceptor page-world (pje-auth-page.js) dispara via CustomEvent.
+      instalarBridgeInterceptorAuth();
     }
     return;
   }

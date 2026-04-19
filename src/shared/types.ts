@@ -394,3 +394,317 @@ export interface GestaoSugestao {
   detalhe: string;
   prioridade: 'alta' | 'media' | 'baixa';
 }
+
+// =====================================================================
+// Painel "Prazos na fita" — perfil Gestão (controle de prazos abertos)
+// =====================================================================
+
+/**
+ * Mapeamento normalizado da natureza do prazo extraída de
+ * `span[title^="Data limite prevista"]` no PJe.
+ *
+ * - `manifestacao`: prazo já iniciou; data é o último dia para a parte
+ *   praticar o ato (PJe expressa como "para manifestação").
+ * - `ciencia`: parte ainda não registrou ciência; data é o limite para
+ *   ela tomar ciência. Quando a parte registra OU o prazo decorre, o
+ *   PJe deveria converter automaticamente para `manifestacao`.
+ * - `outro`: forma não reconhecida pelo enum (preserva o literal em
+ *   `naturezaPrazoLiteral`).
+ */
+export type NaturezaPrazo = 'manifestacao' | 'ciencia' | 'outro';
+
+/**
+ * Estado legítimo de um expediente ABERTO. O painel só armazena
+ * expedientes com `fechado=NÃO` — os fechados são apenas contados para
+ * derivar a anomalia `todos_prazos_encerrados`. Por isso não existe
+ * status `prazo_encerrado`. Estados "vencido" / "ciência vencida"
+ * também não viram status próprio: o PJe deveria ter feito a transição,
+ * então quando aparecem caem em `indeterminado` + anomalia.
+ */
+export type StatusPrazo =
+  | 'aguardando_ciencia'
+  | 'prazo_correndo'
+  | 'sem_prazo'
+  | 'indeterminado';
+
+/**
+ * Quem registrou a ciência:
+ *  - 'servidor': pessoa física identificada pelo nome (ex.: procurador).
+ *  - 'sistema': ficta clássica do PJe — texto literal "O sistema registrou ciência".
+ *  - 'domicilio_eletronico': ciência automática pelo portal de Domicílio
+ *    Eletrônico — o PJe registra com o "usuário" literal
+ *    "Usuário Domicílio Eletrônico". Não é servidor humano nem o sistema
+ *    PJe em si; é um perfil automatizado do portal.
+ */
+export type CienciaAutor = 'servidor' | 'sistema' | 'domicilio_eletronico';
+
+/**
+ * Linha ABERTA da aba Expedientes de um processo, normalizada para o
+ * painel "Prazos na fita". Construída por
+ * `PJeLegacyAdapter.extractExpedientes()` apenas para linhas em que a
+ * coluna FECHADO é NÃO. Linhas com FECHADO=SIM não viram instâncias
+ * desta interface — são contadas em `ExpedientesExtracao.fechados`.
+ *
+ * IMPORTANTE: contém PII (nomes de partes, servidores). Não enviar a
+ * APIs externas sem anonimização.
+ */
+export interface ProcessoExpediente {
+  /** ID do documento de comunicação (parsed de "Tipo (XXX)"). Chave da linha. */
+  idDocumento: string;
+  /** ID do ProcessoParteExpediente quando localizável no DOM. */
+  idProcessoParteExpediente: string | null;
+  /** Literal do tipo do ato (ex: "Intimação", "Sentença", "Citação"). */
+  tipoAto: string;
+  /** Nome do destinatário (parte ou órgão). */
+  destinatario: string;
+  /** Representante quando declarado (ex: "Procuradoria Geral Federal (PGF/AGU)"). */
+  representante: string | null;
+  /** Meio de comunicação (ex: "Expedição eletrônica", "Diário Eletrônico"). */
+  meio: string;
+  /** Data/hora de expedição (string crua do PJe, dd/mm/aaaa hh:mm:ss). */
+  dataExpedicao: string;
+  /** True quando há "registrou ciência" no DOM. */
+  cienciaRegistrada: boolean;
+  /** Servidor (pessoa) ou sistema (ficta). null quando não há ciência. */
+  cienciaAutor: CienciaAutor | null;
+  /** Nome do servidor que registrou. null quando ficta ou ausente. */
+  cienciaServidor: string | null;
+  /** Data/hora do registro (string crua, dd/mm/aaaa hh:mm:ss). null quando ausente. */
+  cienciaDataHora: string | null;
+  /** Prazo em dias declarado pelo PJe. null quando "sem prazo". */
+  prazoDias: number | null;
+  /** Data/hora limite (string crua). null quando "sem prazo". */
+  dataLimite: string | null;
+  /** Literal cru do `span[title]`/texto entre parênteses. Preserva valores fora do enum. */
+  naturezaPrazoLiteral: string | null;
+  /** Mapeamento normalizado para enum. null quando não identificável. */
+  naturezaPrazo: NaturezaPrazo | null;
+  /** Status derivado. Função pura sobre os campos acima + data atual. */
+  status: StatusPrazo;
+  /** Rótulos curtos das anomalias detectadas. Vazio quando consistente. */
+  anomalias: ProcessoExpedienteAnomalia[];
+}
+
+/**
+ * Resultado da varredura da aba Expedientes de um processo.
+ * `abertos` traz só as linhas FECHADO=NÃO totalmente parseadas.
+ * `fechados` é a contagem das linhas FECHADO=SIM (não parseadas).
+ *
+ * Permite derivar a anomalia de processo `todos_prazos_encerrados` sem
+ * precisar carregar dados de expedientes que o painel não mostra.
+ */
+export interface ExpedientesExtracao {
+  abertos: ProcessoExpediente[];
+  fechados: number;
+}
+
+/**
+ * Catálogo fechado de anomalias atualmente detectadas pelo parser.
+ * Cada rótulo é estável e usado tanto no filtro Layer 2 do painel quanto
+ * em badges visuais. Adicionar novos rótulos aqui antes de usar no código.
+ *
+ * - `prazo_vencido_aberto`: expediente FECHADO=NÃO cuja data limite de
+ *   manifestação já passou. Interpretação de negócio: **possível falha
+ *   do job Quartz do PJe** que deveria ter fechado o expediente ao expirar
+ *   o prazo. O label humano exibido no painel deve refletir essa causa
+ *   (ex.: "Possível problema no Quartz"), mesmo que o enum técnico
+ *   descreva o fenômeno observável.
+ * - `ciencia_nao_convertida`: ciência expressa ainda marcada como
+ *   aguardando mesmo após a data limite. O PJe deveria ter convertido
+ *   automaticamente para "para manifestação" — outra suspeita de Quartz.
+ * - `prazo_definido_sem_data_limite`: `prazoDias > 0` sem `dataLimite`
+ *   ou `naturezaPrazo` — indica parse incompleto ou estado inconsistente
+ *   do próprio expediente.
+ * - `prazo_sem_prazo_com_data`: literal "Prazo: sem prazo" convivendo
+ *   com uma `dataLimite` — contradição interna do expediente.
+ */
+export type ProcessoExpedienteAnomalia =
+  | 'prazo_vencido_aberto'
+  | 'ciencia_nao_convertida'
+  | 'prazo_definido_sem_data_limite'
+  | 'prazo_sem_prazo_com_data';
+
+/**
+ * Anomalias de nível PROCESSO — derivadas da agregação dos expedientes
+ * de um mesmo processo, não de um expediente isolado.
+ *
+ * - `todos_prazos_encerrados`: o processo está numa tarefa de "Controle
+ *   de prazo" mas TODOS os seus expedientes estão FECHADO=SIM
+ *   (`extracao.abertos.length === 0` com `extracao.fechados > 0`). Não
+ *   há mais prazo ativo a controlar — o processo deveria ter sido
+ *   movido para fora dessa tarefa.
+ */
+export type ProcessoAnomalia = 'todos_prazos_encerrados';
+
+/**
+ * Resultado da coleta de UM processo na Fase A2 do painel "Prazos na fita".
+ *
+ * Estruturado para ser agregável: quando `ok=false`, `extracao` e
+ * `anomaliasProcesso` ficam ausentes e `error` traz a mensagem. Quando
+ * `ok=true`, `extracao` reflete o resultado de `extractExpedientes()`
+ * e `anomaliasProcesso` o de `derivarAnomaliasProcesso()`.
+ *
+ * O `numeroProcesso` pode vir `null` quando o adapter não conseguiu
+ * extrair o número do DOM da aba recém-aberta (caso raro; a aba
+ * provavelmente não é uma tela de processo).
+ */
+export interface PrazosProcessoColeta {
+  url: string;
+  ok: boolean;
+  numeroProcesso: string | null;
+  extracao?: ExpedientesExtracao;
+  anomaliasProcesso?: ProcessoAnomalia[];
+  error?: string;
+  /** Duração da coleta em milissegundos (debug/telemetria). */
+  duracaoMs: number;
+}
+
+// =====================================================================
+// PJe REST API — capturada via interceptor + cliente no background
+// =====================================================================
+
+/**
+ * Snapshot de autenticacao do PJe capturado pelo interceptor page-world
+ * a partir das chamadas reais do Angular do painel. Permite ao
+ * background reproduzir as chamadas com os mesmos headers.
+ *
+ * IMPORTANTE: contem token Bearer com TTL curto (geralmente 5-15 min
+ * no Keycloak da JFCE). Nao persistir em `storage.local` — apenas em
+ * `storage.session` ou em memoria do service worker.
+ */
+export interface PJeAuthSnapshot {
+  /** ms epoch da captura. */
+  capturedAt: number;
+  /** URL da chamada REST que serviu de amostra (debug). */
+  url: string;
+  /**
+   * Header `Authorization` exato como o Angular envia. Pode ser
+   * `Bearer <jwt>` (quando SSO Keycloak esta ativo) ou `Basic ...`
+   * (fallback legacy quando o SSO expira). Quem de fato autentica
+   * as chamadas same-origin e o cookie JSESSIONID + `X-pje-*`.
+   */
+  authorization: string;
+  /** Header `X-pje-cookies` (sessao do legacy serializada). */
+  pjeCookies: string | null;
+  /** Header `X-pje-legacy-app` (geralmente "true"). */
+  pjeLegacyApp: string | null;
+  /** Header `X-pje-usuario-localizacao` (id da localizacao do usuario). */
+  pjeUsuarioLocalizacao: string | null;
+  /**
+   * Header `X-no-sso` — quando presente, sinaliza ao backend para nao
+   * exigir o fluxo SSO (usar cookie + `X-pje-*`). Sem ele, o PJe pode
+   * responder 200 com corpo vazio mesmo para chamadas aparentemente
+   * validas.
+   */
+  xNoSso: string | null;
+  /** Header `X-pje-authorization` (esquema secundario que o Angular envia). */
+  xPjeAuthorization: string | null;
+}
+
+/**
+ * Processo retornado pela API
+ * `recuperarProcessosTarefaPendenteComCriterios`. Normalizado a partir
+ * do shape variavel do PJe (campos com `descricao` aninhada, arrays
+ * mistos etc.).
+ */
+export interface PJeApiProcesso {
+  /** ID interno do processo no PJe (numero, nao string). */
+  idProcesso: number;
+  /** Numero CNJ formatado quando presente. */
+  numeroProcesso: string | null;
+  /**
+   * ID da TaskInstance corrente. Necessario para montar o link dos
+   * autos com `idTaskInstance=...` (caso contrario o PJe abre a aba
+   * Movimentacoes em vez da tela do processo no contexto da tarefa).
+   */
+  idTaskInstance: number | null;
+  classeJudicial: string | null;
+  poloAtivo: string | null;
+  poloPassivo: string | null;
+  orgaoJulgador: string | null;
+  /** Data de chegada do processo na tarefa (string crua do PJe). */
+  dataChegadaTarefa: string | null;
+  prioridade: boolean;
+  sigiloso: boolean;
+  /** Etiquetas/tags aplicadas ao processo. */
+  etiquetas: string[];
+  /**
+   * Assunto principal do processo (ex.: "Pessoa com Deficiência",
+   * "Aposentadoria", "Inadimplemento"). Diferente de `classeJudicial`,
+   * que traz a sigla da classe processual (CumSenFaz, PJEC, etc.).
+   */
+  assuntoPrincipal: string | null;
+  /**
+   * Descrição textual do último movimento do processo (ex.: "Juntada de
+   * Certidão", "Decorrido prazo de X em dd/mm/aaaa 23:59.").
+   */
+  descricaoUltimoMovimento: string | null;
+  /**
+   * Timestamp (ms desde epoch) do último movimento do processo.
+   */
+  ultimoMovimento: number | null;
+  /**
+   * Cargo do magistrado responsável (ex.: "Juiz Federal Titular",
+   * "Juiz Federal Substituto").
+   */
+  cargoJudicial: string | null;
+}
+
+/** Pedido de listagem ao background. */
+export interface PJeApiListarRequest {
+  /** Nome exato da tarefa (ex.: "Controle de prazo - INSS"). */
+  nomeTarefa: string;
+  /** Pagina inicial (1-based). Default 1. */
+  page?: number;
+  /** Tamanho de pagina. Default 100, maximo pratico ~200. */
+  pageSize?: number;
+  /** Limite total de processos a coletar (corta paginacao). */
+  maxProcessos?: number;
+}
+
+/** Resposta consolidada da listagem. */
+export interface PJeApiListarResponse {
+  ok: boolean;
+  /** Total reportado pelo servidor (`count`). */
+  total: number;
+  /** Processos efetivamente coletados (pode ser menor que `total`). */
+  processos: PJeApiProcesso[];
+  error?: string;
+}
+
+/** Pedido de resolucao da chave de acesso. */
+export interface PJeApiResolveCaRequest {
+  idProcesso: number;
+}
+
+/** Resposta da resolucao. */
+export interface PJeApiResolveCaResponse {
+  ok: boolean;
+  /** Hash `ca` para anexar como query string da URL dos autos. */
+  ca: string | null;
+  error?: string;
+}
+
+/**
+ * Payload do dashboard "Prazos na Fita" — gravado em `storage.session`
+ * pelo background e lido pela aba dedicada. Sem LGPD no servidor:
+ * nomes de partes e numeros CNJ ficam apenas localmente.
+ */
+export interface PrazosFitaDashboardPayload {
+  geradoEm: string;
+  hostnamePJe: string;
+  /** Nomes das tarefas selecionadas no seletor. */
+  tarefasSelecionadas: string[];
+  /** Resultado bruto de `coletarPrazosPorTarefasViaAPI`. */
+  resultado: {
+    totalDescobertos: number;
+    tempoTotalMs: number;
+    consolidado: Array<{
+      tarefaNome: string;
+      processoApi: PJeApiProcesso;
+      url: string | null;
+      coleta: PrazosProcessoColeta | null;
+      error?: string;
+    }>;
+  };
+}

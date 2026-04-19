@@ -8,7 +8,10 @@
  */
 
 import { NUMERO_PROCESSO_REGEX } from '../../shared/constants';
-import type { ProcessoDocumento } from '../../shared/types';
+import type {
+  ExpedientesExtracao,
+  ProcessoDocumento
+} from '../../shared/types';
 import type { BaseAdapter } from './base-adapter';
 
 export class PJe2Adapter implements BaseAdapter {
@@ -43,5 +46,13 @@ export class PJe2Adapter implements BaseAdapter {
   extractDocumentos(): ProcessoDocumento[] {
     // Implementação completa na Fase 3.
     return [];
+  }
+
+  async ensureAbaExpedientes(): Promise<boolean> {
+    return false;
+  }
+
+  extractExpedientes(): ExpedientesExtracao {
+    return { abertos: [], fechados: 0 };
   }
 }

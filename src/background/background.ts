@@ -61,6 +61,8 @@ import type {
   GestaoSugestao,
   GestaoTarefaInfo,
   PAIdeguaSettings,
+  PJeAuthSnapshot,
+  PrazosFitaDashboardPayload,
   SynthesizeSpeechPayload,
   SynthesizeSpeechResult,
   TestConnectionResult,
@@ -69,6 +71,7 @@ import type {
   TriagemInsightsLLM,
   TriagemSugestao
 } from '../shared/types';
+import { gravarAuthSnapshot } from './pje-api-client';
 import { getProvider } from './providers';
 import {
   defaultSettings,
@@ -81,13 +84,41 @@ import {
   saveSettings
 } from './storage';
 
+/**
+ * Abre `chrome.storage.session` para content scripts (default so permite
+ * service worker/pages da extensao). Necessario porque o snapshot de auth
+ * do PJe e gravado aqui pelo background e lido pelo cliente REST que
+ * roda no content script (same-origin com pje1g.trf5.jus.br).
+ *
+ * Precisa ser chamado em onInstalled/onStartup — o access level nao e
+ * persistido entre reinicializacoes do navegador.
+ */
+function abrirStorageSessionParaContentScripts(): void {
+  try {
+    void chrome.storage.session.setAccessLevel({
+      accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
+    });
+  } catch (err) {
+    console.warn(
+      `${LOG_PREFIX} falha abrindo storage.session para content scripts:`,
+      err
+    );
+  }
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.log(`${LOG_PREFIX} instalada/atualizada:`, details.reason);
+  abrirStorageSessionParaContentScripts();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   console.log(`${LOG_PREFIX} service worker iniciado`);
+  abrirStorageSessionParaContentScripts();
 });
+
+// Se este modulo for reexecutado em uma reinicializacao do service worker
+// (sem onStartup/onInstalled disparar), garanta o access level.
+abrirStorageSessionParaContentScripts();
 
 // =====================================================================
 // Mensagens curtas (request/response) — popup e content sem streaming.
@@ -264,6 +295,49 @@ chrome.runtime.onMessage.addListener(
         );
         return true;
 
+      case MESSAGE_CHANNELS.PRAZOS_FITA_OPEN_PAINEL:
+        void handleOpenPrazosFitaPainel(
+          message.payload as {
+            tarefas: GestaoTarefaInfo[];
+            hostnamePJe: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_START_COLETA:
+        void handlePrazosFitaStartColeta(
+          message.payload as { requestId: string; nomes: string[] },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_PROG:
+        void handlePrazosFitaColetaProg(
+          message.payload as { requestId: string; msg: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_DONE:
+        void handlePrazosFitaColetaDone(
+          message.payload as {
+            requestId: string;
+            dashboardPayload: PrazosFitaDashboardPayload;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL:
+        void handlePrazosFitaColetaFail(
+          message.payload as { requestId: string; error: string },
+          sendResponse
+        );
+        return true;
+
       case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
         void handleAnalisarProcesso(
           message.payload as AnalisarProcessoRequest,
@@ -285,11 +359,50 @@ chrome.runtime.onMessage.addListener(
         );
         return true;
 
+      case MESSAGE_CHANNELS.PRAZOS_FITA_COLETAR_PROCESSO:
+        void handlePrazosFitaColetarProcesso(
+          message.payload as { url: string; timeoutMs?: number },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PJE_AUTH_CAPTURED:
+        void handlePjeAuthCaptured(
+          message.payload as PJeAuthSnapshot,
+          sendResponse
+        );
+        return true;
+
       default:
         return false;
     }
   }
 );
+
+/**
+ * Recebe o snapshot de auth capturado pelo interceptor page-world e
+ * grava em `chrome.storage.session`. O snapshot é lido depois pelo
+ * content script (mesma origem do PJe) ao executar as chamadas REST do
+ * painel "Prazos na Fita". O background não faz mais essas chamadas.
+ */
+async function handlePjeAuthCaptured(
+  payload: PJeAuthSnapshot,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || typeof payload.authorization !== 'string') {
+      sendResponse({ ok: false, error: 'Snapshot invalido.' });
+      return;
+    }
+    await gravarAuthSnapshot(payload);
+    sendResponse({ ok: true, capturedAt: payload.capturedAt });
+  } catch (err) {
+    sendResponse({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
 
 /**
  * Handler do passo 2 do anonimizador: chama o LLM ativo para extrair
@@ -2360,6 +2473,208 @@ async function handleGestaoColetaFail(
   }
 }
 
+// =====================================================================
+// Painel "Prazos na Fita pAIdegua" — aba intermediária (seletor + progresso)
+// =====================================================================
+//
+// Mesma orquestração do Painel Gerencial, com canais próprios e modo
+// `prazos` na URL do painel. A aba aplica o filtro "Controle de prazo"
+// no client e dispara `coletarPrazosPorTarefasViaAPI` na aba do PJe.
+
+function gerarPrazosRequestId(): string {
+  return `prazos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function handleOpenPrazosFitaPainel(
+  payload: {
+    tarefas: GestaoTarefaInfo[];
+    hostnamePJe: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou o painel.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload de abertura do painel inválido.' });
+      return;
+    }
+
+    const requestId = gerarPrazosRequestId();
+    const stateKey = `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('gestao-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}&modo=prazos`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba "Prazos na Fita pAIdegua".'
+      });
+      return;
+    }
+    await setRota(requestId, {
+      painelTabId: tab.id,
+      pjeTabId
+    });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenPrazosFitaPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePrazosFitaStartColeta(
+  payload: { requestId: string; nomes: string[] },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão do painel "Prazos na Fita" expirou. Volte ao PJe e abra o painel novamente.'
+      });
+      return;
+    }
+    if (!Array.isArray(payload.nomes) || payload.nomes.length === 0) {
+      sendResponse({ ok: false, error: 'Nenhuma tarefa selecionada.' });
+      return;
+    }
+    const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.PRAZOS_FITA_RUN_COLETA,
+      payload: { requestId: payload.requestId, nomes: payload.nomes }
+    });
+    if (!ack?.ok) {
+      sendResponse({
+        ok: false,
+        error:
+          ack?.error ??
+          'A aba do PJe não aceitou iniciar a coleta. Confirme que ela continua aberta no Painel do Usuário.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaStartColeta falhou:`, error);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(error) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handlePrazosFitaColetaProg(
+  payload: { requestId: string; msg: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_PROG,
+        payload
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaColetaProg falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePrazosFitaColetaDone(
+  payload: { requestId: string; dashboardPayload: PrazosFitaDashboardPayload },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    if (
+      !payload.dashboardPayload ||
+      !payload.dashboardPayload.resultado ||
+      !Array.isArray(payload.dashboardPayload.resultado.consolidado)
+    ) {
+      sendResponse({ ok: false, error: 'Payload do dashboard inválido.' });
+      return;
+    }
+
+    await chrome.storage.session.set({
+      [STORAGE_KEYS.PRAZOS_FITA_DASHBOARD_PAYLOAD]: payload.dashboardPayload
+    });
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload.requestId}`
+    );
+
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+
+    await deleteRota(payload.requestId);
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaColetaDone falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePrazosFitaColetaFail(
+  payload: { requestId: string; error: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL,
+          payload
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+      await deleteRota(payload.requestId);
+    }
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
 // Limpeza: se a aba-painel ou a aba PJe for fechada antes do fim da
 // varredura, removemos a rota e o estado temporário para não vazarmos
 // storage.session.
@@ -2551,6 +2866,169 @@ function parseGestaoInsightsResponse(raw: string): GestaoInsightsLLM | null {
     console.warn(`${LOG_PREFIX} parseGestaoInsightsResponse: JSON inválido`, err);
     return null;
   }
+}
+
+// =====================================================================
+// Prazos na fita — Fase A2 (coleta por aba isolada)
+// =====================================================================
+
+/**
+ * Coleta de UM processo: abre a URL em aba inativa, aguarda carregar,
+ * pede ao content da aba para extrair os expedientes e fecha a aba ao
+ * final. O `chamador` (content do painel ou outro) recebe um
+ * `PrazosProcessoColeta` estruturado, com `ok=false` quando algo falha.
+ *
+ * Tolerância: o content script do PJe pode não estar pronto assim que
+ * `status === 'complete'` chega (AJAX pós-load, adapter ainda fazendo
+ * detect). Por isso o `sendMessage` tenta N vezes com intervalo curto.
+ *
+ * A aba sempre é fechada no `finally`, inclusive em caso de erro, para
+ * evitar vazamento de abas durante uma varredura em lote.
+ */
+async function handlePrazosFitaColetarProcesso(
+  payload: { url: string; timeoutMs?: number },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const inicio = Date.now();
+  const url = payload?.url ?? '';
+  if (!url || typeof url !== 'string') {
+    sendResponse({
+      ok: false,
+      url,
+      numeroProcesso: null,
+      error: 'URL ausente ou inválida.',
+      duracaoMs: 0
+    });
+    return;
+  }
+  const timeoutMs = payload.timeoutMs ?? 45_000;
+
+  let tabId: number | null = null;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    if (tab.id == null) {
+      sendResponse({
+        ok: false,
+        url,
+        numeroProcesso: null,
+        error: 'chrome.tabs.create não retornou tabId.',
+        duracaoMs: Date.now() - inicio
+      });
+      return;
+    }
+    tabId = tab.id;
+
+    await waitTabComplete(tabId, timeoutMs);
+
+    const resp = await sendToTabWithRetry(
+      tabId,
+      {
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_EXTRAIR_NA_ABA,
+        payload: {}
+      },
+      { attempts: 12, intervalMs: 500 }
+    );
+
+    if (!resp || resp.ok === false) {
+      sendResponse({
+        ok: false,
+        url,
+        numeroProcesso: resp?.numeroProcesso ?? null,
+        error: resp?.error ?? 'Content script não respondeu.',
+        duracaoMs: Date.now() - inicio
+      });
+      return;
+    }
+
+    sendResponse({
+      ok: true,
+      url,
+      numeroProcesso: resp.numeroProcesso ?? null,
+      extracao: resp.extracao,
+      anomaliasProcesso: resp.anomaliasProcesso,
+      duracaoMs: Date.now() - inicio
+    });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaColetarProcesso:`, err);
+    sendResponse({
+      ok: false,
+      url,
+      numeroProcesso: null,
+      error: errorMessage(err),
+      duracaoMs: Date.now() - inicio
+    });
+  } finally {
+    if (tabId != null) {
+      chrome.tabs.remove(tabId).catch(() => { /* aba já fechada */ });
+    }
+  }
+}
+
+/**
+ * Resolve quando a aba atinge `status === 'complete'` — ou rejeita no
+ * `timeoutMs`. Cobre o caso em que a aba já terminou ANTES de
+ * registrarmos o listener (chrome.tabs.get inicial).
+ */
+function waitTabComplete(tabId: number, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let finalizado = false;
+    const timer = setTimeout(() => {
+      if (finalizado) return;
+      finalizado = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error(`Timeout (${timeoutMs}ms) aguardando aba ${tabId}.`));
+    }, timeoutMs);
+    const listener = (
+      updatedId: number,
+      info: chrome.tabs.TabChangeInfo
+    ): void => {
+      if (updatedId !== tabId) return;
+      if (info.status !== 'complete') return;
+      if (finalizado) return;
+      finalizado = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs
+      .get(tabId)
+      .then((t) => {
+        if (t.status === 'complete' && !finalizado) {
+          finalizado = true;
+          clearTimeout(timer);
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      })
+      .catch(() => { /* segue esperando o evento */ });
+  });
+}
+
+/**
+ * `chrome.tabs.sendMessage` com retry. No PJe, o content script pode
+ * não ter registrado o listener ainda no momento do primeiro envio; o
+ * Chrome retorna "Could not establish connection" nessa janela.
+ */
+async function sendToTabWithRetry(
+  tabId: number,
+  message: unknown,
+  opts: { attempts: number; intervalMs: number }
+): Promise<{ ok?: boolean; [k: string]: unknown } | undefined> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < opts.attempts; i++) {
+    try {
+      const resp = await chrome.tabs.sendMessage(tabId, message);
+      if (resp !== undefined) return resp;
+    } catch (err) {
+      lastErr = err;
+    }
+    await new Promise<void>((r) => setTimeout(r, opts.intervalMs));
+  }
+  if (lastErr) {
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  }
+  return undefined;
 }
 
 // =====================================================================

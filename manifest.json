@@ -37,6 +37,15 @@
       "css": ["content.css"],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://*.jus.br/*"
+      ],
+      "js": ["pje-auth-page.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
     }
   ],
   "background": {

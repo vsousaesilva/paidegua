@@ -46,6 +46,12 @@ export interface SidebarElements {
    * tela o CSS do container oculta o grupo inteiro).
    */
   painelGerencialButton: HTMLButtonElement;
+  /**
+   * Botão "Prazos na Fita pAIdegua" — visível nas mesmas condições do
+   * Painel Gerencial. Coleta expedientes abertos das tarefas que contêm
+   * "Controle de prazo" via API REST do PJe.
+   */
+  prazosFitaButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -627,6 +633,7 @@ export function mountSidebar(
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Recursos para a Gestão</div>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Painel Gerencial pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui você se faz!</span></span></button>
+      <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="prazos-fita" title="Coleta os expedientes abertos das tarefas de Controle de prazo e abre o painel Prazos na Fita" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Prazos na Fita pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Expedientes abertos por prazo</span></span></button>
       <div data-profile-section="gestao" data-painel-section="fora-painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 12px; color: var(--paidegua-text-muted); line-height: 1.45; padding: 10px 12px; background: rgba(255,255,255,0.6); border: 1px dashed var(--paidegua-border); border-radius: var(--paidegua-radius-sm);">Abra o <strong>Painel do usuário</strong> do PJe para usar as ferramentas de Gestão.</div>
     </div>
 
@@ -684,6 +691,7 @@ export function mountSidebar(
   }
   const triagemInteligenteButton = q<HTMLButtonElement>('triagem-inteligente');
   const painelGerencialButton = q<HTMLButtonElement>('painel-gerencial');
+  const prazosFitaButton = q<HTMLButtonElement>('prazos-fita');
   const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
@@ -734,6 +742,7 @@ export function mountSidebar(
     templateActionButtons,
     triagemInteligenteButton,
     painelGerencialButton,
+    prazosFitaButton,
     providerLabel,
     globalNotice
   };

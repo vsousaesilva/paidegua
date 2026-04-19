@@ -23,6 +23,7 @@ import {
   coletarSnapshots,
   listarTodasTarefas
 } from '../triagem/analisar-tarefas';
+import { coletarSnapshotsViaAPI } from './triagem-from-api';
 
 const MSG_LISTAR_REQ = 'paidegua/gestao-listar-req';
 const MSG_LISTAR_RES = 'paidegua/gestao-listar-res';
@@ -234,6 +235,14 @@ export async function listarTarefasDoPainel(): Promise<{
  * RPC "coletar" — top pede ao iframe (ou local) para varrer apenas as
  * tarefas cujos nomes estão em `nomes`. Sem timeout: pode levar minutos
  * em painéis grandes.
+ *
+ * Caminho preferencial: REST (`recuperarProcessosTarefaPendenteComCriterios`
+ * + `gerarChaveAcessoProcesso`). Roda no top frame, não depende do iframe
+ * do painel, e traz campos que o DOM não entrega (assuntoPrincipal,
+ * descricaoUltimoMovimento, ultimoMovimento, sigiloso real, idProcesso
+ * real). Só cai no DOM se o snapshot de auth ainda não foi capturado —
+ * nesse caso o usuário precisa abrir uma tarefa uma vez para o
+ * interceptor gravar o snapshot.
  */
 export async function coletarTarefasSelecionadas(opts: {
   nomes: string[];
@@ -244,6 +253,26 @@ export async function coletarTarefasSelecionadas(opts: {
   error?: string;
 }> {
   const onProgress = opts.onProgress ?? (() => {});
+
+  // -- Caminho REST (preferido) ------------------------------------------
+  try {
+    const resultadoApi = await coletarSnapshotsViaAPI({
+      nomes: opts.nomes,
+      pjeOrigin: window.location.origin,
+      onProgress
+    });
+    if (resultadoApi.ok) {
+      return { ok: true, snapshots: resultadoApi.snapshots };
+    }
+    onProgress(
+      `[API] indisponível (${resultadoApi.error ?? 'sem detalhe'}) — usando DOM como fallback.`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    onProgress(`[API] erro inesperado (${msg}) — usando DOM como fallback.`);
+  }
+
+  // -- Fallback DOM ------------------------------------------------------
   const iframeWin = localizarIframePainel();
 
   if (!iframeWin) {

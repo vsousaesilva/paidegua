@@ -609,32 +609,49 @@ function tdProcNum(p: TriagemProcesso): HTMLElement {
 }
 
 /**
- * Renderiza o número do processo como um elemento clicável que copia o
- * número para a área de transferência (em vez de hyperlink). A cópia é
- * feita via `navigator.clipboard.writeText` e exibe um toast de
- * confirmação. O título preserva o número limpo (sem prefixos como
- * "PJEC ") para o caso de o usuário querer hover-ver.
+ * Renderiza o número do processo como hiperlink (abre os autos em nova
+ * aba) acompanhado de um pequeno botão com ícone para copiar o CNJ.
+ * Padrão aplicado em todos os relatórios pAIdegua.
  */
 function procNumberSpan(p: TriagemProcesso): HTMLElement {
-  const span = document.createElement('span');
-  span.className = 'proc-num';
-  span.tabIndex = 0;
-  span.setAttribute('role', 'button');
+  const wrap = document.createElement('span');
+  wrap.className = 'proc-cell';
   const cnj = extractCNJ(p.numeroProcesso);
-  span.setAttribute('aria-label', `Copiar número do processo ${cnj}`);
-  span.title = 'Clique para copiar';
-  span.textContent = p.numeroProcesso || '(sem número)';
-  const copy = (): void => {
+  const label = p.numeroProcesso || '(sem número)';
+
+  let main: HTMLElement;
+  if (p.url) {
+    const a = document.createElement('a');
+    a.className = 'proc-link';
+    a.href = p.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = 'Abrir processo em nova guia';
+    a.textContent = label;
+    main = a;
+  } else {
+    const span = document.createElement('span');
+    span.className = 'proc-link proc-link--disabled';
+    span.textContent = label;
+    span.title = 'URL do processo indisponível';
+    main = span;
+  }
+  wrap.appendChild(main);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'proc-copy';
+  btn.title = 'Copiar número do processo';
+  btn.setAttribute('aria-label', `Copiar número do processo ${cnj}`);
+  btn.innerHTML = COPY_ICON_SVG;
+  btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
     void copyToClipboard(cnj, `Número copiado: ${cnj}`);
-  };
-  span.addEventListener('click', copy);
-  span.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' || ev.key === ' ') {
-      ev.preventDefault();
-      copy();
-    }
   });
-  return span;
+  wrap.appendChild(btn);
+
+  return wrap;
 }
 
 /**

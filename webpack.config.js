@@ -20,11 +20,16 @@ module.exports = (_env, argv) => {
     entry: {
       background: './src/background/background.ts',
       content: './src/content/content.ts',
+      // Bundle separado para o interceptor injetado em page-world (ver
+      // segundo entry de content_scripts no manifest com `world: "MAIN"`).
+      // Roda no contexto JS da SPA Angular do painel; sem chrome.* APIs.
+      'pje-auth-page': './src/content/auth/pje-auth-interceptor-page.ts',
       'popup/popup': './src/popup/popup.ts',
       'options/options': './src/options/options.ts',
       'dashboard/dashboard': './src/dashboard/dashboard.ts',
       'gestao-dashboard/gestao-dashboard': './src/gestao-dashboard/gestao-dashboard.ts',
       'gestao-painel/painel': './src/gestao-painel/painel.ts',
+      'prazos-fita-dashboard/prazos-fita-dashboard': './src/prazos-fita-dashboard/prazos-fita-dashboard.ts',
       'save-template/save': './src/save-template/save.ts'
     },
     output: {
@@ -65,6 +70,8 @@ module.exports = (_env, argv) => {
           { from: 'src/gestao-dashboard/gestao-dashboard.css', to: 'gestao-dashboard/gestao-dashboard.css' },
           { from: 'src/gestao-painel/painel.html', to: 'gestao-painel/painel.html' },
           { from: 'src/gestao-painel/painel.css', to: 'gestao-painel/painel.css' },
+          { from: 'src/prazos-fita-dashboard/prazos-fita-dashboard.html', to: 'prazos-fita-dashboard/prazos-fita-dashboard.html' },
+          { from: 'src/prazos-fita-dashboard/prazos-fita-dashboard.css', to: 'prazos-fita-dashboard/prazos-fita-dashboard.css' },
           { from: 'src/save-template/save.html', to: 'save-template/save.html' },
           { from: 'src/save-template/save.css', to: 'save-template/save.css' },
           { from: 'src/content/content.css', to: 'content.css' },
