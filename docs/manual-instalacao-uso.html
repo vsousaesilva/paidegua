@@ -682,6 +682,8 @@
       <li><a href="#uso">Minutas com modelo</a></li>
       <li><a href="#minutar">Minutar com triagem</a></li>
       <li><a href="#triagem">Triagem Inteligente (Secretaria)</a></li>
+      <li><a href="#gestao">Painéis de Gestão</a></li>
+      <li><a href="#abrir-tarefa">Abrir tarefa no PJe</a></li>
       <li><a href="#bubble">Ações em cada resposta</a></li>
       <li><a href="#chat">Chat e voz</a></li>
       <li><a href="#modelos">Organização dos modelos</a></li>
@@ -766,6 +768,9 @@
         <li>O código fica guardado <strong>apenas no seu navegador, neste computador</strong>. Use somente em estações da JFCE.</li>
       </ol>
 
+      <h3><span class="marker"></span>Perfil padrão ao abrir</h3>
+      <p>Na seção <strong>Perfil de trabalho</strong> da aba <em>Geral</em>, escolha qual perfil (<strong>Gabinete</strong>, <strong>Secretaria</strong> ou <strong>Gestão</strong>) será carregado automaticamente quando o PJe for aberto. O seletor no cabeçalho do painel continua permitindo alternar o perfil dentro da sessão, mas ao reabrir o navegador o padrão definido aqui volta a vigorar.</p>
+
       <h3><span class="marker"></span>Leitura de digitalizados e modelos de minuta</h3>
       <div class="feat-grid">
         <div class="feat">
@@ -781,7 +786,7 @@
       </div>
 
       <h3><span class="marker"></span>Critérios da Triagem Inteligente</h3>
-      <p>Na aba <strong>Triagem</strong> do popup, você define os critérios de análise inicial que a funcionalidade de Triagem Inteligente usará nos processos previdenciários e assistenciais. A base é a <strong>Nota Técnica nº 1/2025 do CLI-JFCE</strong>, que uniformizou as exigências entre os 16 Juizados Especiais Federais do Ceará.</p>
+      <p>Na aba <strong>Triagem Inteligente</strong> do popup, você define os critérios de análise inicial que a funcionalidade de Triagem Inteligente usará nos processos previdenciários e assistenciais. A base é a <strong>Nota Técnica nº 1/2025 do CLI-JFCE</strong>, que uniformizou as exigências entre os 16 Juizados Especiais Federais do Ceará.</p>
       <ul>
         <li>Para cada critério — <em>emenda à inicial, gratuidade de justiça, representação processual, interesse de agir, competência, prevenção</em> e outros — mantenha a redação padrão da NT marcando a opção <strong>Adoto a NT</strong>, ou desmarque e descreva no campo livre <em>como você entende e aplica aquele critério na sua unidade</em>.</li>
         <li>Use o bloco <strong>"Deseja incluir outros critérios customizados?"</strong> para adicionar exigências próprias da sua unidade que não constam da NT 1/2025 — basta ligar o <em>toggle</em> "Sim" e inserir quantas quiser.</li>
@@ -789,7 +794,21 @@
       </ul>
       <div class="callout callout--tip">
         <h4>Antes do primeiro uso</h4>
-        <p>Revise os critérios na aba <em>Triagem</em> do popup antes de usar a funcionalidade pela primeira vez. Como os critérios entram nos prompts da IA, o resultado da análise depende diretamente das escolhas feitas aqui.</p>
+        <p>Revise os critérios na aba <em>Triagem Inteligente</em> do popup antes de usar a funcionalidade pela primeira vez. Como os critérios entram nos prompts da IA, o resultado da análise depende diretamente das escolhas feitas aqui.</p>
+      </div>
+
+      <h3><span class="marker"></span>Etiquetas Inteligentes</h3>
+      <p>A aba <strong>Etiquetas Inteligentes</strong> do popup configura o catálogo de etiquetas do PJe usado pela ação <em>Inserir etiquetas mágicas</em> da Triagem Inteligente. Fluxo recomendado:</p>
+      <ol>
+        <li>Clique em <strong>Buscar catálogo do PJe</strong> — a extensão consulta a API do PJe (mesma origem do usuário, sem sair da sua estação) e armazena o catálogo localmente no navegador.</li>
+        <li>No painel <strong>Catálogo completo</strong>, veja todas as etiquetas da unidade. Use o filtro por nome, marque <em>Apenas favoritas</em> ou utilize os botões <em>Marcar visíveis</em>, <em>Desmarcar visíveis</em> e <em>Marcar todas favoritas</em> para seleção em lote.</li>
+        <li>As etiquetas marcadas formam o painel superior <strong>Sugestionáveis (selecionadas)</strong> — são as únicas que a Triagem Inteligente considera ao sugerir <em>etiquetas mágicas</em> para um processo.</li>
+        <li>No campo <strong>Orientações para a IA extrair marcadores do processo</strong>, inclua (opcionalmente) um texto livre que guia o foco da IA: matéria, benefício, fase processual. Melhora o de-para com as etiquetas selecionadas.</li>
+        <li>Clique em <strong>Salvar seleção</strong>. <em>Reindexar agora</em> refaz o índice BM25 usado no de-para; <em>Remover catálogo</em> apaga o cache local.</li>
+      </ol>
+      <div class="callout callout--info">
+        <h4>Onde essa seleção é usada</h4>
+        <p>As etiquetas marcadas aqui alimentam o botão <strong>Inserir etiquetas mágicas</strong> do painel da Triagem Inteligente, detalhado mais adiante. Sem etiquetas sugestionáveis selecionadas, a ação não terá o que sugerir para o processo.</p>
       </div>
 
       <div class="callout callout--info">
@@ -814,7 +833,7 @@
         <li>As funcionalidades que dependem de autos abertos (Carregar Documentos, Resumir, Resumir em áudio, Anonimizar, Minutar e a seção "Minutas com modelo") ficam automaticamente ocultas enquanto você não estiver em uma tela de processo — reaparecem assim que os autos forem abertos.</li>
       </ol>
 
-      <p>O painel mostra o nome da ferramenta, o serviço de IA em uso, o número do processo detectado e — em destaque — o <strong>grau reconhecido automaticamente</strong> (1º grau, 2º grau ou turma recursal). No 1º grau há ainda um <strong>seletor de perfil (Gabinete / Secretaria)</strong> no canto superior do painel, que ajusta o conjunto de ferramentas à rotina de trabalho. A lista de botões de minuta muda de acordo com o grau, para oferecer os atos adequados a cada instância.</p>
+      <p>O painel mostra o nome da ferramenta, o serviço de IA em uso, o número do processo detectado e — em destaque — o <strong>grau reconhecido automaticamente</strong> (1º grau, 2º grau ou turma recursal). No canto superior do painel há um <strong>seletor de perfil (Gabinete / Secretaria / Gestão)</strong>, que ajusta o conjunto de ferramentas à rotina de trabalho. A barra de ações também se adapta ao tipo de tela do PJe (autos abertos, painel do usuário, lista de tarefas) e ao grau do processo, oferecendo os atos adequados a cada situação.</p>
 
       <div class="callout callout--info">
         <h4>Como o grau é reconhecido</h4>
@@ -828,7 +847,7 @@
         <span class="section-num">03b</span>
         <div>
           <h2>Perfis de trabalho</h2>
-          <p>Gabinete e Secretaria</p>
+          <p>Gabinete, Secretaria e Gestão</p>
         </div>
       </div>
 
@@ -838,18 +857,23 @@
         <div class="feat">
           <span class="feat__label">Padrão</span>
           <h4>Gabinete</h4>
-          <p>Foco em análise dos autos e produção de minutas. Mostra os botões <em>Resumir</em>, <em>Resumir em áudio</em>, <em>Anonimizar</em>, <em>Minutar</em> e a seção <em>Minutas com modelo</em> — estes últimos aparecem apenas quando há processo aberto.</p>
+          <p>Foco em análise dos autos e produção de minutas. Mostra os botões <em>Resumir</em>, <em>Resumir em áudio</em>, <em>Anonimizar</em>, <em>Minutar</em> e a seção <em>Minutas com modelo</em> — estes últimos aparecem apenas quando há processo aberto. Disponível em todos os graus.</p>
         </div>
         <div class="feat">
           <span class="feat__label">Triagem</span>
           <h4>Secretaria</h4>
-          <p>Foco em triagem e organização de tarefas. Mostra a seção <em>Ações da secretaria</em> com o botão <strong>Triagem Inteligente</strong>, detalhado na seção seguinte.</p>
+          <p>Foco em triagem e organização de tarefas. Mostra a seção <em>Ações da secretaria</em> com os botões <strong>Analisar tarefas</strong>, <strong>Analisar o processo</strong> e <strong>Inserir etiquetas mágicas</strong>, detalhados na seção <em>Triagem Inteligente</em>. Disponível apenas no 1º grau.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Novo</span>
+          <h4>Gestão</h4>
+          <p>Perfil do diretor de secretaria. Quando o usuário está no <em>Painel do usuário</em> do PJe, exibe a seção <strong>Recursos para a Gestão</strong> com os botões <strong>Painel Gerencial pAIdegua</strong> e <strong>Prazos na Fita pAIdegua</strong>. Fora dessa tela, aparece um aviso orientando a abrir o Painel do usuário. Disponível em todos os graus.</p>
         </div>
       </div>
 
       <div class="callout callout--info">
         <h4>Onde o perfil é definido</h4>
-        <p>O perfil padrão é escolhido nas configurações da extensão (popup). A troca na sessão corrente é feita pelo seletor no cabeçalho do painel. Em instâncias de 2º grau e turma recursal, o perfil <em>Secretaria</em> não está disponível — o seletor é omitido e o painel apresenta apenas as ferramentas de gabinete.</p>
+        <p>O perfil padrão é escolhido nas configurações da extensão (popup, aba <em>Geral</em>). A troca na sessão corrente é feita pelo seletor no cabeçalho do painel. Em instâncias de 2º grau e turma recursal, o perfil <em>Secretaria</em> não está disponível — o seletor oculta essa opção.</p>
       </div>
     </section>
 
@@ -960,38 +984,131 @@
         <span class="section-num">06b</span>
         <div>
           <h2>Triagem Inteligente (Secretaria)</h2>
-          <p>Triagem de tarefas e geração de emendas à inicial</p>
+          <p>Análise de tarefas, processos e sugestão de etiquetas</p>
         </div>
       </div>
 
-      <p>Funcionalidade dedicada ao trabalho de secretaria no 1º grau. Aparece como botão <strong>Triagem Inteligente</strong> na seção <em>Ações da secretaria</em> do painel, quando o perfil Secretaria está ativo. Abre um painel próprio com três ações principais:</p>
+      <p>Funcionalidade dedicada ao trabalho de secretaria no 1º grau. Quando o perfil <em>Secretaria</em> está ativo, a seção <em>Ações da secretaria</em> exibe três botões, distribuídos em dois grupos:</p>
 
+      <h3><span class="marker"></span>Grupo "Painel" — na tela do Painel do usuário / lista de tarefas</h3>
       <div class="feat-grid">
         <div class="feat">
           <span class="feat__label">Fila</span>
           <h4>Analisar tarefas</h4>
-          <p>Lê a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providência necessária e apresenta um quadro resumo para orientar a priorização do dia.</p>
+          <p>Lê a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providência necessária e abre o <em>Painel de Triagem Inteligente pAIdegua</em> com um quadro resumo para orientar a priorização do dia. As tabelas do painel são ordenáveis pelos cabeçalhos (clique para alternar asc/desc) e cada linha de processo traz três ícones ao lado do número: <strong>hiperlink para os autos</strong>, <strong>copiar CNJ</strong> e <strong>abrir a tarefa no PJe</strong> (ver seção <em>Abrir tarefa no PJe</em>).</p>
         </div>
+      </div>
+
+      <h3><span class="marker"></span>Grupo "Processo" — com autos abertos</h3>
+      <div class="feat-grid">
         <div class="feat">
           <span class="feat__label">Processo</span>
           <h4>Analisar o processo</h4>
-          <p>Dentro de um processo aberto, executa uma análise guiada pelos critérios configurados na aba <strong>Triagem</strong> do popup (ver seção <em>Configuração inicial</em>). Por padrão, adota os critérios da <strong>Nota Técnica nº 1/2025 do CLI-JFCE</strong> — emenda à inicial, gratuidade, representação processual, interesse de agir, competência, prevenção e outros — mas cada critério pode ser personalizado ou substituído por redação própria, e critérios customizados adicionais podem ser incluídos. O status exibido durante a execução é: <em>"Analisando o processo pelos critérios configurados..."</em>.</p>
+          <p>Executa uma análise guiada pelos critérios configurados na aba <strong>Triagem Inteligente</strong> do popup (ver seção <em>Configuração inicial</em>). Por padrão, adota os critérios da <strong>Nota Técnica nº 1/2025 do CLI-JFCE</strong> — emenda à inicial, gratuidade, representação processual, interesse de agir, competência, prevenção e outros — mas cada critério pode ser personalizado ou substituído por redação própria, e critérios customizados adicionais podem ser incluídos. O status exibido durante a execução é: <em>"Analisando o processo pelos critérios configurados..."</em>.</p>
+        </div>
+        <div class="feat">
+          <span class="feat__label">Novo</span>
+          <h4>Inserir etiquetas mágicas</h4>
+          <p>Usa o catálogo configurado na aba <strong>Etiquetas Inteligentes</strong> do popup para sugerir quais etiquetas aplicar ao processo. A IA extrai uma lista curta de marcadores semânticos, a extensão roda BM25 contra as etiquetas sugestionáveis e abre uma bolha com: os <em>marcadores</em> que motivaram as sugestões, a lista de etiquetas ranqueadas com checkbox e barra de similaridade, e o botão <strong>Copiar selecionadas</strong> — copia os nomes das etiquetas marcadas para colar no campo de etiquetas do PJe. A aplicação automática via API do PJe está prevista para versões futuras.</p>
         </div>
         <div class="feat">
           <span class="feat__label">Emenda</span>
           <h4>Gerar ato de emenda à inicial</h4>
-          <p>Quando a análise indicar necessidade de emenda, o pAIdegua oferece a geração da minuta do ato de emenda diretamente no chat, já contemplando os pontos identificados na triagem.</p>
+          <p>Quando <em>Analisar o processo</em> indicar necessidade de emenda, o pAIdegua oferece a geração da minuta do ato de emenda diretamente no chat, já contemplando os pontos identificados na triagem.</p>
         </div>
       </div>
 
       <div class="callout callout--tip">
-        <h4>Configure os critérios antes do primeiro uso</h4>
-        <p>Os critérios utilizados em <em>Analisar o processo</em> são definidos na aba <strong>Triagem</strong> do popup da extensão. Como eles entram nos prompts enviados à IA, o resultado da análise depende diretamente do que você escolheu ali — recomenda-se revisar os textos padrão, ajustar os que tiverem entendimento próprio e, se for o caso, incluir critérios customizados da sua unidade.</p>
+        <h4>Configure antes do primeiro uso</h4>
+        <p>Os critérios de <em>Analisar o processo</em> e o catálogo de <em>Inserir etiquetas mágicas</em> são definidos nas abas <strong>Triagem Inteligente</strong> e <strong>Etiquetas Inteligentes</strong> do popup. Como essas escolhas entram nos prompts enviados à IA e no de-para BM25, o resultado depende diretamente do que foi configurado ali.</p>
       </div>
 
       <div class="callout callout--info">
         <h4>Integração com o PJe no fluxo de emenda</h4>
         <p>A bolha da minuta de emenda traz o botão <strong>"Encaminhar e inserir no PJe"</strong> (no lugar do habitual <em>"Inserir no PJe"</em>), que aciona a transição de tarefa correspondente no PJe e injeta o texto da minuta no editor da nova tarefa — tudo em uma única ação, sem saltar entre abas manualmente.</p>
+      </div>
+    </section>
+
+    <!-- 6c. GESTÃO -->
+    <section id="gestao">
+      <div class="section-head">
+        <span class="section-num">06c</span>
+        <div>
+          <h2>Painéis de Gestão</h2>
+          <p>Painel Gerencial e Prazos na Fita</p>
+        </div>
+      </div>
+
+      <p>Disponíveis no perfil <strong>Gestão</strong> quando o usuário está no <em>Painel do usuário</em> do PJe (qualquer grau). Dão ao diretor de secretaria uma visão consolidada da carga de trabalho sem precisar rodar relatórios no próprio PJe.</p>
+
+      <h3><span class="marker"></span>Painel Gerencial pAIdegua</h3>
+      <ol>
+        <li>Detecta as tarefas visíveis no painel do PJe e pergunta quais devem entrar no relatório.</li>
+        <li>Coleta, via API REST do PJe, os processos de cada tarefa selecionada, com progresso em tempo real.</li>
+        <li>Abre uma aba própria com o <em>dashboard gerencial</em>, contendo:
+          <ul>
+            <li><strong>Indicadores determinísticos</strong> da unidade (total de processos, distribuição por tarefa, "10 mais antigos por tarefa" etc.).</li>
+            <li><strong>Lista por tarefa</strong>, com tabelas ordenáveis e os três ícones por processo (autos, copiar CNJ, abrir tarefa).</li>
+            <li>Botão <strong>Gerar insights</strong>: envia os dados <em>sanitizados</em> (remove número do processo e partes antes de sair do navegador) ao serviço de IA configurado e traz de volta alertas, relacionamentos entre tarefas e sugestões de ação.</li>
+          </ul>
+        </li>
+      </ol>
+
+      <h3><span class="marker"></span>Prazos na Fita pAIdegua</h3>
+      <p>Foca especificamente nas tarefas cujo nome contém <em>"Controle de prazo"</em> — onde ficam os expedientes com prazo correndo. Fluxo:</p>
+      <ol>
+        <li>A extensão lista as tarefas <em>Controle de prazo</em> visíveis e pergunta quais coletar.</li>
+        <li>Para cada tarefa, consulta via API REST do PJe todos os <strong>expedientes abertos</strong> de cada processo (ciência, destinatário, ato, data-limite, natureza, anomalias).</li>
+        <li>Abre o dashboard <em>Prazos na Fita</em> com:
+          <ul>
+            <li><strong>KPIs</strong> no topo (total de processos, total de expedientes abertos, prazos correndo, vencimentos nos próximos 7 dias).</li>
+            <li>Uma <strong>tabela por tarefa</strong>, com cabeçalhos ordenáveis e coluna <em>Dias</em> destacando vencimentos próximos.</li>
+            <li>Blocos colapsáveis para processos sem expedientes abertos e falhas de coleta.</li>
+            <li>Os três ícones habituais por linha + a coluna <strong>Encerrar</strong> (ver callout abaixo).</li>
+          </ul>
+        </li>
+      </ol>
+
+      <div class="callout callout--tip">
+        <h4>Coluna "Encerrar" — encerrar expedientes em lote</h4>
+        <p>Última coluna da tabela de <em>Prazos na Fita</em>. Um clique no ícone de lixeira executa, em aba invisível, o fluxo que o PJe normalmente exige em três cliques + confirmação: abrir <code>movimentar.seam</code>, marcar o cabeçalho "Fechado" (seleciona todos os expedientes abertos) e clicar em <strong>Encerrar expedientes selecionados</strong>. Fecha <strong>todos</strong> os expedientes abertos daquela tarefa — use quando a providência padrão for essa. Para encerramento parcial, abra a tarefa pelo ícone de <em>Abrir tarefa</em> e trate o caso no PJe.</p>
+        <p>Estados do botão (persistidos em <code>storage.local</code>, sobrevivem ao F5):</p>
+        <ul>
+          <li><strong>Pronto</strong> (lixeira, neutra): clique para fechar todos os expedientes da tarefa.</li>
+          <li><strong>Executando</strong> (spinner, azul): aba invisível em andamento — aguarde.</li>
+          <li><strong>Sucesso</strong> (check, verde): <em>"Encerrado às HH:MM — N expediente(s)"</em>.</li>
+          <li><strong>Erro</strong> (triângulo de aviso, amarelo): clique para tentar de novo; a mensagem indica a causa.</li>
+          <li><strong>Nada a fazer</strong> (traço, cinza): todos os expedientes da tarefa já estavam fechados.</li>
+        </ul>
+        <p>A execução é <strong>serial</strong>: cliques em várias linhas ficam enfileirados para evitar competição por aba/sessão. Múltiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rótulo completo — as demais ficam em modo compacto (só o ícone).</p>
+      </div>
+
+      <div class="callout callout--info">
+        <h4>Copiar número CNJ sem prefixos</h4>
+        <p>Nos três painéis (Triagem, Painel Gerencial e Prazos na Fita), clicar no ícone de <em>copiar CNJ</em> ao lado do número do processo copia <strong>apenas o número CNJ</strong>, sem prefixos como <code>PJEC</code>, <code>JEF</code> ou <code>PROCAUT</code>. O mesmo vale para as cópias em massa geradas pelos relatórios.</p>
+      </div>
+    </section>
+
+    <!-- 6d. ABRIR TAREFA -->
+    <section id="abrir-tarefa">
+      <div class="section-head">
+        <span class="section-num">06d</span>
+        <div>
+          <h2>Abrir tarefa no PJe</h2>
+          <p>Atalho direto da linha do processo para <code>movimentar.seam</code></p>
+        </div>
+      </div>
+
+      <p>Em todas as linhas de processo dos três painéis (<em>Triagem Inteligente</em>, <em>Painel Gerencial</em> e <em>Prazos na Fita</em>) há um <strong>terceiro ícone</strong> (seta para fora de uma caixa) ao lado do hiperlink dos autos e do botão de copiar CNJ. Ele abre diretamente a tela de <strong>movimentação da tarefa corrente</strong> do processo no PJe — o mesmo destino do link <em>"Abrir tarefa"</em> do widget <em>"Documentos pendentes"</em> do painel nativo.</p>
+
+      <div class="callout callout--info">
+        <h4>Como a janela se comporta</h4>
+        <p>A janela popup é <strong>nomeada por processo</strong>: cliques subsequentes na mesma linha reaproveitam a aba aberta. Se o popup for bloqueado pelo navegador, libere o endereço do PJe no ícone de bloqueio de popups da barra de endereços.</p>
+      </div>
+
+      <div class="callout callout--warn">
+        <h4>Quando o ícone não aparece</h4>
+        <p>Em linhas coletadas por fallback (sem os identificadores que o PJe exige para abrir a tarefa correta), o ícone é omitido intencionalmente — preferimos ausência a um botão que leve para a tarefa errada. Recarregue o painel do PJe, abra qualquer tarefa para capturar o <em>snapshot de autenticação</em> e rode a coleta de novo.</p>
       </div>
     </section>
 
@@ -1171,6 +1288,26 @@
           <summary>Como atualizar o pAIdegua</summary>
           <p>Quando você receber uma nova versão da equipe do Inovajus, substitua a pasta antiga pela nova no seu computador. Depois, abra a página de extensões e clique na seta circular no quadro do pAIdegua para recarregar.</p>
         </details>
+        <details>
+          <summary>Painel Gerencial ou Prazos na Fita abrem vazios / mostram "Sem snapshot de auth"</summary>
+          <p>Abra o <strong>Painel do usuário</strong> do PJe e clique em qualquer tarefa antes de acionar os botões do perfil Gestão. Essa primeira interação captura o token de autenticação usado nas chamadas REST da coleta. Se a sessão do PJe tiver expirado, refaça o login e tente novamente.</p>
+        </details>
+        <details>
+          <summary>O ícone "Abrir tarefa" não aparece em alguma linha</summary>
+          <p>A linha foi coletada por fallback (sem os identificadores que o PJe exige para abrir a tarefa correta). Recarregue o painel do PJe, abra qualquer tarefa para capturar o <em>snapshot de autenticação</em> e rode a coleta de novo.</p>
+        </details>
+        <details>
+          <summary>O popup de "Abrir tarefa" foi bloqueado</summary>
+          <p>Clique no ícone de popup bloqueado na barra de endereços do navegador e libere o endereço do PJe. Depois, volte ao painel e clique novamente no ícone.</p>
+        </details>
+        <details>
+          <summary>"Encerrar expedientes" ficou em erro</summary>
+          <p>Verifique se a sessão do PJe está ativa (abra o PJe em outra aba). Se o PJe tiver alterado o DOM da tela <code>movimentar.seam</code>, reporte à equipe do Inovajus — a manutenção envolve ajustar o seletor da automação. Enquanto isso, o encerramento pode ser feito manualmente a partir do ícone <em>Abrir tarefa</em>.</p>
+        </details>
+        <details>
+          <summary>"Inserir etiquetas mágicas" não traz sugestões</summary>
+          <p>Confirme na aba <strong>Etiquetas Inteligentes</strong> do popup que (a) o catálogo foi buscado (botão <em>Buscar catálogo do PJe</em>) e (b) há etiquetas marcadas no painel <em>Sugestionáveis (selecionadas)</em>. Sem etiquetas sugestionáveis, não há o que sugerir para o processo.</p>
+        </details>
       </div>
     </section>
 
@@ -1194,6 +1331,8 @@
         <li><a href="#instalacao">Instalação</a></li>
         <li><a href="#configuracao">Configuração</a></li>
         <li><a href="#uso">Minutas com modelo</a></li>
+        <li><a href="#triagem">Triagem Inteligente</a></li>
+        <li><a href="#gestao">Painéis de Gestão</a></li>
         <li><a href="#modelos">Modelos</a></li>
         <li><a href="#problemas">Ajuda</a></li>
       </ul>
