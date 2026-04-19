@@ -58,12 +58,21 @@ Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes se
 
 5. Modelos de minuta (opcional): Clique em "Gerenciar modelos" para abrir a pagina de configuracao. Ali voce pode selecionar uma pasta do seu computador com seus modelos de minutas (sentencas, decisoes, despachos). A extensao aceita arquivos .docx, .doc, .odt, .rtf, .pdf, .txt e .md. Organize por subpastas (ex.: "procedente", "improcedente", "despachos", "decisoes") para melhor selecao automatica.
 
-6. Criterios da Triagem Inteligente (perfil Secretaria): na aba "Triagem" do popup voce define os criterios de analise inicial usados pela funcionalidade de Triagem Inteligente nos processos previdenciarios e assistenciais. A base e a Nota Tecnica n 1/2025 do CLI-JFCE, que uniformizou as exigencias entre os 16 Juizados Especiais Federais do Ceara. Para cada criterio (emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao etc.) voce pode:
+6. Perfil padrao ao abrir: na aba "Geral" do popup, na secao "Perfil de trabalho", escolha qual perfil sera carregado automaticamente quando o PJe for aberto (Gabinete, Secretaria ou Gestao). O seletor no cabecalho do painel lateral continua permitindo alternar o perfil dentro da sessao, mas ao reabrir o navegador o padrao definido aqui volta a vigorar.
+
+7. Criterios da Triagem Inteligente (perfil Secretaria): na aba "Triagem Inteligente" do popup voce define os criterios de analise inicial usados pela funcionalidade de Triagem Inteligente nos processos previdenciarios e assistenciais. A base e a Nota Tecnica n 1/2025 do CLI-JFCE, que uniformizou as exigencias entre os 16 Juizados Especiais Federais do Ceara. Para cada criterio (emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao etc.) voce pode:
    - Manter a redacao padrao da NT 1/2025 (chave "Adoto a NT" marcada); ou
    - Desmarcar a adocao e descrever no campo livre como voce entende e aplica aquele criterio na sua unidade.
    Ha ainda o bloco "Deseja incluir outros criterios customizados?" — ligue o toggle "Sim" para adicionar criterios proprios da sua unidade que nao constam da NT 1/2025. Os criterios escolhidos (padronizados, personalizados e customizados) sao injetados nos prompts da Triagem Inteligente. As alteracoes sao salvas automaticamente.
 
-7. Termos de uso e governanca: No popup ha a secao "Termos de uso e Governanca (Res. CNJ 615/2025)" com o enquadramento da ferramenta como de baixo risco (Anexo BR4/BR8), a obrigacao de supervisao humana (art. 19, IV e art. 34), a politica de privacidade/anonimizacao (art. 30), a trilha de auditoria (art. 19, par. 6 e art. 27 - EM DESENVOLVIMENTO, ainda nao implementada na versao atual) e a identificacao de conteudo gerado com apoio de IA (art. 21). Leia antes do uso em producao.
+8. Etiquetas Inteligentes (perfil Secretaria): a aba "Etiquetas Inteligentes" do popup configura o catalogo de etiquetas do PJe usado pela acao "Inserir etiquetas magicas" da Triagem Inteligente. Fluxo:
+   - Clique em "Buscar catalogo do PJe" — a extensao consulta a API do PJe (mesma origem do usuario, sem sair da estacao) e armazena o catalogo localmente no IndexedDB do navegador.
+   - No painel "Catalogo completo" voce ve todas as etiquetas da unidade. Use o filtro por nome, marque "Apenas favoritas" ou use os botoes "Marcar visiveis", "Desmarcar visiveis" e "Marcar todas favoritas" para selecao em lote.
+   - As etiquetas marcadas formam o painel superior "Sugestionaveis (selecionadas)" — sao as unicas que a Triagem Inteligente considera quando sugere etiquetas magicas para um processo.
+   - O campo "Orientacoes para a IA extrair marcadores do processo" e um texto livre injetado no prompt; use para guiar o foco (materia, beneficio, fase processual) e melhorar o de-para com as etiquetas.
+   - Clique em "Salvar selecao" ao final. "Reindexar agora" refaz o indice BM25 usado no de-para. "Remover catalogo" apaga o cache local.
+
+9. Termos de uso e governanca: No popup ha a secao "Termos de uso e Governanca (Res. CNJ 615/2025)" com o enquadramento da ferramenta como de baixo risco (Anexo BR4/BR8), a obrigacao de supervisao humana (art. 19, IV e art. 34), a politica de privacidade/anonimizacao (art. 30), a trilha de auditoria (art. 19, par. 6 e art. 27 - EM DESENVOLVIMENTO, ainda nao implementada na versao atual) e a identificacao de conteudo gerado com apoio de IA (art. 21). Leia antes do uso em producao.
 
 ---
 
@@ -80,20 +89,21 @@ Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes se
 O painel exibe:
 - Nome da extensao e provedor/modelo em uso
 - Numero do processo detectado e o grau identificado automaticamente (1G, 2G ou turma recursal), quando aplicavel
-- Seletor de perfil (Gabinete / Secretaria) no 1o grau, no canto superior do painel
-- Barra de ferramentas com os botoes de acao, ja adaptados ao perfil em uso e ao grau do processo
+- Seletor de perfil (Gabinete / Secretaria / Gestao) no canto superior do painel
+- Barra de ferramentas com os botoes de acao, ja adaptados ao perfil em uso, ao grau do processo e ao tipo de tela do PJe (autos abertos, painel do usuario, lista de tarefas etc.)
 - Area de chat para interacao livre com a IA
 
 A deteccao de grau e feita pelo dominio do PJe (pje1g.trf5.jus.br = 1o grau; pje2g.trf5.jus.br = turma recursal/2o grau) e altera automaticamente o conjunto de botoes de minuta exibidos.
 
-### Perfis de trabalho (Gabinete / Secretaria)
+### Perfis de trabalho (Gabinete / Secretaria / Gestao)
 
 O pAIdegua apresenta conjuntos diferentes de ferramentas conforme o perfil:
 
-- Gabinete (padrao): foco em analise dos autos e producao de minutas — mostra os botoes de Resumir, Resumir em audio, Anonimizar, Minutar e a secao "Minutas com modelo" (quando ha processo aberto).
-- Secretaria: foco em triagem e organizacao de tarefas — mostra a secao "Acoes da secretaria" com o botao "Triagem Inteligente" (ver secao propria adiante).
+- Gabinete (padrao): foco em analise dos autos e producao de minutas — mostra os botoes de Resumir, Resumir em audio, Anonimizar, Minutar e a secao "Minutas com modelo" (quando ha processo aberto). Disponivel em todos os graus.
+- Secretaria: foco em triagem e organizacao de tarefas — mostra a secao "Acoes da secretaria" com os botoes "Analisar tarefas", "Analisar o processo" e "Inserir etiquetas magicas" (ver secao propria adiante). Disponivel apenas no 1o grau.
+- Gestao: perfil do diretor de secretaria. Quando o usuario esta no "Painel do usuario" do PJe, exibe a secao "Recursos para a Gestao" com os botoes "Painel Gerencial pAIdegua" e "Prazos na Fita pAIdegua". Fora dessa tela, aparece um aviso orientando a abrir o Painel do usuario. Disponivel em todos os graus.
 
-O perfil padrao e definido nas configuracoes (popup da extensao); a troca na sessao corrente e feita pelo seletor no cabecalho do painel. Em instancias de 2o grau e turma recursal, o perfil Secretaria nao esta disponivel e o seletor e omitido.
+O perfil padrao e definido nas configuracoes (popup da extensao, aba "Geral"); a troca na sessao corrente e feita pelo seletor no cabecalho do painel. Em instancias de 2o grau e turma recursal, o perfil Secretaria nao esta disponivel e o seletor oculta essa opcao.
 
 ### Carregar Documentos
 
@@ -173,17 +183,85 @@ Comportamento da busca de modelos:
 
 ### Triagem Inteligente (perfil Secretaria)
 
-Funcionalidade dedicada ao trabalho de secretaria no 1o grau. Aparece como botao "Triagem Inteligente" na secao "Acoes da secretaria" do painel quando o perfil Secretaria esta ativo. Abre um painel proprio que permite:
+Funcionalidade dedicada ao trabalho de secretaria no 1o grau. No perfil Secretaria, a secao "Acoes da secretaria" exibe tres botoes, distribuidos em dois grupos:
 
-1. Analisar tarefas: le a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providencia necessaria e apresenta um quadro resumo para orientar a priorizacao do dia.
+Grupo "Painel" (aparece na tela do Painel do usuario / lista de tarefas do PJe):
 
-2. Analisar o processo: dentro de um processo aberto, executa uma analise guiada pelos criterios configurados na aba "Triagem" do popup da extensao (ver passo 6 da Configuracao inicial). Por padrao, adota os criterios da Nota Tecnica n 1/2025 do CLI-JFCE — emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao e outros — mas cada criterio pode ser personalizado ou substituido por redacao propria da unidade, e criterios customizados adicionais podem ser incluidos. O status exibido durante a execucao e "Analisando o processo pelos criterios configurados...".
+1. Analisar tarefas: le a fila de tarefas exibida no painel do PJe, classifica cada uma pelo tipo de providencia necessaria e abre o "Painel de Triagem Inteligente pAIdegua" com um quadro resumo para orientar a priorizacao do dia. As tabelas do painel sao ordenaveis pelos cabecalhos (clique no cabecalho para alternar asc/desc) e cada linha de processo traz tres icones ao lado do numero: hiperlink para os autos, copiar CNJ e abrir a tarefa no PJe (ver secao "Abrir tarefa no PJe").
 
-3. Gerar ato de emenda a inicial: quando a analise indicar necessidade de emenda, a extensao oferece a geracao da minuta de ato de emenda a inicial diretamente no chat, ja contemplando os pontos identificados na triagem.
+Grupo "Processo" (aparece quando ha autos abertos):
 
-IMPORTANTE: antes do primeiro uso da Triagem Inteligente, revise os criterios na aba "Triagem" do popup. Os criterios escolhidos (padrao da NT, personalizados ou customizados) sao injetados nos prompts da analise — logo, definem o resultado produzido pela funcionalidade.
+2. Analisar o processo: executa uma analise guiada pelos criterios configurados na aba "Triagem Inteligente" do popup da extensao (ver passo 7 da Configuracao inicial). Por padrao, adota os criterios da Nota Tecnica n 1/2025 do CLI-JFCE — emenda a inicial, gratuidade de justica, representacao processual, interesse de agir, competencia, prevencao e outros — mas cada criterio pode ser personalizado ou substituido por redacao propria da unidade, e criterios customizados adicionais podem ser incluidos. O status exibido durante a execucao e "Analisando o processo pelos criterios configurados...".
+
+3. Inserir etiquetas magicas: usa o catalogo de etiquetas selecionado na aba "Etiquetas Inteligentes" do popup (ver passo 8 da Configuracao inicial) para sugerir quais etiquetas aplicar ao processo. A extensao pede a IA uma lista curta de marcadores semanticos, roda BM25 contra as etiquetas sugestionaveis e abre uma bolha com:
+   - Os marcadores que a IA extraiu do processo (contextualizam o "por que" das sugestoes).
+   - A lista de etiquetas ranqueadas, com checkbox e barra de similaridade relativa ao top-1.
+   - Botao "Copiar selecionadas" — copia os nomes das etiquetas marcadas para a area de transferencia, para colar no campo de etiquetas do PJe (a aplicacao automatica via API sera liberada em versao futura).
+
+Gerar ato de emenda a inicial: quando a analise de processo indicar necessidade de emenda, a extensao oferece a geracao da minuta de ato de emenda a inicial diretamente no chat, ja contemplando os pontos identificados na triagem.
+
+IMPORTANTE: antes do primeiro uso da Triagem Inteligente, revise os criterios na aba "Triagem Inteligente" e o catalogo na aba "Etiquetas Inteligentes" do popup. Esses ajustes sao injetados nos prompts e definem o resultado produzido pelas acoes.
 
 O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz o botao "Encaminhar e inserir no PJe" (no lugar do habitual "Inserir no PJe"), que faz o encaminhamento da tarefa e insere o texto da minuta no editor CKEditor correspondente, em uma unica acao.
+
+### Painel Gerencial pAIdegua (perfil Gestao)
+
+Disponivel no perfil Gestao quando o usuario esta no "Painel do usuario" do PJe (qualquer grau). Ao clicar em "Painel Gerencial pAIdegua", a extensao:
+
+1. Detecta as tarefas visiveis no painel do PJe e pergunta quais delas devem entrar no relatorio.
+2. Coleta, via API REST do PJe, os processos de cada tarefa selecionada, com progresso em tempo real.
+3. Abre uma aba propria com o dashboard gerencial, contendo:
+   - Indicadores deterministicos da unidade (total de processos, distribuicao por tarefa, "10 mais antigos por tarefa" etc.).
+   - Lista por tarefa, com tabelas ordenaveis e os tres icones por processo (autos, copiar CNJ, abrir tarefa).
+   - Botao "Gerar insights" que envia os dados sanitizados (`sanitizePayloadForLLM` remove numeros de processo e partes) para o provedor de IA configurado e traz de volta alertas, relacionamentos entre tarefas e sugestoes de acao.
+
+O proposito e dar ao diretor de secretaria uma visao consolidada da carga de trabalho da unidade sem precisar rodar relatorios no PJe.
+
+### Prazos na Fita pAIdegua (perfil Gestao)
+
+Tambem disponivel no perfil Gestao quando o usuario esta no "Painel do usuario" do PJe. Foca especificamente nas tarefas cujo nome contem "Controle de prazo" — onde ficam os expedientes com prazo correndo.
+
+Fluxo ao clicar em "Prazos na Fita pAIdegua":
+
+1. A extensao lista as tarefas "Controle de prazo" visiveis e pergunta quais coletar.
+2. Para cada tarefa, consulta via API REST do PJe todos os expedientes abertos de cada processo (ciencia, destinatario, ato, data-limite, natureza, anomalias).
+3. Abre o dashboard "Prazos na Fita" com:
+   - KPIs no topo (total de processos, total de expedientes abertos, prazos correndo, vencimentos nos proximos 7 dias).
+   - Uma tabela por tarefa, com cabecalhos ordenaveis e coluna "Dias" destacando vencimentos proximos.
+   - Blocos colapsaveis para processos sem expedientes abertos e falhas de coleta.
+   - Os tres icones usuais por linha (autos, copiar CNJ, abrir tarefa) + a coluna "Encerrar" (ver secao "Encerrar expedientes em lote").
+
+### Abrir tarefa no PJe
+
+Em todas as linhas de processo dos tres paineis (Triagem Inteligente, Painel Gerencial e Prazos na Fita) ha um terceiro icone (seta para fora de uma caixa) ao lado do hiperlink dos autos e do botao de copiar CNJ. O icone abre diretamente a tela de movimentacao da tarefa corrente do processo no PJe (`movimentar.seam`) — o mesmo destino do link "Abrir tarefa" do widget "Documentos pendentes" do painel nativo.
+
+A janela popup e nomeada por processo, de modo que cliques subsequentes na mesma linha reaproveitam a aba aberta. Se o popup for bloqueado pelo navegador, libere o origin do PJe no icone de popup bloqueado da barra de enderecos.
+
+Quando a linha e oriunda de fallback DOM (coleta sem snapshot de autenticacao REST capturado), o icone nao aparece — e comportamento intencional para evitar abrir tarefa errada.
+
+### Encerrar expedientes em lote (Prazos na Fita)
+
+Ultima coluna da tabela do dashboard "Prazos na Fita". Um clique no icone de lixeira executa, em aba invisivel, o fluxo que o PJe normalmente exige em tres cliques + confirmacao:
+
+1. Abrir a tarefa (`movimentar.seam`).
+2. Marcar o cabecalho "Fechado" que seleciona todos os expedientes abertos.
+3. Clicar em "Encerrar expedientes selecionados" e confirmar o popup.
+
+A automacao fecha TODOS os expedientes abertos daquela tarefa de uma so vez — use-a quando a providencia padrao for justamente essa (p. ex., "ciencia vencida nao encerrada"). Para encerramento parcial, use o icone "Abrir tarefa" e trate o caso no PJe.
+
+Estados visuais do botao (persistidos em `chrome.storage.local` e sobrevivem ao F5):
+
+- pronto (lixeira, neutra): clique para fechar todos os expedientes da tarefa.
+- executando (spinner, azul): aba invisivel em andamento — aguarde.
+- sucesso (check, verde): "Encerrado as HH:MM — N expediente(s)".
+- erro (triangulo de aviso, amarelo): clique novamente para tentar de novo; a mensagem indica a causa (sessao expirada, botao nao encontrado etc.).
+- nada-a-fazer (traco, cinza): todos os expedientes da tarefa ja estavam fechados.
+
+Execucao serial: se voce clicar em varias linhas, a extensao enfileira e processa uma por vez, evitando competicao por aba/sessao. Multiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rotulo completo — as demais ficam em modo compacto (so o icone) para deixar claro qual foi a linha acionada.
+
+### Copiar numero CNJ
+
+Ao clicar no icone de copiar ao lado do numero do processo (em qualquer um dos tres paineis), apenas o numero CNJ e copiado — prefixos como "PJEC", "JEF", "PROCAUT" etc. sao removidos automaticamente. Isso vale tambem para as acoes de copia em massa dos relatorios.
 
 ### Chat livre
 
@@ -266,3 +344,13 @@ Dicas:
 - Chave de API invalida: Use o botao "Testar" nas configuracoes para verificar. Cada provedor tem seu formato de chave. Certifique-se de que a chave corresponde ao provedor selecionado.
 
 - Atualizacao da extensao: Quando receber uma nova versao do "dist.zip", extraia o arquivo sobrescrevendo a pasta "dist" ja existente e depois va em chrome://extensions ou edge://extensions e clique no botao de atualizar (seta circular) no card da extensao.
+
+- Painel Gerencial ou Prazos na Fita abrem vazios ou com erro "Sem snapshot de auth": abra o Painel do usuario do PJe e clique em qualquer tarefa antes de acionar os botoes do perfil Gestao. Essa primeira interacao captura o token de autenticacao usado nas chamadas REST da coleta. Se a sessao do PJe tiver expirado, refaca o login e tente novamente.
+
+- Icone "Abrir tarefa" nao aparece em alguma linha: a linha foi coletada por fallback DOM (sem os IDs que o PJe exige para abrir a tarefa correta). Recarregue o painel do PJe, abra uma tarefa para capturar o snapshot de auth e rode a coleta de novo.
+
+- Popup "Abrir tarefa" bloqueado: o navegador bloqueou a janela popup. Clique no icone de popup bloqueado na barra de enderecos do navegador e libere o origin do PJe.
+
+- "Encerrar expedientes" fica em erro: verifique se a sessao do PJe esta ativa (abra o PJe em outra aba). Se o PJe tiver alterado o DOM da tela `movimentar.seam`, reporte ao Inovajus — a manutencao envolve ajustar o seletor na automacao. Enquanto isso, o encerramento pode ser feito manualmente a partir do icone "Abrir tarefa".
+
+- "Inserir etiquetas magicas" nao traz sugestoes: confirme na aba "Etiquetas Inteligentes" do popup que (a) o catalogo foi buscado (botao "Buscar catalogo do PJe") e (b) ha etiquetas marcadas no painel "Sugestionaveis (selecionadas)". Sem etiquetas sugestionaveis, nao ha o que sugerir.
