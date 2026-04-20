@@ -112,6 +112,7 @@ let totalSelecionadas = 0;
 let concluidasAtual = 0;
 let modo: ModoPainel = 'gestao';
 let modoConfig: ModoConfig = MODOS.gestao;
+let unidadeAtual: string | null = null;
 
 void main();
 
@@ -160,6 +161,43 @@ function aplicarTextosDoModo(): void {
   if (tituloEl) tituloEl.textContent = modoConfig.titulo;
   const subEl = document.querySelector<HTMLElement>('[data-modo-subtitulo]');
   if (subEl) subEl.textContent = modoConfig.subtitulo;
+  // Secoes com `data-modo-only` so aparecem no modo declarado.
+  document
+    .querySelectorAll<HTMLElement>('[data-modo-only]')
+    .forEach((el) => {
+      const soEm = el.dataset.modoOnly;
+      el.hidden = soEm !== modo;
+    });
+}
+
+/**
+ * Le os filtros do formulario de Prazos na Fita. No modo "gestao" a
+ * secao de filtros esta escondida; retorna nulls neutros.
+ */
+function lerFiltrosPrazos(): {
+  diasMinNaTarefa: number | null;
+  maxProcessosTotal: number | null;
+} {
+  if (modo !== 'prazos') {
+    return { diasMinNaTarefa: null, maxProcessosTotal: null };
+  }
+  const elDias = document.getElementById(
+    'filtro-dias-min'
+  ) as HTMLInputElement | null;
+  const elMax = document.getElementById(
+    'filtro-max-total'
+  ) as HTMLSelectElement | null;
+  const diasRaw = elDias?.value?.trim() ?? '';
+  const diasNum = diasRaw === '' ? 0 : Number(diasRaw);
+  const diasMinNaTarefa =
+    Number.isFinite(diasNum) && diasNum > 0 ? Math.floor(diasNum) : null;
+  const maxRaw = elMax?.value ?? '';
+  const maxNum = maxRaw === '' ? null : Number(maxRaw);
+  const maxProcessosTotal =
+    maxNum != null && Number.isFinite(maxNum) && maxNum > 0
+      ? Math.floor(maxNum)
+      : null;
+  return { diasMinNaTarefa, maxProcessosTotal };
 }
 
 async function carregarEstado(rid: string): Promise<PainelState | null> {
@@ -183,9 +221,27 @@ function montarMeta(state: PainelState): void {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
+  const topo = unidadeAtual ? unidadeAtual : state.hostnamePJe;
+  const segunda = unidadeAtual
+    ? `<div>${escapeHtml(state.hostnamePJe)}</div>`
+    : '';
   elMeta.innerHTML =
-    `<div><strong>${escapeHtml(state.hostnamePJe)}</strong></div>` +
+    `<div><strong>${escapeHtml(topo)}</strong></div>` +
+    segunda +
     `<div>${escapeHtml(dataFmt)}</div>`;
+}
+
+/**
+ * O coordinator emite uma linha de progresso com prefixo `[unidade]`
+ * assim que tem o primeiro `orgaoJulgador` em mãos. Aqui guardamos e
+ * re-renderizamos o bloco meta para mostrar a vara no cabeçalho da aba.
+ */
+function aplicarUnidadeNoHeader(nome: string): void {
+  const limpo = nome.trim();
+  if (!limpo) return;
+  if (unidadeAtual === limpo) return;
+  unidadeAtual = limpo;
+  if (stateAtual) montarMeta(stateAtual);
 }
 
 async function renderizarSeletor(state: PainelState): Promise<void> {
@@ -271,6 +327,32 @@ elBtnConfirmar.addEventListener('click', () => {
 async function iniciarColeta(nomes: string[]): Promise<void> {
   await salvarSelecao(nomes);
 
+  const filtros = lerFiltrosPrazos();
+
+  // Apenas no modo "prazos" temos checkpoint e suporte a retomar —
+  // no modo "gestao" a varredura e mais leve (aberta/fechamento do
+  // painel Angular) e ainda nao foi instrumentada com checkpoint.
+  let retomar = false;
+  if (modo === 'prazos') {
+    const info = await consultarScanStateExistente(nomes, filtros);
+    if (info.hasState && info.total && info.concluidos != null) {
+      const restantes = info.total - info.concluidos;
+      const minutosAtras = info.updatedAt
+        ? Math.max(1, Math.round((Date.now() - info.updatedAt) / 60000))
+        : null;
+      const msg =
+        `Detectei uma varredura anterior interrompida:\n\n` +
+        `  - ${info.concluidos}/${info.total} processo(s) ja coletados\n` +
+        `  - ${restantes} restam a coletar\n` +
+        (minutosAtras != null
+          ? `  - atualizada ha ${minutosAtras} minuto(s)\n`
+          : '') +
+        `\nOK = continuar de onde parou\n` +
+        `Cancelar = comecar do zero (perde o trabalho anterior)`;
+      retomar = window.confirm(msg);
+    }
+  }
+
   totalSelecionadas = nomes.length;
   concluidasAtual = 0;
   elLog.innerHTML = '';
@@ -280,12 +362,16 @@ async function iniciarColeta(nomes: string[]): Promise<void> {
     `Varrendo ${nomes.length} tarefa${nomes.length === 1 ? '' : 's'}. ` +
     'Não feche esta aba — ela carrega o dashboard automaticamente ao final.';
 
-  logLinha(`Pedindo ao PJe para iniciar a varredura de ${nomes.length} tarefa(s)...`);
+  logLinha(
+    retomar
+      ? `Retomando varredura anterior de ${nomes.length} tarefa(s)...`
+      : `Pedindo ao PJe para iniciar a varredura de ${nomes.length} tarefa(s)...`
+  );
 
   try {
     const resp = await chrome.runtime.sendMessage({
       channel: modoConfig.startChannel,
-      payload: { requestId, nomes }
+      payload: { requestId, nomes, ...filtros, retomar }
     });
     if (!resp?.ok) {
       const msg = resp?.error ?? 'Falha desconhecida ao iniciar a varredura.';
@@ -296,6 +382,35 @@ async function iniciarColeta(nomes: string[]): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     logLinha(`Erro na comunicação com o PJe: ${msg}`, 'err');
     exibirErro(msg);
+  }
+}
+
+/**
+ * Pergunta ao background se existe um checkpoint "Prazos na Fita"
+ * compativel com a selecao atual. O background roteia para a aba do
+ * PJe (via requestId) — e la que o `chrome.storage.local` da unidade
+ * esta acessivel.
+ */
+async function consultarScanStateExistente(
+  nomes: string[],
+  filtros: { diasMinNaTarefa: number | null; maxProcessosTotal: number | null }
+): Promise<{
+  hasState: boolean;
+  scanId?: string;
+  concluidos?: number;
+  total?: number;
+  startedAt?: number;
+  updatedAt?: number;
+}> {
+  try {
+    const resp = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.PRAZOS_FITA_QUERY_SCAN_STATE,
+      payload: { requestId, nomes, ...filtros }
+    });
+    if (!resp || typeof resp !== 'object') return { hasState: false };
+    return resp as { hasState: boolean };
+  } catch {
+    return { hasState: false };
   }
 }
 
@@ -317,6 +432,12 @@ function registrarListenerBackground(): void {
 
     if (message.channel === modoConfig.progChannel) {
       const msg = (payload as { msg?: string }).msg ?? '';
+      const mUnidade = msg.match(/^\[unidade\]\s+(.+)$/);
+      if (mUnidade && mUnidade[1]) {
+        aplicarUnidadeNoHeader(mUnidade[1]);
+        sendResponse({ ok: true });
+        return false;
+      }
       logLinha(msg);
       avancarBarra(msg);
       sendResponse({ ok: true });

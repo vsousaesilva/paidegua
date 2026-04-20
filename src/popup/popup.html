@@ -329,6 +329,58 @@
         transform: translateY(-1px); box-shadow: 0 6px 16px rgba(19,81,180,0.28);
       }
       .paidegua-triagem-extras__add-icon { font-size: 16px; line-height: 1; font-weight: 700; }
+
+      /* Orientações livres para o prompt das Etiquetas Inteligentes */
+      .paidegua-etiquetas-prompt {
+        margin: 0 0 14px; padding: 12px 14px;
+        background: rgba(255,205,7,0.08); border: 1px solid rgba(255,205,7,0.35);
+        border-radius: var(--radius);
+      }
+      .paidegua-etiquetas-prompt__cta {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; flex-wrap: wrap;
+      }
+      .paidegua-etiquetas-prompt__title {
+        margin: 0; font-size: 12.5px; font-weight: 700; color: var(--primary-dark);
+        line-height: 1.35;
+      }
+      .paidegua-etiquetas-prompt__hint {
+        margin: 3px 0 0; font-size: 11px; color: var(--muted); line-height: 1.4;
+      }
+      .paidegua-etiquetas-prompt__toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11.5px; font-weight: 600; color: var(--primary-dark);
+        cursor: pointer; user-select: none;
+      }
+      .paidegua-etiquetas-prompt__toggle input { accent-color: var(--primary); }
+      .paidegua-etiquetas-prompt__body {
+        margin-top: 12px; display: flex; flex-direction: column; gap: 8px;
+      }
+      .paidegua-etiquetas-prompt__item {
+        display: flex; gap: 8px; align-items: stretch;
+      }
+      .paidegua-etiquetas-prompt__textarea {
+        flex: 1; min-height: 96px; max-height: 320px; resize: vertical;
+        background: rgba(255,255,255,0.95); color: var(--fg);
+        border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        padding: 9px 11px; font-size: 12px; font-family: inherit; outline: none;
+        line-height: 1.45;
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+      .paidegua-etiquetas-prompt__textarea::placeholder {
+        color: rgba(91,107,130,0.72); font-style: italic;
+      }
+      .paidegua-etiquetas-prompt__textarea:focus {
+        border-color: var(--primary); box-shadow: 0 0 0 4px rgba(19,81,180,0.14);
+      }
+      .paidegua-etiquetas-prompt__foot {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 10px; min-height: 18px;
+      }
+      .paidegua-etiquetas-prompt__count {
+        font-size: 10.5px; font-weight: 500; color: var(--muted);
+        font-variant-numeric: tabular-nums; letter-spacing: 0.2px;
+      }
     </style>
   </head>
   <body>
@@ -607,30 +659,34 @@
           para um processo.
         </p>
 
-        <section class="paidegua-etiquetas-prompt">
-          <div class="paidegua-etiquetas-prompt__head">
-            <span class="paidegua-etiquetas-prompt__icon" aria-hidden="true">&#10024;</span>
-            <label for="etiq-prompt-criterios" class="paidegua-etiquetas-prompt__label">
-              Orienta&#231;&#245;es para a IA extrair marcadores do processo
+        <section class="paidegua-etiquetas-prompt" id="etiq-prompt-extras">
+          <div class="paidegua-etiquetas-prompt__cta">
+            <div>
+              <p class="paidegua-etiquetas-prompt__title">
+                Deseja orientar a IA na extra&#231;&#227;o de marcadores do processo? Insira manualmente.
+              </p>
+              <p class="paidegua-etiquetas-prompt__hint">
+                Texto livre injetado no prompt que pede &#224; IA uma lista curta de marcadores sem&#226;nticos. Use para guiar o foco (mat&#233;ria, benef&#237;cio, fase) e melhorar o de-para com as etiquetas.
+              </p>
+            </div>
+            <label class="paidegua-etiquetas-prompt__toggle" for="etiq-prompt-enable">
+              <input type="checkbox" id="etiq-prompt-enable" />
+              <span>Sim</span>
             </label>
           </div>
-          <p class="paidegua-etiquetas-prompt__hint">
-            Texto livre injetado no prompt que pede &#224; IA uma lista curta de
-            marcadores sem&#226;nticos sobre o processo. Use para guiar o foco
-            (mat&#233;ria, benef&#237;cio, fase) e melhorar o de-para com as etiquetas.
-            Deixe em branco para usar apenas o comportamento padr&#227;o.
-          </p>
-          <div class="paidegua-etiquetas-prompt__field">
-            <textarea
-              id="etiq-prompt-criterios"
-              class="paidegua-etiquetas-prompt__textarea"
-              rows="7"
-              placeholder="Ex.: foco em mat&#233;ria previdenci&#225;ria e benef&#237;cios assistenciais; marque a fase processual (in&#237;cio, sanea&#231;&#227;o, senten&#231;a); destaque tutelas de urg&#234;ncia."
-            ></textarea>
-          </div>
-          <div class="paidegua-etiquetas-prompt__foot">
-            <p id="etiq-prompt-status" class="paidegua-popup__status"></p>
-            <span id="etiq-prompt-count" class="paidegua-etiquetas-prompt__count">0 caracteres</span>
+          <div class="paidegua-etiquetas-prompt__body" id="etiq-prompt-body" hidden>
+            <div class="paidegua-etiquetas-prompt__item">
+              <textarea
+                id="etiq-prompt-criterios"
+                class="paidegua-etiquetas-prompt__textarea"
+                rows="5"
+                placeholder="Ex.: foco em mat&#233;ria previdenci&#225;ria e benef&#237;cios assistenciais; marque a fase processual (in&#237;cio, sanea&#231;&#227;o, senten&#231;a); destaque tutelas de urg&#234;ncia."
+              ></textarea>
+            </div>
+            <div class="paidegua-etiquetas-prompt__foot">
+              <p id="etiq-prompt-status" class="paidegua-popup__status"></p>
+              <span id="etiq-prompt-count" class="paidegua-etiquetas-prompt__count">0 caracteres</span>
+            </div>
           </div>
         </section>
 

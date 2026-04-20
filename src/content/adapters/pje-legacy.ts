@@ -1111,39 +1111,13 @@ export function derivarAnomaliasProcesso(
 }
 
 // =====================================================================
-// Variantes iframe-friendly: extraem de um Document arbitrario.
-// Usadas pelo caminho `coletarExpedientesViaIframe` do coordinator, que
-// abre `listAutosDigitais.seam` num iframe oculto same-origin em vez de
-// uma `chrome.tabs.create` por processo. Permitem reuso da mesma logica
-// de parsing sem depender do `document` global do top frame.
+// Variantes "in-doc": extraem de um Document arbitrario (nao necessariamente
+// o `document` global). Usadas por `coletarExpedientesViaFetch` do
+// coordinator de "Prazos na fita", que busca `listAutosDigitais.seam?...
+// &aba=processoExpedienteTab` via fetch, parseia o HTML com DOMParser e
+// passa o Document resultante para as funcoes abaixo — reusando a mesma
+// logica de parsing sem depender do top frame.
 // =====================================================================
-
-/**
- * Clica no link da aba "Expedientes" dentro do Document fornecido e
- * aguarda o tbody popular. Equivalente a
- * `PJeLegacyAdapter.ensureAbaExpedientes`, mas opera sobre o documento
- * do iframe em vez do `document` do top frame.
- */
-export async function ensureAbaExpedientesInDoc(
-  doc: Document,
-  timeoutMs = 8_000
-): Promise<boolean> {
-  if (queryExpedientesTbody(doc) !== null) return true;
-  const tab = doc.querySelector<HTMLAnchorElement>(
-    'a[id^="navbar:linkAbaExpedientes"]'
-  );
-  if (!tab) return false;
-  try {
-    tab.click();
-    await waitForDomInDoc(
-      () => queryExpedientesTbody(doc) !== null,
-      timeoutMs
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Extrai expedientes a partir de um Document arbitrario. Reusa a mesma
@@ -1202,37 +1176,3 @@ export function extractNumeroProcessoFromDoc(doc: Document): string | null {
   return match(bodyText);
 }
 
-/**
- * Variante de `waitForDom` que polla sem depender do `window` do top
- * frame — util quando o consumidor esta esperando mudancas no DOM de um
- * iframe que pode ser removido (e levar junto seu `window.setInterval`)
- * a qualquer momento.
- */
-async function waitForDomInDoc(
-  cond: () => boolean,
-  timeoutMs: number,
-  pollMs = 120
-): Promise<void> {
-  const start = Date.now();
-  if (cond()) return;
-  await new Promise<void>((resolve, reject) => {
-    const id = window.setInterval(() => {
-      try {
-        if (cond()) {
-          window.clearInterval(id);
-          resolve();
-          return;
-        }
-      } catch (err) {
-        // iframe removido durante o poll -> doc invalido
-        window.clearInterval(id);
-        reject(err);
-        return;
-      }
-      if (Date.now() - start > timeoutMs) {
-        window.clearInterval(id);
-        reject(new Error(`Timeout (${timeoutMs}ms) aguardando tbody de expedientes.`));
-      }
-    }, pollMs);
-  });
-}

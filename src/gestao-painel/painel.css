@@ -144,4 +144,35 @@ html, body {
 .log li.ok { color: var(--success); }
 .log li.err { color: var(--danger); }
 
+.filtros {
+  margin: 18px 0 4px;
+  padding: 14px 16px;
+  background: rgba(19, 81, 180, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.filtros__title { margin: 0 0 6px; font-size: 13px; color: var(--primary-dark); }
+.filtros__hint { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.filtros__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.filtros__campo { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.filtros__label { color: var(--fg); font-weight: 500; }
+.filtros__campo input[type="number"],
+.filtros__campo select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+}
+.filtros__ajuda { color: var(--muted); font-size: 11px; line-height: 1.4; }
+@media (max-width: 560px) {
+  .filtros__grid { grid-template-columns: 1fr; }
+}
+
 .footer { text-align: center; padding: 24px; color: var(--muted); font-size: 12px; }

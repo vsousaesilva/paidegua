@@ -41,12 +41,19 @@ import {
 import type {
   ChatMessage,
   ChatStartPayload,
+  PJeApiProcesso,
   PJeDetection,
   PAIdeguaSettings,
   PrazosFitaDashboardPayload,
   ProcessoDocumento,
-  SynthesizeSpeechResult
+  SynthesizeSpeechResult,
+  TriagemProcesso,
+  TriagemTarefaSnapshot
 } from '../shared/types';
+import {
+  sanitizePayloadForLLM,
+  type TriagemPayloadAnon
+} from '../shared/triagem-anonymize';
 import { detect, isPJeHost } from './detector';
 import { mountShell } from './ui/shell';
 import { mountNavbarButton, type NavbarButtonController } from './ui/navbar-button';
@@ -74,6 +81,7 @@ import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { computarIndicadoresGestao } from './gestao/gestao-indicadores';
 import { coletarPrazosPorTarefasViaAPI } from './gestao/prazos-fita-coordinator';
+import { consultarPorAssinatura as consultarPorAssinaturaScanState } from './gestao/prazos-fita-scan-state';
 import { listarEtiquetas } from './pje-api/pje-api-from-content';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
@@ -3070,9 +3078,15 @@ async function handlePrazosFita(): Promise<void> {
 const prazosFitaEmCurso = new Set<string>();
 
 async function handlePrazosFitaRunColeta(
-  payload: { requestId: string; nomes: string[] }
+  payload: {
+    requestId: string;
+    nomes: string[];
+    diasMinNaTarefa?: number | null;
+    maxProcessosTotal?: number | null;
+    retomar?: boolean;
+  }
 ): Promise<void> {
-  const { requestId, nomes } = payload;
+  const { requestId, nomes, diasMinNaTarefa, maxProcessosTotal, retomar } = payload;
   if (prazosFitaEmCurso.has(requestId)) {
     console.warn(
       `${LOG_PREFIX} handlePrazosFitaRunColeta: requestId ${requestId} ja em curso — ignorando disparo duplicado.`
@@ -3096,24 +3110,57 @@ async function handlePrazosFitaRunColeta(
 
     const resultado = await coletarPrazosPorTarefasViaAPI({
       nomesTarefas: nomes,
+      diasMinNaTarefa,
+      maxProcessosTotal,
+      retomar: retomar === true,
       onProgress: postProg
     });
+
+    // Em unidades com milhares de processos, guardar o resultado completo
+    // no `chrome.storage.session` (quota 10 MB) estoura o limite: o
+    // `descricaoUltimoMovimento` + polos + etiquetas somados por 2000+
+    // processos facilmente passam de 10 MB. O dashboard de Prazos na Fita
+    // so le 4 campos do `processoApi` (idProcesso, idTaskInstance,
+    // numeroProcesso, orgaoJulgador) — zeramos aqui os demais. Mantemos
+    // o tipo valido (sem `any`) zerando campos pra preservar o shape.
+    const consolidadoLeve = resultado.consolidado.map((c) => ({
+      ...c,
+      processoApi: enxugarProcessoApiParaDashboard(c.processoApi)
+    }));
 
     const dashboardPayload: PrazosFitaDashboardPayload = {
       geradoEm: new Date().toISOString(),
       hostnamePJe: new URL(window.location.origin).hostname,
       tarefasSelecionadas: nomes,
-      resultado
+      resultado: {
+        totalDescobertos: resultado.totalDescobertos,
+        tempoTotalMs: resultado.tempoTotalMs,
+        consolidado: consolidadoLeve
+      }
     };
 
     postProg(
       `Coleta concluída: ${resultado.consolidado.length} processo(s) únicos em ${(resultado.tempoTotalMs / 1000).toFixed(1)}s.`
     );
 
-    await chrome.runtime.sendMessage({
+    // Se o background recusar a gravacao (ex.: quota do storage.session
+    // estourada mesmo apos a poda), `resp.ok` volta false. Sem esse
+    // tratamento a aba-painel ficava esperando indefinidamente pelo READY
+    // que nunca chega. Convertendo em COLETA_FAIL, o painel mostra a
+    // mensagem de erro em vez de travar.
+    const resp = await chrome.runtime.sendMessage({
       channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_DONE,
       payload: { requestId, dashboardPayload }
     });
+    if (!resp?.ok) {
+      const msg = resp?.error ?? 'Falha desconhecida ao gravar o dashboard.';
+      await chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL,
+          payload: { requestId, error: msg }
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
   } catch (err) {
     if (isContextInvalidatedError(err)) {
       // Extensao recarregada no meio da coleta: a aba-painel ja foi
@@ -3132,6 +3179,76 @@ async function handlePrazosFitaRunColeta(
   } finally {
     prazosFitaEmCurso.delete(requestId);
   }
+}
+
+/**
+ * Trunca o texto da última movimentação em cada processo do anonPayload.
+ * Em unidades com milhares de processos, esse campo é quem mais pesa no
+ * `storage.session` (limite de 10 MB). ~240 chars preservam a informação
+ * essencial para a LLM (verbo + complemento) sem estourar a quota.
+ */
+function truncarMovimentacaoDoAnon(
+  anon: TriagemPayloadAnon,
+  max: number
+): TriagemPayloadAnon {
+  return {
+    ...anon,
+    tarefas: anon.tarefas.map((t) => ({
+      ...t,
+      processos: t.processos.map((p) => {
+        const txt = p.ultimaMovimentacaoTexto;
+        if (txt && txt.length > max) {
+          return { ...p, ultimaMovimentacaoTexto: txt.slice(0, max) + '…' };
+        }
+        return p;
+      })
+    }))
+  };
+}
+
+/**
+ * Zera os campos de PII pesada de um `TriagemProcesso` para a versão que
+ * vai ao `chrome.storage.session` — o dashboard gerencial não renderiza
+ * `poloAtivo`, `ultimaMovimentacaoTexto`, nem as datas brutas (usa apenas
+ * os `diasNa*` derivados, e só `diasNaTarefa` é exibido). Mantemos os
+ * demais campos para que o tipo continue válido e o dashboard funcione
+ * sem `any`.
+ */
+function enxugarProcessoParaDashboard(p: TriagemProcesso): TriagemProcesso {
+  return {
+    ...p,
+    poloAtivo: '',
+    dataEntradaTarefa: null,
+    dataUltimoMovimento: null,
+    diasUltimoMovimento: null,
+    dataConclusao: null,
+    diasDesdeConclusao: null,
+    ultimaMovimentacaoTexto: null
+  };
+}
+
+/**
+ * Analogo de `enxugarProcessoParaDashboard`, porem para `PJeApiProcesso`
+ * (usado pelo Prazos na Fita). O dashboard so le 4 campos: `idProcesso`,
+ * `idTaskInstance`, `numeroProcesso`, `orgaoJulgador`. Os demais sao
+ * zerados para caber na quota de 10 MB do `storage.session` em unidades
+ * com milhares de processos.
+ */
+function enxugarProcessoApiParaDashboard(p: PJeApiProcesso): PJeApiProcesso {
+  return {
+    ...p,
+    classeJudicial: null,
+    poloAtivo: null,
+    poloPassivo: null,
+    dataChegadaTarefa: null,
+    prioridade: false,
+    sigiloso: false,
+    etiquetas: [],
+    assuntoPrincipal: null,
+    descricaoUltimoMovimento: null,
+    ultimoMovimento: null,
+    cargoJudicial: null
+  };
 }
 
 async function handleGestaoRunColeta(
@@ -3169,11 +3286,42 @@ async function handleGestaoRunColeta(
 
     const totalProcessos = snapshots.reduce((s, t) => s + t.totalLido, 0);
     const indicadores = computarIndicadoresGestao(snapshots);
-    const dashboardPayload = {
-      geradoEm: new Date().toISOString(),
-      hostnamePJe: new URL(window.location.origin).hostname,
-      tarefasSelecionadas: nomes,
+    const geradoEm = new Date().toISOString();
+    const hostnamePJe = new URL(window.location.origin).hostname;
+
+    // Payload anonimizado para a LLM — calculado AQUI, com acesso aos
+    // snapshots completos. Depois desta linha podemos descartar os campos
+    // pesados (última movimentação etc.) do payload que vai ao storage.
+    const anonPayloadFull = sanitizePayloadForLLM({
+      geradoEm,
+      hostnamePJe,
       tarefas: snapshots,
+      totalProcessos,
+      insightsLLM: null
+    });
+
+    // Em unidades com milhares de processos, o texto da última
+    // movimentação é o maior contribuinte de tamanho do anonPayload.
+    // Truncamos em ~240 chars: dá pra LLM pegar o verbo/complemento
+    // principal ("Juntada de Petição por ...") e mantém o payload dentro
+    // da quota de 10 MB do `storage.session` mesmo em 8k+ processos.
+    const anonPayload = truncarMovimentacaoDoAnon(anonPayloadFull, 240);
+
+    // Em unidades com muitos processos, guardar os snapshots completos no
+    // `chrome.storage.session` (quota 10 MB) estoura o limite e trava a
+    // abertura do dashboard. O dashboard só renderiza um subset dos campos
+    // do processo, então zeramos aqui os campos pesados que só servem à
+    // LLM — esses já viajam no `anonPayload` ao lado.
+    const snapshotsLeve: TriagemTarefaSnapshot[] = snapshots.map((t) => ({
+      ...t,
+      processos: t.processos.map(enxugarProcessoParaDashboard)
+    }));
+
+    const dashboardPayload = {
+      geradoEm,
+      hostnamePJe,
+      tarefasSelecionadas: nomes,
+      tarefas: snapshotsLeve,
       totalProcessos,
       indicadores,
       insightsLLM: null
@@ -3181,10 +3329,22 @@ async function handleGestaoRunColeta(
 
     postProg(`Varredura concluída: ${totalProcessos} processo(s) em ${snapshots.length} tarefa(s).`);
 
-    await chrome.runtime.sendMessage({
+    // Se o background recusar a gravação (ex.: quota do storage.session
+    // estourada em unidades muito grandes), `resp.ok` volta false. Sem
+    // esse tratamento a aba-painel ficava esperando indefinidamente pelo
+    // READY que nunca chega. Convertendo em COLETA_FAIL, o painel mostra
+    // a mensagem de erro em vez de travar.
+    const resp = await chrome.runtime.sendMessage({
       channel: MESSAGE_CHANNELS.GESTAO_COLETA_DONE,
-      payload: { requestId, dashboardPayload }
+      payload: { requestId, dashboardPayload, anonPayload }
     });
+    if (!resp?.ok) {
+      const msg = resp?.error ?? 'Falha desconhecida ao gravar o dashboard.';
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.GESTAO_COLETA_FAIL,
+        payload: { requestId, error: msg }
+      }).catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
   } catch (err) {
     if (isContextInvalidatedError(err)) {
       return;
@@ -3386,7 +3546,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_RUN_COLETA) {
     if (window !== window.top) return false;
     if (!isPJeHost(window.location.hostname)) return false;
-    const payload = message.payload as { requestId: string; nomes: string[] };
+    const payload = message.payload as {
+      requestId: string;
+      nomes: string[];
+      diasMinNaTarefa?: number | null;
+      maxProcessosTotal?: number | null;
+      retomar?: boolean;
+    };
     if (!payload || !payload.requestId || !Array.isArray(payload.nomes)) {
       sendResponse({ ok: false, error: 'Payload de coleta inválido.' });
       return false;
@@ -3394,6 +3560,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
     void handlePrazosFitaRunColeta(payload);
     return false;
+  }
+
+  // Painel -> content (aba PJe): consulta se existe checkpoint de
+  // "Prazos na Fita" compativel com a assinatura da selecao atual.
+  if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_QUERY_SCAN_STATE) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      nomes: string[];
+      diasMinNaTarefa: number | null;
+      maxProcessosTotal: number | null;
+    } | null;
+    if (!payload || !Array.isArray(payload.nomes)) {
+      sendResponse({ hasState: false });
+      return false;
+    }
+    void (async () => {
+      try {
+        const info = await consultarPorAssinaturaScanState({
+          host: window.location.hostname,
+          nomes: payload.nomes,
+          filtros: {
+            diasMinNaTarefa: payload.diasMinNaTarefa,
+            maxProcessosTotal: payload.maxProcessosTotal
+          }
+        });
+        sendResponse(info);
+      } catch {
+        sendResponse({ hasState: false });
+      }
+    })();
+    return true;
   }
 
   // Prazos na fita (Fase A2): background abriu esta aba apenas para

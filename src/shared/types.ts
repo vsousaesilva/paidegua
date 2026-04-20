@@ -770,6 +770,62 @@ export interface SugerirEtiquetasResponse {
 }
 
 /**
+ * Checkpoint de uma varredura "Prazos na Fita" em andamento. Persistido
+ * em `chrome.storage.local` para permitir retomada apos fechamento do
+ * Chrome, 403 por token expirado nao renovado em 60s, ou cancelamento
+ * manual. Identificado por `scanId` — derivado deterministicamente da
+ * assinatura `(nomes ordenados + filtros)`, de forma que relancar a
+ * mesma selecao reaproveita o checkpoint.
+ *
+ * `unicos` e a lista PROCESSADA (ja deduplicada, filtrada e cortada ao
+ * teto) — varrer o mesmo conjunto evita que o resume inclua/exclua
+ * processos se `dataChegadaTarefa` mudar entre execucoes.
+ *
+ * `consolidados` e alinhado por indice com `unicos`: entradas `null`
+ * indicam "ainda nao processado"; entradas preenchidas podem ter
+ * `coleta` ou `error` e sao preservadas ao retomar.
+ */
+export interface PrazosFitaScanState {
+  scanId: string;
+  nomes: string[];
+  filtros: {
+    diasMinNaTarefa: number | null;
+    maxProcessosTotal: number | null;
+  };
+  unicos: Array<{ tarefaNome: string; processoApi: PJeApiProcesso }>;
+  consolidados: Array<{
+    tarefaNome: string;
+    processoApi: PJeApiProcesso;
+    url: string | null;
+    coleta: PrazosProcessoColeta | null;
+    error?: string;
+  } | null>;
+  /** Total antes de dedup (referencia, nao afeta resume). */
+  totalDescobertos: number;
+  /** Hostname do PJe onde a varredura foi iniciada. */
+  hostnamePJe: string;
+  /** ms epoch da criacao. */
+  startedAt: number;
+  /** ms epoch do ultimo checkpoint. Usado para expiracao (24h). */
+  updatedAt: number;
+}
+
+/**
+ * Resposta de consulta a painel: `hasState` true quando existe um
+ * checkpoint valido para a assinatura consultada. O painel usa
+ * `concluidos`/`total`/`updatedAt` para montar a pergunta ao usuario
+ * ("Continuar X/Y ou comecar do zero?").
+ */
+export interface PrazosFitaScanStateInfo {
+  hasState: boolean;
+  scanId?: string;
+  concluidos?: number;
+  total?: number;
+  startedAt?: number;
+  updatedAt?: number;
+}
+
+/**
  * Payload do dashboard "Prazos na Fita" — gravado em `storage.session`
  * pelo background e lido pela aba dedicada. Sem LGPD no servidor:
  * nomes de partes e numeros CNJ ficam apenas localmente.

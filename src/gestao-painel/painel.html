@@ -48,6 +48,32 @@
 
       <ul id="lista-tarefas" class="lista"></ul>
 
+      <div id="filtros-prazos" class="filtros" data-modo-only="prazos" hidden>
+        <h3 class="filtros__title">Filtros para reduzir o tamanho da varredura</h3>
+        <p class="filtros__hint">
+          Em unidades grandes, filtre antes de iniciar — a varredura scaneia
+          cada processo individualmente no PJe. Tempo médio ~400ms por processo.
+        </p>
+        <div class="filtros__grid">
+          <label class="filtros__campo">
+            <span class="filtros__label">Incluir apenas processos com X dias ou mais na tarefa</span>
+            <input id="filtro-dias-min" type="number" min="0" step="1" value="0" />
+            <span class="filtros__ajuda">0 = sem filtro. Ex.: em tarefa "Controle de prazo" (15 dias típicos), use 10 para pegar só os críticos.</span>
+          </label>
+          <label class="filtros__campo">
+            <span class="filtros__label">Máximo total de processos</span>
+            <select id="filtro-max-total">
+              <option value="500">500 (~1-2 min)</option>
+              <option value="1000">1.000 (~2-4 min)</option>
+              <option value="2000" selected>2.000 (~4-8 min)</option>
+              <option value="5000">5.000 (~10-15 min)</option>
+              <option value="">Sem limite (pode falhar em 10k+)</option>
+            </select>
+            <span class="filtros__ajuda">Cortado pelos mais antigos na tarefa (mais críticos primeiro).</span>
+          </label>
+        </div>
+      </div>
+
       <div class="toolbar toolbar--end">
         <button id="btn-cancelar" class="btn">Cancelar</button>
         <button id="btn-confirmar" class="btn primary" disabled>

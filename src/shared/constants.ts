@@ -223,6 +223,13 @@ export const MESSAGE_CHANNELS = {
    */
   GESTAO_COLETA_FAIL: 'paidegua/gestao/coleta-fail',
   /**
+   * Dashboard gerencial → background: aba do dashboard foi fechada
+   * (evento `pagehide`), apague os payloads do IndexedDB para não
+   * deixar resíduo em disco. Postura LGPD equivalente à antiga com
+   * `storage.session`.
+   */
+  GESTAO_CLEAR_PAYLOADS: 'paidegua/gestao/clear-payloads',
+  /**
    * Caller (qualquer content/painel) → background: pede para coletar os
    * expedientes abertos de UM processo a partir da URL dos autos. O
    * background abre uma aba inativa com a URL, aguarda o content script
@@ -259,6 +266,14 @@ export const MESSAGE_CHANNELS = {
   PRAZOS_FITA_COLETA_DONE: 'paidegua/prazos-fita/coleta-done',
   PRAZOS_FITA_COLETA_READY: 'paidegua/prazos-fita/coleta-ready',
   PRAZOS_FITA_COLETA_FAIL: 'paidegua/prazos-fita/coleta-fail',
+  /**
+   * Aba-painel -> background -> content (aba PJe): consulta se existe um
+   * checkpoint persistido em `storage.local` compativel com a assinatura
+   * (nomes + filtros) que o usuario acabou de confirmar no seletor.
+   * Devolve `{ hasState, concluidos, total, startedAt, updatedAt }` para
+   * a aba-painel decidir se oferece retomar ou comecar do zero.
+   */
+  PRAZOS_FITA_QUERY_SCAN_STATE: 'paidegua/prazos-fita/query-scan-state',
   /**
    * Dashboard "Prazos na Fita" → background: pede para abrir a aba do PJe em
    * `movimentar.seam` da tarefa alvo e automatizar o encerramento de todos os
@@ -349,6 +364,15 @@ export const STORAGE_KEYS = {
    */
   GESTAO_DASHBOARD_PAYLOAD: 'paidegua.gestao.dashboardPayload',
   /**
+   * Chave em `chrome.storage.session` (volátil) com o payload JÁ ANONIMIZADO
+   * do Painel Gerencial, pronto para enviar à LLM. Separado do
+   * `GESTAO_DASHBOARD_PAYLOAD` (leve, usado para renderizar o dashboard)
+   * para evitar estourar a quota de 10 MB do `storage.session` em unidades
+   * com muitos processos — os campos pesados (última movimentação, polo
+   * ativo etc.) só ficam aqui, na forma já sanitizada.
+   */
+  GESTAO_DASHBOARD_PAYLOAD_ANON: 'paidegua.gestao.dashboardPayloadAnon',
+  /**
    * Chave em `chrome.storage.local` com a última seleção de tarefas do
    * Painel Gerencial (apenas nomes de tarefa — não é PII). Usada para
    * pré-marcar os checkboxes do seletor múltiplo ao reabrir.
@@ -384,6 +408,27 @@ export const STORAGE_KEYS = {
    * PRAZOS_FITA_COLETA_DONE e lida pela aba do dashboard.
    */
   PRAZOS_FITA_DASHBOARD_PAYLOAD: 'paidegua.prazosFita.dashboardPayload',
+  /**
+   * Cache do token `ca` (chaveAcessoProcesso) em `chrome.storage.session`.
+   * Formato: `{ [idProcesso: number]: string }`. O `ca` e estavel enquanto
+   * o processo existir no servidor — reusar entre varreduras elimina a
+   * chamada `gerarChaveAcessoProcesso` (que usa Bearer e expira em 5-15 min)
+   * e corta ~50% dos round-trips na 2a varredura em diante.
+   *
+   * `session` (volatil) porque o `ca` e "bom pra sessao" — se o usuario
+   * deslogar, tudo precisa ser regerado de qualquer forma.
+   */
+  PRAZOS_FITA_CA_CACHE: 'paidegua.prazosFita.caCache',
+  /**
+   * Prefixo em `chrome.storage.local` dos checkpoints de varredura
+   * "Prazos na Fita" em andamento. Chave final:
+   * `${PREFIX}${scanId}` onde `scanId` = hash SHA-256 de
+   * `${host}|${nomes ordenados}|${filtros}`. Permite retomar uma
+   * varredura interrompida (fechamento do Chrome, 403 persistente,
+   * cancelamento). Entradas sao expiradas se `updatedAt` tiver
+   * mais de 24h. Conteudo nao vai para nuvem nem LLM.
+   */
+  PRAZOS_FITA_SCAN_STATE_PREFIX: 'paidegua.prazosFita.scanState.',
   /**
    * Mapa em `chrome.storage.local` com o estado por tarefa do encerramento
    * automatico acionado pelo painel "Prazos na Fita". Chave do mapa:

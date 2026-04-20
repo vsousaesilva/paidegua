@@ -44,24 +44,104 @@ async function obterSnapshot(): Promise<PJeAuthSnapshot | null> {
 }
 
 /**
- * `fetch` com timeout duro via AbortController. Sem isso, o navegador
- * mantem uma chamada suspensa indefinidamente quando a conexao e aceita
- * pelo servidor mas a resposta nunca chega (ex.: PJe sob estresse em
- * varreduras de 300+ processos). Um worker pendurado bloqueia sua slot
- * do pool de concorrencia e o pipeline parece "travar".
+ * Le o `capturedAt` (epoch ms) do snapshot de auth corrente. Usado pelo
+ * coordinator de Prazos na Fita para detectar quando o Angular renovou o
+ * token Keycloak em background e um retry vale a pena.
  */
-async function fetchComTimeout(
+export async function lerCapturadoEmSnapshot(): Promise<number | null> {
+  const s = await obterSnapshot();
+  return s ? s.capturedAt : null;
+}
+
+/**
+ * Aguarda o snapshot de auth ser atualizado para um `capturedAt` maior
+ * que `desdeMs`. Retorna true quando detecta; false em timeout.
+ *
+ * Usa `chrome.storage.onChanged` (reativo, sem polling) — quando o Angular
+ * faz a proxima chamada REST apos o Keycloak renovar o token, o
+ * interceptor grava o novo snapshot e todos os workers esperando sao
+ * acordados de uma vez.
+ *
+ * Checa o estado atual no inicio para cobrir a janela entre o timestamp
+ * anterior ter sido lido e o listener ter sido registrado.
+ */
+export function aguardarNovoSnapshot(
+  desdeMs: number,
+  timeoutMs: number
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    const listener = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: chrome.storage.AreaName
+    ): void => {
+      if (done || area !== 'session') return;
+      const ch = changes[STORAGE_KEYS.PJE_AUTH_SNAPSHOT];
+      if (!ch) return;
+      const nv = ch.newValue as PJeAuthSnapshot | undefined;
+      if (nv && typeof nv.capturedAt === 'number' && nv.capturedAt > desdeMs) {
+        done = true;
+        clearTimeout(timer);
+        chrome.storage.onChanged.removeListener(listener);
+        resolve(true);
+      }
+    };
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      chrome.storage.onChanged.removeListener(listener);
+      resolve(false);
+    }, timeoutMs);
+    chrome.storage.onChanged.addListener(listener);
+    // Pode ter sido atualizado entre a leitura do `desdeMs` e este ponto.
+    void obterSnapshot().then((s) => {
+      if (done) return;
+      if (s && s.capturedAt > desdeMs) {
+        done = true;
+        clearTimeout(timer);
+        chrome.storage.onChanged.removeListener(listener);
+        resolve(true);
+      }
+    });
+  });
+}
+
+/**
+ * `fetch` com timeout duro que cobre TODO o ciclo — handshake, headers
+ * E leitura do body. O padrao "cobrir so o fetch e ler o texto depois"
+ * (que usavamos antes) deixa buraco: com servidor PJe saturado em
+ * varreduras grandes, a resposta chega com headers mas o stream do body
+ * fica pendurado, e `resp.text()` espera indefinidamente porque o
+ * AbortController ja foi limpo. Workers pendurados nesse ponto congelam
+ * todos os slots do pool e a varredura parece "parar".
+ *
+ * Devolve direto `{ ok, status, text, contentType }` para forcar que o
+ * consumidor leia o corpo dentro da janela protegida.
+ */
+async function fetchTextoComTimeout(
   url: string,
   init: RequestInit,
   timeoutMs: number
-): Promise<Response> {
+): Promise<{
+  ok: boolean;
+  status: number;
+  text: string;
+  contentType: string | null;
+}> {
   const ctrl = new AbortController();
   const timer = setTimeout(
     () => ctrl.abort(new DOMException('Timeout', 'TimeoutError')),
     timeoutMs
   );
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
+    const resp = await fetch(url, { ...init, signal: ctrl.signal });
+    const text = await resp.text();
+    return {
+      ok: resp.ok,
+      status: resp.status,
+      text,
+      contentType: resp.headers.get('content-type')
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -361,7 +441,7 @@ export async function listarProcessosDaTarefa(
         tipoProcessoDocumento: null,
         somenteComTodasTags: null
       };
-      const resp = await fetchComTimeout(
+      const resp = await fetchTextoComTimeout(
         url,
         {
           method: 'POST',
@@ -379,7 +459,7 @@ export async function listarProcessosDaTarefa(
           error: `HTTP ${resp.status} listando processos da tarefa "${req.nomeTarefa}"`
         };
       }
-      const raw = await resp.text();
+      const raw = resp.text;
       if (!raw) {
         // PJe as vezes devolve 200 com corpo vazio quando um header
         // esperado esta faltando (ex.: X-no-sso quando o fallback Basic
@@ -510,7 +590,7 @@ export async function gerarChaveAcesso(
   const headers = montarHeaders(snap);
   try {
     return await comRetryTransiente(async () => {
-      const resp = await fetchComTimeout(
+      const resp = await fetchTextoComTimeout(
         url,
         { method: 'GET', headers, credentials: 'include' },
         20_000
@@ -526,7 +606,7 @@ export async function gerarChaveAcesso(
           transiente: eErroTransiente(null, resp.status)
         };
       }
-      const text = (await resp.text()).trim();
+      const text = resp.text.trim();
       let ca: string;
       try {
         const parsed: unknown = JSON.parse(text);
@@ -540,13 +620,18 @@ export async function gerarChaveAcesso(
             ok: false,
             ca: null,
             error: `Resposta vazia ou inesperada (Content-Type: ${
-              resp.headers.get('content-type') ?? '?'
+              resp.contentType ?? '?'
             }, len ${text.length}).`
           } as PJeApiResolveCaResponse
         };
       }
       return { resultado: { ok: true, ca } as PJeApiResolveCaResponse };
-    });
+    }, { tentativas: 2 });
+    // Retry agressivo (4 tentativas com backoff exponencial) foi reduzido
+    // para 2 porque em varreduras grandes o servidor PJe pode retornar
+    // transiente em ondas — cada worker travado 90s impedia o pool de
+    // avancar. 2 tentativas (1+20s base) cobrem falha pontual sem
+    // penalizar o throughput.
   } catch (err) {
     return {
       ok: false,
@@ -662,7 +747,7 @@ export async function listarEtiquetas(opts?: {
         tagsString: null,
         somenteFavoritas: null
       };
-      const resp = await fetchComTimeout(
+      const resp = await fetchTextoComTimeout(
         url,
         {
           method: 'POST',
@@ -680,7 +765,7 @@ export async function listarEtiquetas(opts?: {
           error: `HTTP ${resp.status} listando etiquetas`
         };
       }
-      const raw = await resp.text();
+      const raw = resp.text;
       if (!raw) {
         return {
           ok: false,

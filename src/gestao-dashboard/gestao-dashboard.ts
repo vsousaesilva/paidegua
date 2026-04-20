@@ -1,44 +1,46 @@
 /**
  * Painel Gerencial — página estática da extensão (perfil Gestão).
  *
- * Recebe o payload via `chrome.storage.session` na chave
- * `STORAGE_KEYS.GESTAO_DASHBOARD_PAYLOAD`, renderiza indicadores
- * determinísticos calculados no content script + listas por tarefa, e
- * oferece um botão para gerar insights via LLM. A chamada à LLM passa
- * pela mesma sanitização do dashboard de triagem
- * (`sanitizePayloadForLLM`) antes de cruzar o limite do navegador.
+ * Lê o payload leve via IndexedDB (ver `gestao-indexed-storage.ts`),
+ * renderiza indicadores determinísticos calculados no content script
+ * + listas por tarefa, e oferece um botão para gerar insights via LLM.
+ * A sanitização para a LLM já aconteceu no momento da coleta — aqui
+ * apenas carregamos o payload anonimizado pronto.
  *
  * Layout espelha o de "Analisar tarefas" (dashboard.ts) — mesmas
  * convenções de seção/cópia/scroll sticky — com um card extra "10
  * mais antigos por tarefa" destacado visualmente.
  */
 
-import { MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
+import { MESSAGE_CHANNELS } from '../shared/constants';
+import {
+  loadGestaoAnonPayload,
+  loadGestaoDashboardPayload
+} from '../shared/gestao-indexed-storage';
 import {
   abrirTarefaPopup,
   OPEN_TASK_ICON_SVG,
   podeAbrirTarefa
 } from '../shared/pje-task-popup';
 import { makeTableSortable, type TableSortColumn } from '../shared/table-sort';
-import { sanitizePayloadForLLM } from '../shared/triagem-anonymize';
 import type {
   GestaoAlerta,
   GestaoDashboardPayload,
   GestaoIndicadores,
   GestaoInsightsLLM,
   GestaoSugestao,
-  TriagemDashboardPayload,
   TriagemProcesso,
   TriagemTarefaSnapshot
 } from '../shared/types';
 
 void main();
+instalarCleanupNoFechamento();
 
 async function main(): Promise<void> {
   const root = document.getElementById('main') as HTMLElement;
   const meta = document.getElementById('meta') as HTMLElement;
   try {
-    const payload = await loadPayload();
+    const payload = await loadGestaoDashboardPayload();
     if (!payload) {
       root.innerHTML =
         '<p class="loading">Nenhum dado encontrado. Volte ao Painel do Usuário do PJe e clique em "Painel Gerencial pAIdegua".</p>';
@@ -55,11 +57,26 @@ async function main(): Promise<void> {
   }
 }
 
-async function loadPayload(): Promise<GestaoDashboardPayload | null> {
-  const out = await chrome.storage.session.get(STORAGE_KEYS.GESTAO_DASHBOARD_PAYLOAD);
-  const raw = out[STORAGE_KEYS.GESTAO_DASHBOARD_PAYLOAD];
-  if (!raw) return null;
-  return raw as GestaoDashboardPayload;
+/**
+ * Ao fechar a aba do dashboard, avisa o background para apagar os
+ * payloads do IndexedDB. Mantém a postura LGPD de que agregados do
+ * Painel Gerencial não permanecem em disco depois do uso — equivalente
+ * ao comportamento do antigo `storage.session` (volátil). O `pagehide`
+ * é mais confiável que `beforeunload` para este fim.
+ */
+function instalarCleanupNoFechamento(): void {
+  window.addEventListener('pagehide', () => {
+    try {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.GESTAO_CLEAR_PAYLOADS,
+          payload: {}
+        })
+        .catch(() => { /* SW pode ter hibernado — não é erro */ });
+    } catch {
+      /* chrome.runtime indisponível em contextos de unload */
+    }
+  });
 }
 
 function renderMeta(meta: HTMLElement, payload: GestaoDashboardPayload): void {
@@ -499,14 +516,13 @@ function buildInsightsArea(payload: GestaoDashboardPayload): HTMLElement {
     btn.textContent = 'Gerando insights...';
     body.innerHTML = '<p class="loading" style="padding:16px 0">Aguardando resposta do modelo...</p>';
     try {
-      const triagemLike: TriagemDashboardPayload = {
-        geradoEm: payload.geradoEm,
-        hostnamePJe: payload.hostnamePJe,
-        tarefas: payload.tarefas,
-        totalProcessos: payload.totalProcessos,
-        insightsLLM: null
-      };
-      const anon = sanitizePayloadForLLM(triagemLike);
+      const anon = await loadGestaoAnonPayload();
+      if (!anon) {
+        throw new Error(
+          'Dados anonimizados não encontrados. Volte ao painel e rode a ' +
+            'varredura novamente.'
+        );
+      }
       const resp = await chrome.runtime.sendMessage({
         channel: MESSAGE_CHANNELS.GESTAO_INSIGHTS,
         payload: { indicadores: payload.indicadores, anon }

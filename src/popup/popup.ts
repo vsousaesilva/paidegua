@@ -1031,6 +1031,14 @@ function hydrateEtiqPromptCriterios(): void {
     ta.value = currentSettings.etiquetasPromptCriterios ?? '';
     ta.dataset.hydrated = '1';
   }
+  const enable = document.getElementById('etiq-prompt-enable') as HTMLInputElement | null;
+  const body = document.getElementById('etiq-prompt-body') as HTMLElement | null;
+  const hasText = ta.value.trim().length > 0;
+  if (enable) enable.checked = hasText;
+  if (body) {
+    if (hasText) body.removeAttribute('hidden');
+    else body.setAttribute('hidden', '');
+  }
   atualizarContadorEtiqPrompt();
 }
 
@@ -1088,6 +1096,26 @@ function bindEtiquetasEvents(): void {
   document.getElementById('etiq-prompt-criterios')?.addEventListener('input', () => {
     atualizarContadorEtiqPrompt();
     scheduleSaveEtiqPromptCriterios();
+  });
+  document.getElementById('etiq-prompt-enable')?.addEventListener('change', () => {
+    const enable = document.getElementById('etiq-prompt-enable') as HTMLInputElement | null;
+    const body = document.getElementById('etiq-prompt-body') as HTMLElement | null;
+    const ta = document.getElementById('etiq-prompt-criterios') as HTMLTextAreaElement | null;
+    if (!enable || !body || !ta) return;
+    if (enable.checked) {
+      body.removeAttribute('hidden');
+      window.setTimeout(() => ta.focus(), 0);
+    } else {
+      const hasContent = ta.value.trim().length > 0;
+      if (hasContent && !confirm('Remover orientações customizadas?')) {
+        enable.checked = true;
+        return;
+      }
+      ta.value = '';
+      atualizarContadorEtiqPrompt();
+      body.setAttribute('hidden', '');
+      void saveEtiqPromptCriterios();
+    }
   });
   document.getElementById('btn-etiq-fetch')?.addEventListener('click', () => {
     void fetchCatalogoEtiquetas();

@@ -23,7 +23,9 @@ import {
 } from '../shared/constants';
 import {
   TRIAGEM_LLM_ANON_NOTICE,
-  type TriagemPayloadAnon
+  type TriagemPayloadAnon,
+  type TriagemProcessoAnon,
+  type TriagemTarefaAnon
 } from '../shared/triagem-anonymize';
 import {
   SYSTEM_PROMPT,
@@ -81,6 +83,10 @@ import type {
   TriagemInsightsLLM,
   TriagemSugestao
 } from '../shared/types';
+import {
+  clearGestaoPayloads,
+  saveGestaoPayloads
+} from '../shared/gestao-indexed-storage';
 import { gravarAuthSnapshot } from './pje-api-client';
 import { getProvider } from './providers';
 import {
@@ -124,6 +130,13 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onStartup.addListener(() => {
   console.log(`${LOG_PREFIX} service worker iniciado`);
   abrirStorageSessionParaContentScripts();
+  // LGPD: ao abrir o Chrome, qualquer payload do Painel Gerencial
+  // residual no IndexedDB (de sessões anteriores) é apagado. Assim o
+  // comportamento equivale ao do antigo `storage.session`: os dados não
+  // sobrevivem ao encerramento do navegador.
+  void clearGestaoPayloads().catch((err) =>
+    console.warn(`${LOG_PREFIX} limpeza inicial do IDB gestão falhou:`, err)
+  );
 });
 
 // Se este modulo for reexecutado em uma reinicializacao do service worker
@@ -293,6 +306,7 @@ chrome.runtime.onMessage.addListener(
           message.payload as {
             requestId: string;
             dashboardPayload: GestaoDashboardPayload;
+            anonPayload: TriagemPayloadAnon;
           },
           sendResponse
         );
@@ -303,6 +317,18 @@ chrome.runtime.onMessage.addListener(
           message.payload as { requestId: string; error: string },
           sendResponse
         );
+        return true;
+
+      case MESSAGE_CHANNELS.GESTAO_CLEAR_PAYLOADS:
+        void (async () => {
+          try {
+            await clearGestaoPayloads();
+            sendResponse({ ok: true });
+          } catch (err) {
+            console.warn(`${LOG_PREFIX} clearGestaoPayloads falhou:`, err);
+            sendResponse({ ok: false, error: errorMessage(err) });
+          }
+        })();
         return true;
 
       case MESSAGE_CHANNELS.PRAZOS_FITA_OPEN_PAINEL:
@@ -319,7 +345,25 @@ chrome.runtime.onMessage.addListener(
 
       case MESSAGE_CHANNELS.PRAZOS_FITA_START_COLETA:
         void handlePrazosFitaStartColeta(
-          message.payload as { requestId: string; nomes: string[] },
+          message.payload as {
+            requestId: string;
+            nomes: string[];
+            diasMinNaTarefa?: number | null;
+            maxProcessosTotal?: number | null;
+            retomar?: boolean;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_QUERY_SCAN_STATE:
+        void handlePrazosFitaQueryScanState(
+          message.payload as {
+            requestId: string;
+            nomes: string[];
+            diasMinNaTarefa: number | null;
+            maxProcessosTotal: number | null;
+          },
           sendResponse
         );
         return true;
@@ -2444,7 +2488,11 @@ async function handleGestaoColetaProg(
 }
 
 async function handleGestaoColetaDone(
-  payload: { requestId: string; dashboardPayload: GestaoDashboardPayload },
+  payload: {
+    requestId: string;
+    dashboardPayload: GestaoDashboardPayload;
+    anonPayload: TriagemPayloadAnon;
+  },
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
@@ -2456,15 +2504,30 @@ async function handleGestaoColetaDone(
     if (
       !payload.dashboardPayload ||
       !Array.isArray(payload.dashboardPayload.tarefas) ||
-      !payload.dashboardPayload.indicadores
+      !payload.dashboardPayload.indicadores ||
+      !payload.anonPayload ||
+      !Array.isArray(payload.anonPayload.tarefas)
     ) {
       sendResponse({ ok: false, error: 'Payload do dashboard inválido.' });
       return;
     }
 
-    await chrome.storage.session.set({
-      [STORAGE_KEYS.GESTAO_DASHBOARD_PAYLOAD]: payload.dashboardPayload
-    });
+    // Persistimos em IndexedDB (sem quota prática) em vez de
+    // `storage.session` (10 MB) porque em unidades com milhares de
+    // processos o payload estoura a quota e o dashboard fica travado.
+    // A limpeza acontece em três gatilhos (ver `gestao-indexed-storage.ts`):
+    // onStartup, pagehide da aba do dashboard e sobrescrita na próxima
+    // varredura.
+    try {
+      await saveGestaoPayloads(payload.dashboardPayload, payload.anonPayload);
+    } catch (setErr: unknown) {
+      const raw = errorMessage(setErr);
+      sendResponse({
+        ok: false,
+        error: 'Falha ao gravar o dashboard no IndexedDB: ' + raw
+      });
+      return;
+    }
     await chrome.storage.session.remove(
       `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload.requestId}`
     );
@@ -2579,7 +2642,13 @@ async function handleOpenPrazosFitaPainel(
 }
 
 async function handlePrazosFitaStartColeta(
-  payload: { requestId: string; nomes: string[] },
+  payload: {
+    requestId: string;
+    nomes: string[];
+    diasMinNaTarefa?: number | null;
+    maxProcessosTotal?: number | null;
+    retomar?: boolean;
+  },
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
@@ -2598,7 +2667,13 @@ async function handlePrazosFitaStartColeta(
     }
     const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
       channel: MESSAGE_CHANNELS.PRAZOS_FITA_RUN_COLETA,
-      payload: { requestId: payload.requestId, nomes: payload.nomes }
+      payload: {
+        requestId: payload.requestId,
+        nomes: payload.nomes,
+        diasMinNaTarefa: payload.diasMinNaTarefa ?? null,
+        maxProcessosTotal: payload.maxProcessosTotal ?? null,
+        retomar: payload.retomar === true
+      }
     });
     if (!ack?.ok) {
       sendResponse({
@@ -2619,6 +2694,39 @@ async function handlePrazosFitaStartColeta(
         errorMessage(error) +
         '. Verifique se a aba original ainda está aberta.'
     });
+  }
+}
+
+async function handlePrazosFitaQueryScanState(
+  payload: {
+    requestId: string;
+    nomes: string[];
+    diasMinNaTarefa: number | null;
+    maxProcessosTotal: number | null;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ hasState: false });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.PRAZOS_FITA_QUERY_SCAN_STATE,
+      payload: {
+        nomes: payload.nomes,
+        diasMinNaTarefa: payload.diasMinNaTarefa,
+        maxProcessosTotal: payload.maxProcessosTotal
+      }
+    });
+    sendResponse(resp ?? { hasState: false });
+  } catch (error: unknown) {
+    console.warn(
+      `${LOG_PREFIX} handlePrazosFitaQueryScanState falhou:`,
+      error
+    );
+    sendResponse({ hasState: false });
   }
 }
 
@@ -2780,7 +2888,14 @@ async function handleGestaoInsights(
     }
 
     const provider = getProvider(providerId);
-    const prompt = buildGestaoInsightsPrompt(payload.indicadores, payload.anon);
+    const { reduced: anonReduzido, amostra } = reduzirAnonParaOrcamento(payload.anon);
+    if (amostra.amostrado) {
+      console.info(
+        `${LOG_PREFIX} Gestão insights: amostra de ${amostra.totalProcessosEnviados}` +
+          `/${amostra.totalProcessosOriginal} processos (orçamento de tokens).`
+      );
+    }
+    const prompt = buildGestaoInsightsPrompt(payload.indicadores, anonReduzido, amostra);
 
     const controller = new AbortController();
     const generator = provider.sendMessage({
@@ -2818,16 +2933,191 @@ async function handleGestaoInsights(
   }
 }
 
+/**
+ * Orçamento de caracteres para o bloco JSON de processos enviado à LLM.
+ * Gemini 2.x aceita ~1.048.576 tokens de entrada; em JSON identado (com
+ * campos repetidos e muitos dígitos), 1 token costuma valer 2–3 caracteres.
+ * Fixamos o teto em ~600 mil caracteres para a amostra de processos,
+ * deixando folga para system prompt, indicadores agregados, instruções do
+ * usuário e o buffer de saída do modelo.
+ */
+const GESTAO_INSIGHTS_MAX_CHARS = 600_000;
+/** Teto adicional de quantidade, mesmo se houver folga de caracteres. */
+const GESTAO_INSIGHTS_MAX_PROCESSOS = 1500;
+/** Truncamento do texto da última movimentação (economia de tokens). */
+const GESTAO_INSIGHTS_MAX_MOV_CHARS = 280;
+
+interface GestaoAmostraInfo {
+  amostrado: boolean;
+  totalProcessosOriginal: number;
+  totalProcessosEnviados: number;
+  criterio: string;
+}
+
+/**
+ * Pontua a criticidade de um processo anonimizado para priorizá-lo quando
+ * a lista não couber inteira no input da LLM. A prioridade processual e o
+ * sigilo pesam mais, seguidos pelos dias parados na tarefa e pelos dias
+ * desde a última movimentação. A presença de etiquetas também conta.
+ */
+function scoreProcessoInsights(p: TriagemProcessoAnon): number {
+  let score = 0;
+  if (p.prioritario) score += 1000;
+  if (p.sigiloso) score += 200;
+  if (typeof p.diasNaTarefa === 'number' && p.diasNaTarefa > 0) {
+    score += Math.min(p.diasNaTarefa, 365) * 2;
+  }
+  if (typeof p.diasUltimoMovimento === 'number' && p.diasUltimoMovimento > 0) {
+    score += Math.min(p.diasUltimoMovimento, 365) * 0.5;
+  }
+  if (p.etiquetas && p.etiquetas.length > 0) score += 50;
+  return score;
+}
+
+function truncarMovimentacao(p: TriagemProcessoAnon): TriagemProcessoAnon {
+  const texto = p.ultimaMovimentacaoTexto;
+  if (!texto || texto.length <= GESTAO_INSIGHTS_MAX_MOV_CHARS) return p;
+  return {
+    ...p,
+    ultimaMovimentacaoTexto:
+      texto.slice(0, GESTAO_INSIGHTS_MAX_MOV_CHARS).trimEnd() + '…'
+  };
+}
+
+/**
+ * Se o payload anonimizado couber no orçamento, apenas trunca textos
+ * longos de movimentação e devolve. Caso contrário, seleciona os processos
+ * mais críticos (`scoreProcessoInsights`) até exaurir o orçamento e
+ * remonta a estrutura por tarefa — tarefas que perderam todos os seus
+ * processos ainda são enviadas com `processos: []` e `totalLido` original,
+ * para que a LLM saiba que aquela fila existe no acervo.
+ */
+function reduzirAnonParaOrcamento(
+  anon: TriagemPayloadAnon
+): { reduced: TriagemPayloadAnon; amostra: GestaoAmostraInfo } {
+  const totalOriginal = anon.tarefas.reduce(
+    (acc, t) => acc + t.processos.length,
+    0
+  );
+
+  const truncado: TriagemPayloadAnon = {
+    ...anon,
+    tarefas: anon.tarefas.map((t) => ({
+      tarefaNome: t.tarefaNome,
+      totalLido: t.totalLido,
+      truncado: t.truncado,
+      processos: t.processos.map(truncarMovimentacao)
+    }))
+  };
+
+  const tamanhoAtual = JSON.stringify(truncado, null, 2).length;
+  if (
+    tamanhoAtual <= GESTAO_INSIGHTS_MAX_CHARS &&
+    totalOriginal <= GESTAO_INSIGHTS_MAX_PROCESSOS
+  ) {
+    return {
+      reduced: truncado,
+      amostra: {
+        amostrado: false,
+        totalProcessosOriginal: totalOriginal,
+        totalProcessosEnviados: totalOriginal,
+        criterio: ''
+      }
+    };
+  }
+
+  interface Candidato {
+    tarefaIdx: number;
+    score: number;
+    proc: TriagemProcessoAnon;
+  }
+  const candidatos: Candidato[] = [];
+  truncado.tarefas.forEach((t, tarefaIdx) => {
+    for (const p of t.processos) {
+      candidatos.push({ tarefaIdx, score: scoreProcessoInsights(p), proc: p });
+    }
+  });
+  candidatos.sort((a, b) => b.score - a.score);
+
+  const overheadBase = JSON.stringify(
+    {
+      hostnamePJe: truncado.hostnamePJe,
+      totalProcessos: truncado.totalProcessos,
+      tarefas: truncado.tarefas.map((t) => ({
+        tarefaNome: t.tarefaNome,
+        totalLido: t.totalLido,
+        truncado: t.truncado,
+        processos: []
+      }))
+    },
+    null,
+    2
+  ).length;
+
+  let charsAcumulados = overheadBase;
+  const aceitosPorTarefa: TriagemProcessoAnon[][] = truncado.tarefas.map(
+    () => []
+  );
+  let totalAceitos = 0;
+  for (const c of candidatos) {
+    if (totalAceitos >= GESTAO_INSIGHTS_MAX_PROCESSOS) break;
+    const procChars = JSON.stringify(c.proc, null, 2).length + 4;
+    if (charsAcumulados + procChars > GESTAO_INSIGHTS_MAX_CHARS) continue;
+    aceitosPorTarefa[c.tarefaIdx].push(c.proc);
+    charsAcumulados += procChars;
+    totalAceitos += 1;
+  }
+
+  const tarefasReduzidas: TriagemTarefaAnon[] = truncado.tarefas.map(
+    (t, idx) => ({
+      tarefaNome: t.tarefaNome,
+      totalLido: t.totalLido,
+      truncado: t.truncado,
+      processos: aceitosPorTarefa[idx]
+    })
+  );
+
+  return {
+    reduced: {
+      hostnamePJe: truncado.hostnamePJe,
+      totalProcessos: truncado.totalProcessos,
+      tarefas: tarefasReduzidas
+    },
+    amostra: {
+      amostrado: true,
+      totalProcessosOriginal: totalOriginal,
+      totalProcessosEnviados: totalAceitos,
+      criterio:
+        'Seleção por criticidade: prioridade processual, sigilo, dias na ' +
+        'tarefa, dias sem movimentação e presença de etiquetas (top-N até ' +
+        'o limite de tokens do modelo).'
+    }
+  };
+}
+
 function buildGestaoInsightsPrompt(
   indicadores: GestaoIndicadores,
-  anon: TriagemPayloadAnon
+  anon: TriagemPayloadAnon,
+  amostra: GestaoAmostraInfo
 ): string {
+  const blocoAmostra = amostra.amostrado
+    ? `IMPORTANTE: por restrição do limite de tokens do modelo, apenas ` +
+      `${amostra.totalProcessosEnviados} de ${amostra.totalProcessosOriginal} ` +
+      `processos foram incluídos na lista abaixo. ${amostra.criterio} ` +
+      `Os INDICADORES AGREGADOS acima continuam refletindo o acervo ` +
+      `COMPLETO — use-os como base da leitura quantitativa. A amostra ` +
+      `abaixo serve apenas para ilustrar os casos mais críticos; ela NÃO ` +
+      `é uma média do acervo e o panorama/alertas devem deixar claro ` +
+      `quando a observação vem da amostra vs. dos agregados.\n\n`
+    : '';
   return (
     `Você está analisando o Painel Gerencial de uma unidade judiciária no PJe.\n\n` +
-    `INDICADORES AGREGADOS (calculados localmente, sem IA):\n` +
+    `INDICADORES AGREGADOS (calculados localmente, sem IA — refletem TODOS ` +
+    `os processos da varredura):\n` +
     '```json\n' +
     JSON.stringify(indicadores, null, 2) +
     '\n```\n\n' +
+    blocoAmostra +
     `PROCESSOS POR TAREFA (anonimizados — nomes de partes removidos):\n` +
     '```json\n' +
     JSON.stringify(anon, null, 2) +
