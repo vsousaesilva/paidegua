@@ -48,6 +48,10 @@ RECOMENDACAO: para a elaboracao de minutas no dia a dia, utilize a versao para G
 
 Clique no icone do pAIdegua na barra de ferramentas. O popup de configuracoes sera aberto.
 
+No topo do popup fica o cartao "Extensao Ativada" com um interruptor. Ele serve para ligar e desligar o pAIdegua de uma vez:
+   - Ligado (padrao): o pAIdegua funciona normalmente e aparece dentro do PJe.
+   - Desligado: o pAIdegua deixa de aparecer na tela do PJe — nenhum botao, painel ou analise e injetado. Util quando voce quer usar o PJe sem qualquer interferencia da extensao, sem precisar desinstalar. Basta voltar ao popup e ligar o interruptor de novo para retomar. Apos trocar o estado, recarregue a aba do PJe que ja estava aberta para que a mudanca tenha efeito.
+
 1. LGPD: Leia o aviso de privacidade e marque a caixa de ciencia. A extensao envia o conteudo dos documentos para a API do provedor de IA escolhido. Confirme que esta ciente.
 
 2. Provedor e modelo: Selecione o provedor de IA (Google Gemini, Anthropic ou OpenAI) e o modelo desejado.
@@ -209,7 +213,7 @@ O fluxo de emenda a inicial e integrado com o PJe: a bolha da minuta gerada traz
 Disponivel no perfil Gestao quando o usuario esta no "Painel do usuario" do PJe (qualquer grau). Ao clicar em "Painel Gerencial pAIdegua", a extensao:
 
 1. Detecta as tarefas visiveis no painel do PJe e pergunta quais delas devem entrar no relatorio.
-2. Busca diretamente no PJe os processos de cada tarefa selecionada, com progresso em tempo real.
+2. Busca diretamente no PJe os processos de cada tarefa selecionada, com progresso em tempo real. O cabecalho do relatorio ja mostra o nome da unidade desde o inicio da varredura, para voce ter certeza de qual vara ou juizado esta sendo analisado.
 3. Abre uma aba propria com o dashboard gerencial, contendo:
    - Indicadores deterministicos da unidade (total de processos, distribuicao por tarefa, "10 mais antigos por tarefa" etc.).
    - Lista por tarefa, com tabelas ordenaveis e os tres icones por processo (autos, copiar CNJ, abrir tarefa).
@@ -224,12 +228,17 @@ Tambem disponivel no perfil Gestao quando o usuario esta no "Painel do usuario" 
 Fluxo ao clicar em "Prazos na Fita pAIdegua":
 
 1. A extensao lista as tarefas "Controle de prazo" visiveis e pergunta quais coletar.
-2. Para cada tarefa, busca diretamente no PJe todos os expedientes abertos de cada processo (ciencia, destinatario, ato, data-limite, natureza, anomalias).
-3. Abre o dashboard "Prazos na Fita" com:
-   - KPIs no topo (total de processos, total de expedientes abertos, prazos correndo, vencimentos nos proximos 7 dias).
+2. O dashboard "Prazos na Fita" ja abre em poucos segundos, mesmo antes da coleta terminar, com os cartoes zerados ("0 de X processos") e indicacao de "coleta em andamento". Enquanto o pAIdegua vai buscando os processos no PJe, o dashboard preenche os dados em tempo real — voce ve a tabela crescer e os numeros dos cartoes subirem conforme a varredura avanca.
+3. Ao final, o dashboard fica completo com:
+   - Cartoes no topo (total de processos, total de expedientes abertos, prazos correndo, vencimentos nos proximos 7 dias).
    - Uma tabela por tarefa, com cabecalhos ordenaveis e coluna "Dias" destacando vencimentos proximos.
    - Blocos colapsaveis para processos sem expedientes abertos e falhas de coleta.
    - Os tres icones usuais por linha (autos, copiar CNJ, abrir tarefa) + a coluna "Encerrar" (ver secao "Encerrar expedientes em lote").
+
+Varredura interrompida e retomada: se a aba do dashboard for fechada, se o navegador cair ou se a sessao do PJe expirar no meio, o dashboard mostra um aviso "Coleta interrompida — retome pelo painel" com o resumo do que ja foi coletado (ex.: "Varredura interrompida em 507 de 2402 processo(s)"). O trabalho feito nao e perdido. Ao voltar ao Painel do usuario do PJe e clicar de novo em "Prazos na Fita pAIdegua" com as mesmas tarefas, o pAIdegua avisa: "Detectei uma varredura anterior interrompida: 507 de 2402 ja coletados; 1895 restam." Voce escolhe:
+   - OK = continuar de onde parou (aproveita os 507 ja feitos e coleta so os restantes).
+   - Cancelar = comecar do zero (perde o trabalho anterior e refaz tudo).
+Se a varredura interrompida tiver mais de 30 minutos, o aviso destaca que os dados dos processos ja coletados podem estar desatualizados — nesse caso, "comecar do zero" e geralmente a escolha certa.
 
 ### Abrir tarefa no PJe
 
@@ -258,6 +267,21 @@ Estados visuais do botao (ficam salvos no navegador e sobrevivem ao recarregar a
 - nada-a-fazer (traco, cinza): todos os expedientes da tarefa ja estavam fechados.
 
 Execucao uma de cada vez: se voce clicar em varias linhas, o pAIdegua enfileira e processa uma por vez, evitando que disputem a mesma aba/sessao. Multiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rotulo completo — as demais ficam em modo compacto (so o icone) para deixar claro qual foi a linha acionada.
+
+### Pagina de Diagnostico
+
+No rodape do popup da extensao ha um link chamado "Diagnostico". Ele abre uma aba com o historico das ultimas 30 varreduras feitas neste navegador — Painel Gerencial, Prazos na Fita e Triagem Inteligente. Para cada varredura, a pagina mostra:
+- Quando foi feita e em qual unidade.
+- Quantos processos foram lidos, quantos deram erro e qual foi o tempo total.
+- Se a sessao do PJe precisou ser renovada durante a coleta e se a varredura foi retomada.
+
+Esses dados ficam apenas no seu navegador e nunca sao enviados para fora. Servem para voce e o Inovajus entenderem por que uma varredura demorou ou falhou, sem precisar refazer o trabalho so para reproduzir o problema.
+
+Ha tambem dois blocos uteis no topo da pagina de Diagnostico:
+- Probe Keycloak: indica se o pAIdegua esta conseguindo ler a sessao autenticada do PJe (serve para diagnosticar problemas de autenticacao).
+- Historico HTTP 403: lista as ultimas requisicoes ao PJe que retornaram "acesso negado" — ajuda a identificar se a sessao expirou no meio da coleta.
+
+O botao "Limpar historico" apaga o registro local a qualquer momento.
 
 ### Copiar numero CNJ
 
@@ -331,7 +355,7 @@ Dicas:
 
 ## PARTE 4 - DICAS E SOLUCAO DE PROBLEMAS
 
-- Extensao nao aparece no PJe: Verifique se a extensao esta ativa em chrome://extensions ou edge://extensions. Recarregue a pagina do PJe.
+- Extensao nao aparece no PJe: Verifique primeiro se o interruptor "Extensao Ativada" no topo do popup do pAIdegua esta ligado — se estiver desligado, o pAIdegua fica invisivel no PJe de proposito. Se estiver ligado, confirme tambem se a extensao esta ativa em chrome://extensions ou edge://extensions. Apos qualquer mudanca, recarregue a pagina do PJe.
 
 - Erro ao extrair documentos: Alguns documentos podem retornar vazio na primeira tentativa. A extensao faz ate 3 tentativas automaticas com estrategias diferentes. Se persistir, recarregue a pagina do PJe e tente novamente.
 
@@ -345,7 +369,9 @@ Dicas:
 
 - Atualizacao da extensao: Quando receber uma nova versao do "dist.zip", extraia o arquivo sobrescrevendo a pasta "dist" ja existente e depois va em chrome://extensions ou edge://extensions e clique no botao de atualizar (seta circular) no card da extensao.
 
-- Painel Gerencial ou Prazos na Fita abrem vazios ou com erro "Sem credenciais de acesso": abra o Painel do usuario do PJe e clique em qualquer tarefa antes de acionar os botoes do perfil Gestao. Essa primeira interacao captura a chave de sessao que o pAIdegua usa para buscar os dados no PJe. Se a sessao do PJe tiver expirado, refaca o login e tente novamente.
+- Painel Gerencial ou Prazos na Fita abrem vazios ou com erro "Sem credenciais de acesso": abra o Painel do usuario do PJe e clique em qualquer tarefa antes de acionar os botoes do perfil Gestao. Essa primeira interacao captura a chave de sessao que o pAIdegua usa para buscar os dados no PJe. Se a sessao do PJe tiver expirado, refaca o login e tente novamente. Em varreduras longas, o pAIdegua renova a sessao do PJe automaticamente em segundo plano quando percebe que ela esta prestes a expirar — por isso, na maioria dos casos, a coleta segue ate o fim mesmo em unidades grandes. Se ainda assim a varredura parar, abra a pagina de Diagnostico (rodape do popup) para conferir se houve bloqueios (bloco "Historico HTTP 403") ou problema de sessao (bloco "Probe Keycloak").
+
+- Varredura de Prazos na Fita parou no meio: o trabalho ja feito fica salvo. Vá ao Painel do usuario do PJe, clique de novo em "Prazos na Fita pAIdegua", selecione as mesmas tarefas, e quando aparecer o aviso "Detectei uma varredura anterior interrompida" escolha OK para continuar de onde parou. Se a interrupcao for antiga (mais de 30 minutos), o aviso recomenda comecar do zero para capturar movimentacoes novas.
 
 - Icone "Abrir tarefa" nao aparece em alguma linha: a coleta daquela linha nao conseguiu todos os identificadores que o PJe exige para abrir a tarefa correta. Recarregue o painel do PJe, abra uma tarefa para que o pAIdegua capture as credenciais de acesso e rode a coleta de novo.
 
