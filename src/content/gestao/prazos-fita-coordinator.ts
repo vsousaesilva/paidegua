@@ -32,6 +32,7 @@ import {
   lerEstado,
   salvarEstado
 } from './prazos-fita-scan-state';
+import { startScan } from '../../shared/telemetry';
 
 /**
  * Carrega o cache de `ca` persistido em `chrome.storage.local`. Usar
@@ -573,6 +574,17 @@ export async function coletarPrazosPorTarefasViaAPI(
     filtros
   });
 
+  // Telemetria: mede o comportamento das varreduras grandes (tempo por fase,
+  // taxa de 403, cache hits, retomadas). Sem efeito sobre a coleta — todos
+  // os métodos do handle são tolerantes a falha de storage.
+  const scan = startScan('prazos-fita', {
+    tarefas: opts.nomesTarefas.length,
+    retomar: Boolean(opts.retomar),
+    concurrencyPedida: opts.concurrency ?? 25,
+    diasMinNaTarefa: filtros.diasMinNaTarefa,
+    maxProcessosTotal: filtros.maxProcessosTotal
+  });
+
   // -- Tenta retomar checkpoint compativel --
   let unicos: InternalProcessoTask[] = [];
   let consolidados: ConsolidadoViaAPI[] = [];
@@ -600,6 +612,8 @@ export async function coletarPrazosPorTarefasViaAPI(
       totalDescobertos = estado.totalDescobertos;
       startedAt = estado.startedAt;
       retomado = true;
+      scan.counter('retomada');
+      scan.mergeMeta({ retomadoConcluidos: concluidos, totalUnicos: unicos.length });
       onProgress(
         `[retomar] ${concluidos}/${unicos.length} processo(s) ja coletados no checkpoint anterior. Continuando...`
       );
@@ -608,6 +622,7 @@ export async function coletarPrazosPorTarefasViaAPI(
 
   if (!retomado) {
     // -- Fase 1: listagem por API, em sequencia (uma tarefa por vez) --
+    const endListar = scan.phase('listar-tarefas');
     const todos: InternalProcessoTask[] = [];
     const errosPorTarefa: string[] = [];
     for (const nomeTarefa of opts.nomesTarefas) {
@@ -634,6 +649,14 @@ export async function coletarPrazosPorTarefasViaAPI(
     // o painel navega para um dashboard vazio e o usuario nao ve o motivo
     // (classicamente "Sem snapshot de auth").
     if (todos.length === 0 && errosPorTarefa.length > 0) {
+      await endListar({
+        tarefasOk: 0,
+        tarefasErro: errosPorTarefa.length,
+        totalDescobertos: 0
+      });
+      await scan.fail('Nenhuma tarefa pode ser lida via API.', {
+        errosPorTarefa
+      });
       throw new Error(
         `Nenhuma tarefa pode ser lida via API. ${errosPorTarefa.join(' | ')}`
       );
@@ -685,6 +708,15 @@ export async function coletarPrazosPorTarefasViaAPI(
 
     unicos = unicosLocal;
     consolidados = new Array(unicos.length);
+    await endListar({
+      tarefasOk: opts.nomesTarefas.length - errosPorTarefa.length,
+      tarefasErro: errosPorTarefa.length,
+      totalDescobertos,
+      unicosAposFiltros: unicos.length
+    });
+    if (errosPorTarefa.length > 0) {
+      scan.counter('tarefas-listar-erro', errosPorTarefa.length);
+    }
   }
 
   // Mensagem estruturada com o nome da unidade judicial — o painel da aba
@@ -837,17 +869,26 @@ export async function coletarPrazosPorTarefasViaAPI(
     }
   };
 
+  const endFetch = scan.phase('fetch-expedientes');
   const workers = Array.from(
     { length: Math.min(concurrency, unicos.length) },
     () => worker()
   );
   await Promise.all(workers);
+  await endFetch({
+    unicos: unicos.length,
+    concluidos,
+    concurrency,
+    caCacheHits,
+    authExpired
+  });
 
   // Persiste o cache (load + novos `ca` desta varredura) ao final. Feito
   // aqui em vez de a cada novo `ca` para evitar N writes no storage em
   // 2000+ processos.
   await persistirCaCache(caCache);
   if (caCacheHits > 0) {
+    scan.counter('ca-cache-hits', caCacheHits);
     onProgress(
       `[cache] ${caCacheHits} chave(s) de acesso reaproveitadas do cache.`
     );
@@ -857,6 +898,11 @@ export async function coletarPrazosPorTarefasViaAPI(
     // Salva checkpoint com o estado parcial antes de abortar — o
     // usuario pode relancar com "retomar" quando renovar a sessao.
     await persistirCheckpoint();
+    scan.counter('auth-expired');
+    await scan.fail('auth-expired', {
+      parciaisPreservados: concluidos,
+      authExpiredAtProcId
+    });
     throw new Error(
       `Token do PJe expirou e nao foi renovado automaticamente em 60s ` +
         `(HTTP 403 no processo ${authExpiredAtProcId}). ` +
@@ -875,6 +921,12 @@ export async function coletarPrazosPorTarefasViaAPI(
   const consolidadoFinal = consolidados.filter(
     (c): c is ConsolidadoViaAPI => c != null
   );
+
+  await scan.success({
+    totalDescobertos,
+    consolidados: consolidadoFinal.length,
+    tempoTotalMs: Date.now() - t0
+  });
 
   return {
     totalDescobertos,

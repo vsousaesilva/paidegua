@@ -684,6 +684,21 @@ function bindEvents(): void {
       window.open(chrome.runtime.getURL('options/options.html'), '_blank');
     }
   });
+  // Abre a página de diagnóstico (histórico local de varreduras). Usa
+  // `chrome.tabs.create` em aba nova para não substituir a página atual
+  // do usuário. Fallback `window.open` cobre contextos sem `chrome.tabs`.
+  const diagLink = document.getElementById('open-diagnostico-link');
+  if (diagLink) {
+    diagLink.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const url = chrome.runtime.getURL('diagnostico/diagnostico.html');
+      if (chrome.tabs?.create) {
+        void chrome.tabs.create({ url });
+      } else {
+        window.open(url, '_blank');
+      }
+    });
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

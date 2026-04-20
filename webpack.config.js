@@ -30,7 +30,8 @@ module.exports = (_env, argv) => {
       'gestao-dashboard/gestao-dashboard': './src/gestao-dashboard/gestao-dashboard.ts',
       'gestao-painel/painel': './src/gestao-painel/painel.ts',
       'prazos-fita-dashboard/prazos-fita-dashboard': './src/prazos-fita-dashboard/prazos-fita-dashboard.ts',
-      'save-template/save': './src/save-template/save.ts'
+      'save-template/save': './src/save-template/save.ts',
+      'diagnostico/diagnostico': './src/diagnostico/diagnostico.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -74,6 +75,8 @@ module.exports = (_env, argv) => {
           { from: 'src/prazos-fita-dashboard/prazos-fita-dashboard.css', to: 'prazos-fita-dashboard/prazos-fita-dashboard.css' },
           { from: 'src/save-template/save.html', to: 'save-template/save.html' },
           { from: 'src/save-template/save.css', to: 'save-template/save.css' },
+          { from: 'src/diagnostico/diagnostico.html', to: 'diagnostico/diagnostico.html' },
+          { from: 'src/diagnostico/diagnostico.css', to: 'diagnostico/diagnostico.css' },
           { from: 'src/content/content.css', to: 'content.css' },
           // PDF.js worker precisa ser servido como arquivo acessivel via
           // chrome.runtime.getURL. Listado em web_accessible_resources

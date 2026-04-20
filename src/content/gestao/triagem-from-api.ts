@@ -28,6 +28,7 @@ import {
   gerarChaveAcesso,
   listarProcessosDaTarefa
 } from '../pje-api/pje-api-from-content';
+import type { ScanHandle } from '../../shared/telemetry';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -141,6 +142,14 @@ export interface ColetarSnapshotsViaAPIOptions {
   /** Paralelismo de resolução de `ca`. Default 10, clamp [1, 10]. */
   concurrencyCa?: number;
   onProgress?: (msg: string) => void;
+  /**
+   * Handle de telemetria opcional. Quando fornecido, o coletor registra
+   * fases (uma por tarefa) e contadores (processos, ca-erros). O caller
+   * permanece responsável por `success`/`fail`/`cancel` do handle.
+   * Se omitido, o coletor não grava telemetria (útil para testes e para
+   * chamadas secundárias que não devem poluir o histórico).
+   */
+  telemetry?: ScanHandle;
 }
 
 export interface ColetarSnapshotsViaAPIResult {
@@ -168,19 +177,31 @@ export async function coletarSnapshotsViaAPI(
   const concurrencyCa = clamp(opts.concurrencyCa ?? 10, 1, 10);
 
   const snapshots: TriagemTarefaSnapshot[] = [];
+  const tele = opts.telemetry;
 
   for (const nomeTarefa of opts.nomes) {
     onProgress(`Coletando processos da tarefa "${nomeTarefa}" — aguarde...`);
+    const endListar = tele?.phase(`listar:${nomeTarefa}`);
     const lista = await listarProcessosDaTarefa({
       nomeTarefa,
       maxProcessos: opts.maxProcessosPorTarefa
     });
+    await endListar?.({
+      ok: lista.ok,
+      total: lista.total,
+      lidos: lista.processos.length
+    });
     if (!lista.ok) {
+      tele?.counter('tarefa-listar-erro');
       return {
         ok: false,
         snapshots,
         error: lista.error ?? `Falha listando "${nomeTarefa}".`
       };
+    }
+    tele?.counter('processos-listados', lista.processos.length);
+    if (lista.processos.length < lista.total) {
+      tele?.counter('processos-omitidos', lista.total - lista.processos.length);
     }
     onProgress(
       `Tarefa "${nomeTarefa}": ${lista.processos.length}/${lista.total} processo(s) identificados. Resolvendo autos...`
@@ -189,7 +210,9 @@ export async function coletarSnapshotsViaAPI(
     const processos: TriagemProcesso[] = new Array(lista.processos.length);
     let proximo = 0;
     let concluidos = 0;
+    let errosCa = 0;
 
+    const endResolver = tele?.phase(`resolver-ca:${nomeTarefa}`);
     const worker = async (): Promise<void> => {
       while (true) {
         const idx = proximo++;
@@ -209,9 +232,12 @@ export async function coletarSnapshotsViaAPI(
               url =
                 `${legacyOrigin}/pje/Processo/ConsultaProcesso/Detalhe/` +
                 `listAutosDigitais.seam?${params.toString()}`;
+            } else {
+              errosCa++;
             }
           }
         } catch {
+          errosCa++;
           /* segue com url vazia — dashboard renderiza disabled */
         }
         processos[idx] = triagemProcessoFromApi(api, url);
@@ -229,6 +255,8 @@ export async function coletarSnapshotsViaAPI(
       () => worker()
     );
     await Promise.all(workers);
+    await endResolver?.({ concluidos, errosCa });
+    if (errosCa > 0) tele?.counter('ca-erros', errosCa);
 
     snapshots.push({
       tarefaNome: nomeTarefa,

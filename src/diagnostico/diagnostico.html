@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pAIdegua — Diagnóstico</title>
+    <link rel="stylesheet" href="diagnostico.css" />
+  </head>
+  <body>
+    <header class="diag-header">
+      <div>
+        <h1>Diagnóstico</h1>
+        <p class="diag-subtitle">
+          Histórico local das últimas varreduras do pAIdegua — Painel Gerencial, Prazos na Fita, Triagem.
+          Estes dados ficam apenas neste navegador e ajudam a entender o desempenho das coletas em diferentes unidades.
+        </p>
+      </div>
+      <div class="diag-actions">
+        <button type="button" id="btn-reload" class="diag-btn">Atualizar</button>
+        <button type="button" id="btn-clear" class="diag-btn diag-btn--danger">Limpar histórico</button>
+      </div>
+    </header>
+
+    <main class="diag-main">
+      <section class="diag-summary" id="summary" hidden>
+        <div class="diag-summary-item">
+          <span class="diag-summary-label">Varreduras</span>
+          <span class="diag-summary-value" id="sum-total">0</span>
+        </div>
+        <div class="diag-summary-item">
+          <span class="diag-summary-label">Sucesso</span>
+          <span class="diag-summary-value diag-summary-value--ok" id="sum-ok">0</span>
+        </div>
+        <div class="diag-summary-item">
+          <span class="diag-summary-label">Erro</span>
+          <span class="diag-summary-value diag-summary-value--error" id="sum-error">0</span>
+        </div>
+        <div class="diag-summary-item">
+          <span class="diag-summary-label">Fallback DOM</span>
+          <span class="diag-summary-value" id="sum-fallback">0</span>
+        </div>
+      </section>
+
+      <p class="diag-empty" id="empty" hidden>
+        Nenhuma varredura registrada até o momento. Abra o Painel Gerencial ou o Prazos na Fita e o histórico aparecerá aqui.
+      </p>
+
+      <div class="diag-list" id="list"></div>
+    </main>
+  </body>
+</html>

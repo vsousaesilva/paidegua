@@ -24,6 +24,7 @@ import {
   listarTodasTarefas
 } from '../triagem/analisar-tarefas';
 import { coletarSnapshotsViaAPI } from './triagem-from-api';
+import { startScan } from '../../shared/telemetry';
 
 const MSG_LISTAR_REQ = 'paidegua/gestao-listar-req';
 const MSG_LISTAR_RES = 'paidegua/gestao-listar-res';
@@ -254,21 +255,43 @@ export async function coletarTarefasSelecionadas(opts: {
 }> {
   const onProgress = opts.onProgress ?? (() => {});
 
+  // Telemetria: uma varredura por chamada de `coletarTarefasSelecionadas`.
+  // A via escolhida (rest/dom/dom-iframe) é marcada em `meta.viaUsada`;
+  // fallback REST→DOM incrementa `fallback-dom`. Tudo tolerante a erro —
+  // se o storage falhar, a coleta segue normalmente.
+  const scan = startScan('painel-gerencial', {
+    tarefas: opts.nomes.length,
+    nomes: opts.nomes
+  });
+
   // -- Caminho REST (preferido) ------------------------------------------
   try {
+    const endRest = scan.phase('rest');
     const resultadoApi = await coletarSnapshotsViaAPI({
       nomes: opts.nomes,
       pjeOrigin: window.location.origin,
-      onProgress
+      onProgress,
+      telemetry: scan
     });
+    await endRest({ ok: resultadoApi.ok });
     if (resultadoApi.ok) {
+      const totalProc = resultadoApi.snapshots.reduce(
+        (acc, s) => acc + s.processos.length,
+        0
+      );
+      scan.mergeMeta({ viaUsada: 'rest', totalProcessos: totalProc });
+      await scan.success();
       return { ok: true, snapshots: resultadoApi.snapshots };
     }
+    scan.counter('fallback-dom');
+    scan.mergeMeta({ restError: resultadoApi.error ?? 'sem detalhe' });
     onProgress(
       `Coleta rápida indisponível (${resultadoApi.error ?? 'sem detalhe'}) — continuando pelo DOM, aguarde...`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    scan.counter('fallback-dom');
+    scan.mergeMeta({ restError: msg });
     onProgress(`Coleta rápida falhou inesperadamente (${msg}) — continuando pelo DOM, aguarde...`);
   }
 
@@ -277,6 +300,7 @@ export async function coletarTarefasSelecionadas(opts: {
 
   if (!iframeWin) {
     // Painel no próprio top — executa local.
+    const endDom = scan.phase('dom-top');
     try {
       const setNomes = new Set(opts.nomes);
       const tarefas = capturarTarefas((nome) => setNomes.has(nome));
@@ -285,8 +309,23 @@ export async function coletarTarefasSelecionadas(opts: {
         window.location.origin,
         onProgress
       );
+      const totalProc = snapshots.reduce(
+        (acc, s) => acc + s.processos.length,
+        0
+      );
+      const truncadas = snapshots.filter((s) => s.truncado).length;
+      await endDom({ totalProcessos: totalProc, truncadas });
+      scan.mergeMeta({
+        viaUsada: 'dom-top',
+        totalProcessos: totalProc,
+        tarefasTruncadas: truncadas
+      });
+      if (truncadas > 0) scan.counter('tarefas-truncadas', truncadas);
+      await scan.success();
       return { ok: true, snapshots };
     } catch (err) {
+      await endDom({ erro: true });
+      await scan.fail(err);
       return {
         ok: false,
         snapshots: [],
@@ -296,6 +335,7 @@ export async function coletarTarefasSelecionadas(opts: {
   }
 
   const requestId = `gestao-coletar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const endDomIframe = scan.phase('dom-iframe');
   return new Promise((resolve) => {
     const handler = (ev: MessageEvent): void => {
       const data = ev.data;
@@ -307,6 +347,29 @@ export async function coletarTarefasSelecionadas(opts: {
       }
       if (data.type === MSG_COLETAR_RES) {
         window.removeEventListener('message', handler);
+        const totalProc = data.snapshots.reduce(
+          (acc, s) => acc + s.processos.length,
+          0
+        );
+        const truncadas = data.snapshots.filter((s) => s.truncado).length;
+        void (async () => {
+          await endDomIframe({
+            totalProcessos: totalProc,
+            truncadas,
+            erro: Boolean(data.error)
+          });
+          scan.mergeMeta({
+            viaUsada: 'dom-iframe',
+            totalProcessos: totalProc,
+            tarefasTruncadas: truncadas
+          });
+          if (truncadas > 0) scan.counter('tarefas-truncadas', truncadas);
+          if (data.error) {
+            await scan.fail(data.error);
+          } else {
+            await scan.success();
+          }
+        })();
         resolve({
           ok: !data.error,
           snapshots: data.snapshots,
