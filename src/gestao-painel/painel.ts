@@ -45,9 +45,8 @@ interface ModoConfig {
 
 const MODOS: Record<ModoPainel, ModoConfig> = {
   gestao: {
-    titulo: 'Painel Gerencial pAIdegua',
-    subtitulo:
-      'Selecione as tarefas a varrer para gerar o panorama da unidade.',
+    titulo: 'Painel Gerencial',
+    subtitulo: 'pAIdegua \u2014 Perfil Gestão',
     filtraTarefas: (t) => t,
     vazioMsg:
       'Nenhuma tarefa foi encontrada no painel atual. Confirme que a aba ' +
@@ -60,10 +59,8 @@ const MODOS: Record<ModoPainel, ModoConfig> = {
     dashboardUrl: 'gestao-dashboard/gestao-dashboard.html'
   },
   prazos: {
-    titulo: 'Prazos na Fita pAIdegua',
-    subtitulo:
-      'Somente tarefas de "Controle de prazo" aparecem aqui. ' +
-      'Selecione e confirme para extrair os expedientes em curso.',
+    titulo: 'Prazos na Fita',
+    subtitulo: 'pAIdegua \u2014 Perfil Gestão',
     filtraTarefas: (t) =>
       t.filter((x) => /controle\s+de\s+prazo/i.test(x.nome)),
     vazioMsg:
@@ -156,7 +153,7 @@ async function main(): Promise<void> {
 }
 
 function aplicarTextosDoModo(): void {
-  document.title = modoConfig.titulo;
+  document.title = `pAIdegua \u2014 ${modoConfig.titulo}`;
   const tituloEl = document.querySelector<HTMLElement>('[data-modo-titulo]');
   if (tituloEl) tituloEl.textContent = modoConfig.titulo;
   const subEl = document.querySelector<HTMLElement>('[data-modo-subtitulo]');
