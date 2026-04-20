@@ -735,6 +735,20 @@ function bindEvents(): void {
       }
     });
   }
+  // Formulario de suporte: abre uma aba com o formulario estruturado; ao
+  // enviar, a propria pagina monta o mailto: para inovajus@jfce.jus.br.
+  const supLink = document.getElementById('open-suporte-link');
+  if (supLink) {
+    supLink.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const url = chrome.runtime.getURL('suporte/suporte.html');
+      if (chrome.tabs?.create) {
+        void chrome.tabs.create({ url });
+      } else {
+        window.open(url, '_blank');
+      }
+    });
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

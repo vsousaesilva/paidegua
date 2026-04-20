@@ -268,6 +268,19 @@ Estados visuais do botao (ficam salvos no navegador e sobrevivem ao recarregar a
 
 Execucao uma de cada vez: se voce clicar em varias linhas, o pAIdegua enfileira e processa uma por vez, evitando que disputem a mesma aba/sessao. Multiplas linhas do mesmo processo+tarefa compartilham o estado, mas apenas a linha clicada exibe o rotulo completo — as demais ficam em modo compacto (so o icone) para deixar claro qual foi a linha acionada.
 
+### Falar com o Inovajus (Suporte)
+
+No rodape do popup da extensao ha um link chamado "Suporte". Ele abre uma aba com um formulario simples para registrar duvidas, erros ou sugestoes. Preencha:
+- Seu nome.
+- Sua unidade (vara, juizado, secretaria).
+- Seu e-mail para resposta.
+- Tipo de contato (Erro, Duvida, Sugestao, Outro).
+- Descricao com suas palavras — se for erro, vale contar o que voce estava tentando fazer e o que apareceu na tela.
+
+A opcao "Incluir informacoes tecnicas" (marcada por padrao) anexa automaticamente a versao do pAIdegua, qual navegador voce esta usando, o sistema e o endereco do PJe aberto no momento. Isso ajuda a equipe a reproduzir o problema mais rapido. Nenhum dado do processo e enviado.
+
+Ao clicar em "Preparar e-mail de suporte", o seu cliente de e-mail (Outlook, em geral) abre com a mensagem pronta e o destinatario ja preenchido (inovajus@jfce.jus.br). Basta conferir e clicar em "Enviar". Caso nada abra, e sinal de que o Outlook nao esta configurado como cliente de e-mail padrao do seu sistema — nesse caso, copie os campos manualmente e envie pelo Outlook Web.
+
 ### Pagina de Diagnostico
 
 No rodape do popup da extensao ha um link chamado "Diagnostico". Ele abre uma aba com o historico das ultimas 30 varreduras feitas neste navegador — Painel Gerencial, Prazos na Fita e Triagem Inteligente. Para cada varredura, a pagina mostra:

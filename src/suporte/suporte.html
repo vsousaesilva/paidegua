@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pAIdegua — Suporte</title>
+    <link rel="stylesheet" href="suporte.css" />
+  </head>
+  <body>
+    <header class="sup-header">
+      <div>
+        <h1>Fale com o Inovajus</h1>
+        <p class="sup-subtitle">
+          Dúvida, problema ou sugestão sobre o pAIdegua? Preencha este formulário.
+          Ao clicar em "Preparar e-mail de suporte", o seu cliente de e-mail
+          (Outlook) abrirá com os dados já preenchidos — basta conferir e enviar.
+          O destinatário é <strong>inovajus@jfce.jus.br</strong>.
+        </p>
+      </div>
+    </header>
+
+    <main class="sup-main">
+      <form id="sup-form" class="sup-form" novalidate>
+        <section class="sup-field">
+          <label class="sup-label" for="sup-nome">Seu nome</label>
+          <input
+            type="text"
+            id="sup-nome"
+            class="sup-input"
+            autocomplete="name"
+            placeholder="Ex.: Maria da Silva"
+            required
+          />
+        </section>
+
+        <section class="sup-field">
+          <label class="sup-label" for="sup-unidade">Sua unidade (vara, juizado, secretaria)</label>
+          <input
+            type="text"
+            id="sup-unidade"
+            class="sup-input"
+            placeholder="Ex.: 17ª Vara Federal - JEF Cível"
+            required
+          />
+        </section>
+
+        <section class="sup-field">
+          <label class="sup-label" for="sup-email">Seu e-mail para resposta</label>
+          <input
+            type="email"
+            id="sup-email"
+            class="sup-input"
+            autocomplete="email"
+            placeholder="nome.sobrenome@jfce.jus.br"
+            required
+          />
+        </section>
+
+        <section class="sup-field">
+          <label class="sup-label" for="sup-tipo">Tipo de contato</label>
+          <select id="sup-tipo" class="sup-input" required>
+            <option value="Erro ou falha">Erro ou falha no pAIdegua</option>
+            <option value="Dúvida de uso">Dúvida de uso</option>
+            <option value="Sugestão de melhoria">Sugestão de melhoria</option>
+            <option value="Outro">Outro assunto</option>
+          </select>
+        </section>
+
+        <section class="sup-field">
+          <label class="sup-label" for="sup-descricao">
+            Descreva com suas palavras
+          </label>
+          <p class="sup-hint">
+            Se for um erro, conte o que você tentou fazer, em qual tela do PJe
+            estava, e o que apareceu na tela. Quanto mais detalhe, mais rápido
+            a equipe consegue ajudar.
+          </p>
+          <textarea
+            id="sup-descricao"
+            class="sup-textarea"
+            rows="8"
+            placeholder="Ex.: Ao clicar em 'Prazos na Fita pAIdegua' no Painel do usuário, a aba do relatório abre vazia e aparece o aviso 'Sem credenciais de acesso'..."
+            required
+          ></textarea>
+        </section>
+
+        <section class="sup-field sup-field--checkbox">
+          <label class="sup-checkbox">
+            <input type="checkbox" id="sup-incluir-tecnico" checked />
+            <span>
+              Incluir informações técnicas (versão do pAIdegua, navegador,
+              endereço do PJe). Ajuda a equipe a reproduzir o problema.
+              Nenhum dado do processo é enviado.
+            </span>
+          </label>
+        </section>
+
+        <section class="sup-tecnico" id="sup-tecnico-preview" aria-live="polite">
+          <p class="sup-tecnico__titulo">Informações técnicas que serão anexadas:</p>
+          <pre id="sup-tecnico-texto" class="sup-tecnico__texto"></pre>
+        </section>
+
+        <section class="sup-actions">
+          <button type="submit" id="sup-enviar" class="sup-btn sup-btn--primary">
+            Preparar e-mail de suporte
+          </button>
+          <p class="sup-ajuda" id="sup-ajuda" hidden></p>
+        </section>
+      </form>
+    </main>
+
+    <script src="suporte.js"></script>
+  </body>
+</html>
