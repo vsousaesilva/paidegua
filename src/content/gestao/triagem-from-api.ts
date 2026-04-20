@@ -35,6 +35,24 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 /**
+ * Extrai o nome da vara a partir do campo `orgaoJulgador` do PJe TRF5,
+ * que vem no formato "1º Grau / 35ª Vara Federal CE / Juiz Federal
+ * Titular". Preferimos o segmento que contém "vara"; na ausência, o
+ * primeiro segmento não vazio. Usado para emitir `[unidade]` cedo no
+ * progresso, antes mesmo da resolução de `ca`, para que o cabeçalho da
+ * aba de varredura mostre a unidade desde a primeira tarefa.
+ */
+function extrairNomeVara(orgao: string | null | undefined): string | null {
+  if (!orgao) return null;
+  const raw = orgao.replace(/\s+/g, ' ').trim();
+  if (!raw) return null;
+  const segs = raw.split('/').map((s) => s.trim()).filter(Boolean);
+  const vara = segs.find((s) => /\bvara\b/i.test(s));
+  if (vara) return vara;
+  return segs[0] ?? null;
+}
+
+/**
  * Converte timestamp ms para o formato `dd-mm-aa` usado pelos dashboards
  * (legado do DOM scraping do PJe). Retorna `null` se o número não for
  * um timestamp válido.
@@ -178,6 +196,7 @@ export async function coletarSnapshotsViaAPI(
 
   const snapshots: TriagemTarefaSnapshot[] = [];
   const tele = opts.telemetry;
+  let unidadeEmitida = false;
 
   for (const nomeTarefa of opts.nomes) {
     onProgress(`Coletando processos da tarefa "${nomeTarefa}" — aguarde...`);
@@ -203,6 +222,22 @@ export async function coletarSnapshotsViaAPI(
     if (lista.processos.length < lista.total) {
       tele?.counter('processos-omitidos', lista.total - lista.processos.length);
     }
+
+    // Emitir `[unidade]` assim que tivermos o primeiro `orgaoJulgador` em
+    // mãos — o painel da aba de varredura captura esse prefixo para exibir
+    // a vara no cabeçalho desde a primeira tarefa, em vez de esperar o
+    // fim da coleta.
+    if (!unidadeEmitida) {
+      for (const p of lista.processos) {
+        const nomeVara = extrairNomeVara(p.orgaoJulgador);
+        if (nomeVara) {
+          onProgress(`[unidade] ${nomeVara}`);
+          unidadeEmitida = true;
+          break;
+        }
+      }
+    }
+
     onProgress(
       `Tarefa "${nomeTarefa}": ${lista.processos.length}/${lista.total} processo(s) identificados. Resolvendo autos...`
     );

@@ -408,7 +408,16 @@ export async function coletarPrazosPorTarefas(
   );
   const { ok, snapshots, error } = await coletarTarefasSelecionadas({
     nomes: opts.nomesTarefas,
-    onProgress: (m) => onProgress(`[snapshots] ${m}`)
+    onProgress: (m) => {
+      // `[unidade]` e um sinal estruturado consumido pelo cabecalho da
+      // aba de varredura — nao podemos embrulhar em `[snapshots]` ou o
+      // regex da aba-painel deixa de casar e a vara nao aparece.
+      if (m.startsWith('[unidade] ')) {
+        onProgress(m);
+        return;
+      }
+      onProgress(`[snapshots] ${m}`);
+    }
   });
   if (!ok) {
     throw new Error(error ?? 'Falha ao coletar snapshots das tarefas.');
