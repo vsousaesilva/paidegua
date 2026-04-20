@@ -19,6 +19,7 @@
  * de auth ainda não foi capturado pelo interceptor.
  */
 
+import { LOG_PREFIX, STORAGE_KEYS } from '../../shared/constants';
 import type {
   PJeApiProcesso,
   TriagemProcesso,
@@ -168,6 +169,16 @@ export interface ColetarSnapshotsViaAPIOptions {
    * chamadas secundárias que não devem poluir o histórico).
    */
   telemetry?: ScanHandle;
+  /**
+   * Quando `true`, o coletor NÃO resolve `ca` (chaveAcessoProcesso) por
+   * processo — todos os `TriagemProcesso.url` saem vazios. Usado pela
+   * estratégia de hidratação progressiva: a coleta termina em segundos
+   * (uma chamada REST por tarefa, sem worker pool), abre o relatório
+   * imediatamente e a resolução de URLs roda em segundo plano via
+   * `hidratarUrlsViaAPI`, atualizando o dashboard progressivamente.
+   * Default `false` (comportamento legado: resolve tudo antes de abrir).
+   */
+  skipCaResolution?: boolean;
 }
 
 export interface ColetarSnapshotsViaAPIResult {
@@ -193,12 +204,16 @@ export async function coletarSnapshotsViaAPI(
     opts.pjeOrigin ?? window.location.origin
   ).replace(/\/+$/, '');
   const concurrencyCa = clamp(opts.concurrencyCa ?? 10, 1, 10);
+  const skipCa = opts.skipCaResolution === true;
 
   const snapshots: TriagemTarefaSnapshot[] = [];
   const tele = opts.telemetry;
+  const totalTarefas = opts.nomes.length;
   let unidadeEmitida = false;
 
-  for (const nomeTarefa of opts.nomes) {
+  for (let iTarefa = 0; iTarefa < opts.nomes.length; iTarefa++) {
+    const nomeTarefa = opts.nomes[iTarefa];
+    const indiceHuman = iTarefa + 1;
     onProgress(`Coletando processos da tarefa "${nomeTarefa}" — aguarde...`);
     const endListar = tele?.phase(`listar:${nomeTarefa}`);
     const lista = await listarProcessosDaTarefa({
@@ -238,6 +253,27 @@ export async function coletarSnapshotsViaAPI(
       }
     }
 
+    // Caminho rápido: sem resolução de `ca`, os `TriagemProcesso` saem
+    // imediatamente com `url = ''`. Responsabilidade de hidratar em
+    // segundo plano recai sobre `hidratarUrlsViaAPI`.
+    if (skipCa) {
+      const processos = lista.processos.map((p) => triagemProcessoFromApi(p, ''));
+      snapshots.push({
+        tarefaNome: nomeTarefa,
+        totalLido: processos.length,
+        truncado: processos.length < lista.total,
+        processos
+      });
+      // Marco estruturado para a barra de progresso da aba-painel avançar
+      // tarefa a tarefa. O regex da aba-painel (`painel.ts`) casa
+      // `Tarefa N/M: K processo(s) lido(s)` — sem esse marco, a barra
+      // fica em 0% no caminho REST (antes só o caminho DOM emitia).
+      onProgress(
+        `Tarefa ${indiceHuman}/${totalTarefas}: ${processos.length} processo(s) lido(s) em "${nomeTarefa}".`
+      );
+      continue;
+    }
+
     onProgress(
       `Tarefa "${nomeTarefa}": ${lista.processos.length}/${lista.total} processo(s) identificados. Resolvendo autos...`
     );
@@ -258,15 +294,7 @@ export async function coletarSnapshotsViaAPI(
           if (api.idProcesso > 0) {
             const ca = await gerarChaveAcesso(api.idProcesso);
             if (ca.ok && ca.ca) {
-              const params = new URLSearchParams();
-              params.set('idProcesso', String(api.idProcesso));
-              params.set('ca', ca.ca);
-              if (api.idTaskInstance != null) {
-                params.set('idTaskInstance', String(api.idTaskInstance));
-              }
-              url =
-                `${legacyOrigin}/pje/Processo/ConsultaProcesso/Detalhe/` +
-                `listAutosDigitais.seam?${params.toString()}`;
+              url = montarUrlAutos(legacyOrigin, api.idProcesso, ca.ca, api.idTaskInstance);
             } else {
               errosCa++;
             }
@@ -299,7 +327,200 @@ export async function coletarSnapshotsViaAPI(
       truncado: processos.length < lista.total,
       processos
     });
+    onProgress(
+      `Tarefa ${indiceHuman}/${totalTarefas}: ${processos.length} processo(s) lido(s) em "${nomeTarefa}".`
+    );
   }
 
   return { ok: true, snapshots };
+}
+
+/**
+ * Monta a URL autenticada dos autos digitais no PJe legacy.
+ */
+function montarUrlAutos(
+  legacyOrigin: string,
+  idProcesso: number,
+  ca: string,
+  idTaskInstance: number | null
+): string {
+  const params = new URLSearchParams();
+  params.set('idProcesso', String(idProcesso));
+  params.set('ca', ca);
+  if (idTaskInstance != null) {
+    params.set('idTaskInstance', String(idTaskInstance));
+  }
+  return (
+    `${legacyOrigin}/pje/Processo/ConsultaProcesso/Detalhe/` +
+    `listAutosDigitais.seam?${params.toString()}`
+  );
+}
+
+export interface HidratarUrlsOptions {
+  /** Identificador único da varredura — chave da entrada em `storage.session`. */
+  scanId: string;
+  /** Origin do PJe legacy usado para montar as URLs. */
+  legacyOrigin: string;
+  /** Paralelismo de resolução de `ca`. Default 10, clamp [1, 10]. */
+  concurrencyCa?: number;
+  /**
+   * Batching: quantas resoluções acumular antes de gravar em
+   * `chrome.storage.session`. Default 25. Também há um debounce de 500ms
+   * para entregar o último lote parcial em tarefas pequenas.
+   */
+  flushEvery?: number;
+  /** Intervalo máximo de debounce antes de descarregar o buffer (ms). */
+  flushAfterMs?: number;
+}
+
+interface HidratacaoEntry {
+  scanId: string;
+  status: 'running' | 'done';
+  updatedAt: number;
+  urls: Record<string, string>;
+}
+
+function chromeSessionAvailable(): boolean {
+  try {
+    return (
+      typeof chrome !== 'undefined' &&
+      !!chrome?.storage?.session?.get &&
+      !!chrome?.storage?.session?.set
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve `ca` (chaveAcessoProcesso) progressivamente para todos os
+ * processos de `snapshots`, gravando mapas parciais em
+ * `chrome.storage.session` para que o dashboard atualize os links em
+ * tempo real. Tolerante a erro: falhas individuais de `gerarChaveAcesso`
+ * deixam o processo sem URL (dashboard mantém o estilo disabled).
+ *
+ * Executa em segundo plano (fire-and-forget do caller). Não retorna
+ * resultado — o estado final (`status: 'done'`) fica gravado no storage
+ * para que recargas do dashboard (F5) recuperem o estado.
+ */
+export async function hidratarUrlsViaAPI(
+  snapshots: TriagemTarefaSnapshot[],
+  opts: HidratarUrlsOptions
+): Promise<void> {
+  if (!chromeSessionAvailable()) return;
+  const storageKey = STORAGE_KEYS.DASHBOARD_URL_HYDRATION_PREFIX + opts.scanId;
+  const legacyOrigin = opts.legacyOrigin.replace(/\/+$/, '');
+  const concurrencyCa = clamp(opts.concurrencyCa ?? 10, 1, 10);
+  const flushEvery = Math.max(1, opts.flushEvery ?? 25);
+  const flushAfterMs = Math.max(100, opts.flushAfterMs ?? 500);
+
+  // Enfileira uma lista única de (idProcesso, idTaskInstance) preservando
+  // ordem de apresentação no dashboard — primeiros processos da primeira
+  // tarefa resolvem primeiro, melhorando a percepção de progresso.
+  interface Item {
+    idProcesso: number;
+    idTaskInstance: number | null;
+  }
+  const fila: Item[] = [];
+  for (const snap of snapshots) {
+    for (const p of snap.processos) {
+      const idProc = Number(p.idProcesso);
+      if (!Number.isFinite(idProc) || idProc <= 0) continue;
+      if (p.url) continue; // já resolvido (caso raro de cache futuro)
+      const idTask = p.idTaskInstance != null ? Number(p.idTaskInstance) : null;
+      fila.push({
+        idProcesso: idProc,
+        idTaskInstance:
+          idTask != null && Number.isFinite(idTask) ? idTask : null
+      });
+    }
+  }
+
+  const bufferUrls: Record<string, string> = {};
+  let flushPendente = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let novasDesdeUltimoFlush = 0;
+
+  const flush = async (final: boolean): Promise<void> => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (!flushPendente && !final) return;
+    flushPendente = false;
+    novasDesdeUltimoFlush = 0;
+    try {
+      const cur = await chrome.storage.session.get(storageKey);
+      const prev = (cur?.[storageKey] as HidratacaoEntry | undefined) ?? null;
+      const next: HidratacaoEntry = {
+        scanId: opts.scanId,
+        status: final ? 'done' : 'running',
+        updatedAt: Date.now(),
+        urls: { ...(prev?.urls ?? {}), ...bufferUrls }
+      };
+      await chrome.storage.session.set({ [storageKey]: next });
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} hidratacao: falha gravando storage:`, err);
+    }
+  };
+
+  const scheduleFlush = (): void => {
+    flushPendente = true;
+    if (novasDesdeUltimoFlush >= flushEvery) {
+      void flush(false);
+      return;
+    }
+    if (flushTimer != null) return;
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      void flush(false);
+    }, flushAfterMs);
+  };
+
+  // Marca a entrada como `running` desde o primeiro instante para que o
+  // dashboard saiba que há hidratação em andamento antes mesmo do
+  // primeiro `ca` resolver.
+  try {
+    const entry: HidratacaoEntry = {
+      scanId: opts.scanId,
+      status: 'running',
+      updatedAt: Date.now(),
+      urls: {}
+    };
+    await chrome.storage.session.set({ [storageKey]: entry });
+  } catch {
+    /* ignore */
+  }
+
+  let proximo = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const idx = proximo++;
+      if (idx >= fila.length) return;
+      const item = fila[idx];
+      try {
+        const ca = await gerarChaveAcesso(item.idProcesso);
+        if (ca.ok && ca.ca) {
+          const url = montarUrlAutos(
+            legacyOrigin,
+            item.idProcesso,
+            ca.ca,
+            item.idTaskInstance
+          );
+          bufferUrls[String(item.idProcesso)] = url;
+          novasDesdeUltimoFlush++;
+          scheduleFlush();
+        }
+      } catch {
+        /* item segue sem URL — dashboard mantém disabled */
+      }
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(concurrencyCa, fila.length || 1) },
+    () => worker()
+  );
+  await Promise.all(workers);
+  await flush(true);
 }

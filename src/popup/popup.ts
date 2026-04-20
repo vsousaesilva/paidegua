@@ -69,6 +69,35 @@ const $ = <T extends HTMLElement>(id: string): T => {
   return el as T;
 };
 
+function renderPowerCard(enabled: boolean): void {
+  const card = document.getElementById('power-card');
+  const toggle = document.getElementById('power-toggle') as HTMLInputElement | null;
+  const title = document.getElementById('power-title');
+  const subtitle = document.getElementById('power-subtitle');
+  if (!card || !toggle || !title || !subtitle) return;
+  toggle.checked = enabled;
+  card.classList.toggle('is-off', !enabled);
+  title.textContent = enabled ? 'Extensão Ativada' : 'Extensão Desativada';
+  subtitle.textContent = enabled
+    ? 'Aproveite e utilize todos os recursos.'
+    : 'A extensão não agirá nas páginas do PJe até ser reativada.';
+}
+
+async function saveExtensionEnabled(enabled: boolean): Promise<void> {
+  const response = (await chrome.runtime.sendMessage({
+    channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
+    payload: { extensionEnabled: enabled }
+  })) as { ok: boolean; settings?: PAIdeguaSettings; error?: string };
+  if (response?.ok && response.settings) {
+    currentSettings = response.settings;
+    renderPowerCard(response.settings.extensionEnabled);
+  } else {
+    const previous = currentSettings?.extensionEnabled ?? true;
+    renderPowerCard(previous);
+    setStatus(response?.error ?? 'Falha ao alterar estado da extensão.', 'error');
+  }
+}
+
 function setStatus(text: string, kind: 'ok' | 'error' | 'info' | '' = ''): void {
   const el = $<HTMLParagraphElement>('popup-status');
   el.textContent = text;
@@ -159,6 +188,7 @@ async function loadAll(): Promise<void> {
     $<HTMLInputElement>('lgpd-accept').checked = currentSettings.lgpdAccepted;
     $<HTMLInputElement>('ocr-auto-run').checked = currentSettings.ocrAutoRun;
     $<HTMLInputElement>('ocr-max-pages').value = String(currentSettings.ocrMaxPages);
+    renderPowerCard(currentSettings.extensionEnabled);
 
     renderForProvider(currentSettings.activeProvider);
     renderTriagemCriterios();
@@ -648,6 +678,12 @@ function bindTriagemExtras(): void {
 }
 
 function bindEvents(): void {
+  const powerToggle = document.getElementById('power-toggle') as HTMLInputElement | null;
+  if (powerToggle) {
+    powerToggle.addEventListener('change', () => {
+      void saveExtensionEnabled(powerToggle.checked);
+    });
+  }
   $<HTMLSelectElement>('provider-select').addEventListener('change', () => {
     const provider = getActiveProvider();
     renderForProvider(provider);

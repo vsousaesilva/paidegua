@@ -46,6 +46,24 @@
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.jus.br/*"
+      ],
+      "js": ["pje-auth-probe-page.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.jus.br/*"
+      ],
+      "js": ["pje-auth-refresh-page.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "world": "MAIN"
     }
   ],
   "background": {

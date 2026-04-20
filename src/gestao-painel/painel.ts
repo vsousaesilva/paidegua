@@ -107,6 +107,13 @@ let requestId = '';
 let stateAtual: PainelState | null = null;
 let totalSelecionadas = 0;
 let concluidasAtual = 0;
+// Progresso da fase de expedientes (coleta por processo, modo Prazos na
+// Fita). Quando ativa, a barra mostra processos coletados em vez de
+// tarefas concluidas — essa fase representa >95% do tempo total e travar
+// em "0 de N tarefas" por varios minutos e o sintoma visivel da UX ruim.
+let expedientesAtivo = false;
+let expedientesConcluidos = 0;
+let expedientesTotal = 0;
 let modo: ModoPainel = 'gestao';
 let modoConfig: ModoConfig = MODOS.gestao;
 let unidadeAtual: string | null = null;
@@ -321,6 +328,26 @@ elBtnConfirmar.addEventListener('click', () => {
   void iniciarColeta(nomes);
 });
 
+/**
+ * Formata uma duracao em ms como string humana curta no prompt de
+ * retomada: `< 1 min`, `X min`, `Xh Ym`, `Xd Yh`. Evita o "ha 1380
+ * minuto(s)" que aparecia para checkpoints antigos.
+ */
+function formatarIdade(ms: number): string {
+  const seg = Math.max(0, Math.round(ms / 1000));
+  if (seg < 60) return 'menos de 1 min';
+  const min = Math.round(seg / 60);
+  if (min < 60) return `${min} min`;
+  const hTot = Math.floor(min / 60);
+  const mRest = min % 60;
+  if (hTot < 24) {
+    return mRest > 0 ? `${hTot}h ${mRest}min` : `${hTot}h`;
+  }
+  const dTot = Math.floor(hTot / 24);
+  const hRest = hTot % 24;
+  return hRest > 0 ? `${dTot}d ${hRest}h` : `${dTot}d`;
+}
+
 async function iniciarColeta(nomes: string[]): Promise<void> {
   await salvarSelecao(nomes);
 
@@ -334,15 +361,25 @@ async function iniciarColeta(nomes: string[]): Promise<void> {
     const info = await consultarScanStateExistente(nomes, filtros);
     if (info.hasState && info.total && info.concluidos != null) {
       const restantes = info.total - info.concluidos;
-      const minutosAtras = info.updatedAt
-        ? Math.max(1, Math.round((Date.now() - info.updatedAt) / 60000))
-        : null;
+      const idadeMs = info.updatedAt ? Date.now() - info.updatedAt : null;
+      const idadeLabel = idadeMs != null ? formatarIdade(idadeMs) : null;
+      // Acima de 30 min, os dados dos processos ja coletados podem estar
+      // desatualizados (movimentacoes posteriores nao serao refletidas no
+      // relatorio). Abaixo disso, o delta e pequeno e nao vale poluir o
+      // prompt. O threshold e empirico — baseado em "meia hora em uma
+      // vara movimentada ja pode ter algumas juntadas".
+      const STALE_MS = 30 * 60 * 1000;
+      const podeEstarDesatualizado = idadeMs != null && idadeMs > STALE_MS;
       const msg =
         `Detectei uma varredura anterior interrompida:\n\n` +
         `  - ${info.concluidos}/${info.total} processo(s) ja coletados\n` +
         `  - ${restantes} restam a coletar\n` +
-        (minutosAtras != null
-          ? `  - atualizada ha ${minutosAtras} minuto(s)\n`
+        (idadeLabel != null ? `  - atualizada ha ${idadeLabel}\n` : '') +
+        (podeEstarDesatualizado
+          ? `\nAtencao: os ${info.concluidos} processo(s) ja coletados ficam ` +
+            `com os dados do instante original da varredura. Se houve ` +
+            `movimentacao desde entao (juntadas, audiencias, despachos), ` +
+            `escolha "comecar do zero" para captar o estado atual.\n`
           : '') +
         `\nOK = continuar de onde parou\n` +
         `Cancelar = comecar do zero (perde o trabalho anterior)`;
@@ -352,6 +389,9 @@ async function iniciarColeta(nomes: string[]): Promise<void> {
 
   totalSelecionadas = nomes.length;
   concluidasAtual = 0;
+  expedientesAtivo = false;
+  expedientesConcluidos = 0;
+  expedientesTotal = 0;
   elLog.innerHTML = '';
   atualizarBarra();
   mostrarEstado('progresso');
@@ -441,7 +481,15 @@ function registrarListenerBackground(): void {
       return false;
     }
     if (message.channel === modoConfig.readyChannel) {
-      logLinha('Varredura concluída — abrindo dashboard...', 'ok');
+      // No modo 'prazos', o readyChannel agora dispara APOS a enumeracao
+      // (skeleton pronto) — varios minutos antes do fim da coleta. O
+      // dashboard abre com 0/N e se preenche via SLOT_PATCH. No modo
+      // 'gestao' o comportamento e o mesmo de sempre: ready = fim.
+      const mensagemAbertura =
+        modo === 'prazos'
+          ? 'Abrindo dashboard — a coleta continuará em segundo plano...'
+          : 'Varredura concluída — abrindo dashboard...';
+      logLinha(mensagemAbertura, 'ok');
       const url = chrome.runtime.getURL(modoConfig.dashboardUrl);
       window.setTimeout(() => {
         window.location.replace(url);
@@ -462,12 +510,31 @@ function registrarListenerBackground(): void {
 
 /**
  * Avança o contador com base nas mensagens estruturadas da varredura.
- * O gerador original emite strings como "Tarefa 3/7: ..." e "Tarefa 3/7:
- * N processo(s) lido(s).". Usamos a linha "N processo(s) lido(s)" como
- * marco de conclusão de tarefa — ela aparece uma única vez por tarefa.
+ *
+ * Dois padrões são reconhecidos:
+ *
+ *   1. `Tarefa N/M: K processo(s) lido(s).` — marco de fim de tarefa no
+ *      modo Gestão (coordinator antigo). Também casa quando o modo
+ *      Prazos envolve o prefixo `[snapshots]`.
+ *   2. `[expedientes] N/M — <processo>` — progresso por processo na fase
+ *      longa do modo Prazos (API REST). Essa fase domina o tempo total;
+ *      ao detectá-la, a barra passa a refletir processos coletados.
  */
 function avancarBarra(msg: string): void {
-  const m = msg.match(/^Tarefa\s+(\d+)\/(\d+):\s+\d+\s+processo/i);
+  const mExp = msg.match(/^\[expedientes\]\s+(\d+)\/(\d+)\b/i);
+  if (mExp) {
+    const atual = Number(mExp[1]);
+    const total = Number(mExp[2]);
+    if (Number.isFinite(atual) && Number.isFinite(total) && total > 0) {
+      expedientesAtivo = true;
+      expedientesConcluidos = Math.max(expedientesConcluidos, atual);
+      expedientesTotal = total;
+      atualizarBarra();
+    }
+    return;
+  }
+
+  const m = msg.match(/Tarefa\s+(\d+)\/(\d+):\s+\d+\s+processo/i);
   if (!m) return;
   const atual = Number(m[1]);
   const total = Number(m[2]);
@@ -478,6 +545,17 @@ function avancarBarra(msg: string): void {
 }
 
 function atualizarBarra(): void {
+  if (expedientesAtivo && expedientesTotal > 0) {
+    const pct = Math.min(
+      100,
+      Math.round((expedientesConcluidos / expedientesTotal) * 100)
+    );
+    elBarFill.style.width = `${pct}%`;
+    elBarLabel.textContent =
+      `${expedientesConcluidos} de ${expedientesTotal} processo${expedientesTotal === 1 ? '' : 's'} ` +
+      `coletado${expedientesConcluidos === 1 ? '' : 's'} · ${pct}%`;
+    return;
+  }
   const pct =
     totalSelecionadas > 0
       ? Math.min(100, Math.round((concluidasAtual / totalSelecionadas) * 100))

@@ -1,10 +1,12 @@
 # Post-mortem — "Prazos na Fita pAIdegua": cascata de falhas e correções
 
-**Data da investigação:** 2026-04-18
+**Datas das investigações:** 2026-04-18 (§§1–7 — cascata de 5 bugs) e
+2026-04-20 (§8 — cache de `ca` envenenado).
 **Funcionalidade afetada:** Botão *"Prazos na Fita pAIdegua"* (perfil Gestão) — extração
 de expedientes em tarefas *"Controle de prazo"* via API REST do PJe legacy.
 **Status final:** Resolvido — coleta retoma o comportamento esperado (contagem
-completa, sem duplicação de mensagens, dashboard renderiza com dados).
+completa, sem duplicação de mensagens, dashboard renderiza com dados, contagem
+de expedientes abertos bate com a regra de negócio).
 
 ---
 
@@ -401,3 +403,127 @@ se o usuário não tivesse reportado.
   bloco `logBodyIfRelevant` que foi removido de
   [pje-auth-interceptor-page.ts](../src/content/auth/pje-auth-interceptor-page.ts)
   (ver histórico git — commit desta investigação).
+
+---
+
+## 8. Regressão de 2026-04-20 — Cache de `ca` envenenado
+
+### 8.1 Sintoma
+
+Usuário reportou que o dashboard, em uma unidade com **1 072 processos em
+"Controle de prazo"**, mostrava apenas **8 expedientes abertos**. Regra de
+negócio: processos nessas tarefas devem ter pelo menos 1 expediente aberto
+(estar em "Controle de prazo" existe *porque* há expediente aberto). Em
+sessão anterior (antes das mudanças recentes), o mesmo relatório mostrava
+~1 expediente por processo — dado que o usuário considerava confiável.
+
+### 8.2 Hipóteses iniciais descartadas
+
+**Hipótese 1 (incorreta):** `listAutosDigitais.seam?aba=processoExpedienteTab`
+não estaria renderizando a aba Expedientes via SSR. Teste com IDs de um
+processo real: HTTP 200, 208 KB de HTML, tbody presente com 16 linhas.
+**Descartada.**
+
+Push-back do usuário foi decisivo: *"até ontem o dado era confiável — o
+que mudou?"* Isso forçou investigação da regressão em vez de aceitar que
+"8 faz sentido".
+
+### 8.3 Diagnóstico — teste comparativo
+
+Na console da aba PJe, testei **mesmo `idProcesso`** com duas `ca`
+diferentes:
+
+| Origem do `ca`                | HTTP  | Tamanho   | tbody | Linhas |
+|-------------------------------|-------|-----------|-------|--------|
+| Cacheado em `storage.local`   | 200   | ~32 KB    | ausente| 0      |
+| Recém-gerado (`gerarChaveAcesso`) | 200 | ~208 KB   | presente| 16     |
+
+O servidor estava respondendo **HTTP 200 com stub HTML** quando o `ca`
+cacheado já não era válido — em vez de 4xx. O parser
+`extractExpedientesFromDoc` trata tbody ausente como
+`{abertos: [], fechados: 0}`, valor legítimo no modelo de dados (processo
+sem expedientes). Nenhuma anomalia disparada.
+
+Contagem do cache na hora do diagnóstico: **1 606 entradas** acumuladas
+de varreduras anteriores. Distribuição da varredura envenenada:
+**5/1 072 com HTML real (ca fresca), 1 067/1 072 com stub (ca cacheada)**.
+
+### 8.4 Por que a regressão aparece agora
+
+O cache de `ca` foi promovido de `chrome.storage.session` (volátil) para
+`chrome.storage.local` (persistente) numa das mudanças recentes, com a
+hipótese de que o `ca` seria estável por processo. A hipótese estava
+errada: o servidor expira o `ca` **sem** sinalizar erro na resposta.
+Enquanto o cache era volátil, o envenenamento não se acumulava entre
+sessões; ao persistir, qualquer usuário que rodasse uma varredura na
+segunda execução (horas/dias depois) lia dados corrompidos.
+
+### 8.5 Ação
+
+**Ação 8.1:** remover completamente o cache de `ca`. Todo worker da Fase 2
+chama `gerarChaveAcesso` diretamente. Rota preservada:
+`gerarCaComRetryEmRefresh` com auto-refresh em 403.
+
+**Ação 8.2:** uma rotina one-shot `limparCacheCaLegado` remove
+`STORAGE_KEYS.PRAZOS_FITA_CA_CACHE` do `chrome.storage.local` na entrada
+do coordinator (idempotente; no-op se vazio). Serve apenas para drenar os
+1 000+ itens residuais em instalações antigas. A chave em
+`constants.ts` sobrevive marcada como **DEPRECATED** até termos certeza
+de que nenhuma instalação antiga retém a entrada — pode ser removida
+numa versão futura.
+
+**Ação 8.3:** atualizar
+[arquitetura-coleta-prazos-na-fita.md](arquitetura-coleta-prazos-na-fita.md)
+§4.1 com o histórico da hipótese incorreta e o novo entendimento;
+atualizar §2.2 (tabela de parâmetros), §5.5 (tabela-resumo) e §6
+(aprendizado revisado).
+
+### 8.6 Custo e validação
+
+- **Custo em tempo:** `gerarChaveAcesso` é um POST REST leve,
+  paralelizado em 25 streams HTTP/2 — absorve-se dentro do mesmo pool da
+  Fase 2. Varreduras ficam ~20 % mais lentas no pior caso; ganho é
+  correção de dados.
+- **Validação:** varredura re-executada pelo usuário na mesma unidade,
+  com o build corrigido. Dashboard mostra contagens de expedientes
+  abertos consistentes com a regra de negócio.
+
+### 8.7 Riscos revisitados
+
+**Risco 5 — Caches duráveis contra backends que não sinalizam
+invalidação.** Toda decisão de cache pressupõe que o backend distingue
+"chave inválida" de "recurso vazio". Quando o backend responde **igual**
+nos dois casos (como o `listAutosDigitais.seam` faz aqui), cache durável
+**envenena** dados sem erro visível. Antes de introduzir qualquer cache
+persistente novo, o checklist deve incluir:
+
+1. Existe resposta de erro explícita para a chave expirar/ser revogada?
+2. Existe endpoint barato de revalidação (mais barato que a requisição
+   que usaria o cache)?
+
+Se a resposta for "não" para alguma, **não cache** — ou cache apenas em
+`storage.session` (limpa no fim da sessão) aceitando o custo de recompor
+a cada reabertura do Chrome.
+
+### 8.8 Aprendizados agregados
+
+**8.8.1 — Regressões silenciosas de dados são a classe mais perigosa de
+bug.** A cascata da Fase 1–5 (SSO Keycloak, headers, body do Angular)
+terminava em dashboard vazio ou erro explícito — o usuário percebia. Já
+essa regressão de 8.x apresentava um **dashboard aparentemente completo**
+com números plausíveis mas errados. Sem o conhecimento da regra de
+negócio ("todos os processos aqui têm expediente aberto"), o usuário
+poderia ter aceitado o relatório como verdade. A mesma lição da Fase 1
+(falhas silenciosas mascaram causas) vale aqui, mas o risco é pior:
+o sistema **não parece** falhar — ele reporta um falso consistente.
+
+**8.8.2 — Pergunta "o que mudou desde ontem?" é insubstituível.** Repetiu-se
+o padrão da Fase 2: usuário disse *"isso antes era confiável"*. Se eu
+tivesse aceitado meu primeiro palpite de que "8 faz sentido", a causa
+raiz teria ficado oculta.
+
+**8.8.3 — Sintoma no agregado exige verificação no item.** O dashboard
+agregava os 1 072 sem distinguir quais vieram do stub de 32 KB vs. do
+HTML real de 208 KB. Só o teste no **item** (um único processo,
+comparando duas `ca`) revelou a diferença. Quando o agregado parece
+errado, descer ao nível do item é o primeiro passo — não o último.

@@ -87,6 +87,14 @@ import {
   clearGestaoPayloads,
   saveGestaoPayloads
 } from '../shared/gestao-indexed-storage';
+import {
+  clearPrazosFitaDashboardPayload,
+  finalizePrazosFitaDashboardStream,
+  hydratePrazosFitaSlot,
+  initPrazosFitaDashboardStream,
+  patchPrazosFitaSlot,
+  savePrazosFitaDashboardPayload
+} from '../shared/prazos-fita-indexed-storage';
 import { gravarAuthSnapshot } from './pje-api-client';
 import { getProvider } from './providers';
 import {
@@ -136,6 +144,12 @@ chrome.runtime.onStartup.addListener(() => {
   // sobrevivem ao encerramento do navegador.
   void clearGestaoPayloads().catch((err) =>
     console.warn(`${LOG_PREFIX} limpeza inicial do IDB gestão falhou:`, err)
+  );
+  void clearPrazosFitaDashboardPayload().catch((err) =>
+    console.warn(
+      `${LOG_PREFIX} limpeza inicial do IDB prazos-fita falhou:`,
+      err
+    )
   );
 });
 
@@ -331,6 +345,21 @@ chrome.runtime.onMessage.addListener(
         })();
         return true;
 
+      case MESSAGE_CHANNELS.PRAZOS_FITA_CLEAR_PAYLOAD:
+        void (async () => {
+          try {
+            await clearPrazosFitaDashboardPayload();
+            sendResponse({ ok: true });
+          } catch (err) {
+            console.warn(
+              `${LOG_PREFIX} clearPrazosFitaDashboardPayload falhou:`,
+              err
+            );
+            sendResponse({ ok: false, error: errorMessage(err) });
+          }
+        })();
+        return true;
+
       case MESSAGE_CHANNELS.PRAZOS_FITA_OPEN_PAINEL:
         void handleOpenPrazosFitaPainel(
           message.payload as {
@@ -388,6 +417,34 @@ chrome.runtime.onMessage.addListener(
       case MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL:
         void handlePrazosFitaColetaFail(
           message.payload as { requestId: string; error: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_SKELETON_READY:
+        void handlePrazosFitaSkeletonReady(
+          message.payload as PrazosFitaSkeletonReadyPayload,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_SLOT_PATCH:
+        void handlePrazosFitaSlotPatch(
+          message.payload as PrazosFitaSlotPatchPayload,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_HYDRATE_SLOT:
+        void handlePrazosFitaHydrateSlot(
+          message.payload as PrazosFitaSlotPatchPayload,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FINALIZED:
+        void handlePrazosFitaColetaFinalized(
+          message.payload as PrazosFitaFinalizedPayload,
           sendResponse
         );
         return true;
@@ -2772,9 +2829,12 @@ async function handlePrazosFitaColetaDone(
       return;
     }
 
-    await chrome.storage.session.set({
-      [STORAGE_KEYS.PRAZOS_FITA_DASHBOARD_PAYLOAD]: payload.dashboardPayload
-    });
+    // O payload final (consolidado + coletas por processo) estoura a
+    // quota de 10 MB do `chrome.storage.session` em unidades grandes
+    // (reproduzido em 2331 processos). Persistimos em IndexedDB, que
+    // compartilha origem (chrome-extension://<id>/) entre o service
+    // worker e a página do dashboard.
+    await savePrazosFitaDashboardPayload(payload.dashboardPayload);
     await chrome.storage.session.remove(
       `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload.requestId}`
     );
@@ -2815,6 +2875,189 @@ async function handlePrazosFitaColetaFail(
     sendResponse({ ok: true });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handlePrazosFitaColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// ─── Streaming progressivo do dashboard "Prazos na Fita" ────────────
+
+interface PrazosFitaSkeletonReadyPayload {
+  requestId: string;
+  meta: {
+    total: number;
+    totalDescobertos: number;
+    hostnamePJe: string;
+    tarefasSelecionadas: string[];
+    nomeUnidade: string | null;
+    geradoEm: string;
+    consolidadosInicial?: number;
+  };
+}
+
+interface PrazosFitaSlotPatchPayload {
+  requestId: string;
+  idx: number;
+  item: PrazosFitaDashboardPayload['resultado']['consolidado'][number];
+}
+
+interface PrazosFitaFinalizedPayload {
+  requestId: string;
+  status: 'done' | 'aborted';
+  tempoTotalMs: number;
+  abortadoEm?: string;
+  erroAbort?: string;
+}
+
+/**
+ * Fase 1 concluida no content: grava o skeleton no IDB e manda a
+ * aba-painel redirecionar pro dashboard. O dashboard abre em status
+ * 'running' com cartoes em 0/total.
+ *
+ * Importante: NAO apaga a rota aqui — o dashboard compartilha o
+ * `painelTabId` (redirect via `window.location.replace` preserva o tab
+ * id) e precisamos dele para rotear SLOT_PATCH e FINALIZED.
+ */
+async function handlePrazosFitaSkeletonReady(
+  payload: PrazosFitaSkeletonReadyPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    if (!payload.meta || typeof payload.meta.total !== 'number') {
+      sendResponse({ ok: false, error: 'Meta do skeleton inválido.' });
+      return;
+    }
+    await initPrazosFitaDashboardStream({
+      geradoEm: payload.meta.geradoEm,
+      hostnamePJe: payload.meta.hostnamePJe,
+      tarefasSelecionadas: payload.meta.tarefasSelecionadas,
+      total: payload.meta.total,
+      totalDescobertos: payload.meta.totalDescobertos,
+      consolidadosInicial: payload.meta.consolidadosInicial
+    });
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaSkeletonReady falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Cada processo coletado: grava slot no IDB e repassa para a aba do
+ * dashboard (mesmo `painelTabId` pos-redirect). Dashboard faz coalesce
+ * de RAF para re-renderizar sem travar em varreduras grandes.
+ */
+async function handlePrazosFitaSlotPatch(
+  payload: PrazosFitaSlotPatchPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      // Dashboard pode ter sido fechado — apenas grava no IDB e segue.
+      // A proxima abertura reidrata do IDB.
+      if (payload?.item && typeof payload.idx === 'number') {
+        await patchPrazosFitaSlot(payload.idx, payload.item);
+      }
+      sendResponse({ ok: true });
+      return;
+    }
+    await patchPrazosFitaSlot(payload.idx, payload.item);
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_SLOT_PATCH,
+        payload
+      })
+      .catch(() => { /* dashboard fechado: tudo bem, ja esta no IDB */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaSlotPatch falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Reidratacao de slot em retomada de varredura. Mesma forma que
+ * `handlePrazosFitaSlotPatch`, mas escreve no IDB sem incrementar o
+ * contador `meta.consolidados` (ja foi refletido no
+ * `consolidadosInicial` do skeleton). O dashboard tambem trata esse
+ * canal sem incrementar o progresso.
+ */
+async function handlePrazosFitaHydrateSlot(
+  payload: PrazosFitaSlotPatchPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      if (payload?.item && typeof payload.idx === 'number') {
+        await hydratePrazosFitaSlot(payload.idx, payload.item);
+      }
+      sendResponse({ ok: true });
+      return;
+    }
+    await hydratePrazosFitaSlot(payload.idx, payload.item);
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PRAZOS_FITA_HYDRATE_SLOT,
+        payload
+      })
+      .catch(() => { /* dashboard fechado: tudo bem, ja esta no IDB */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrazosFitaHydrateSlot falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Fim da varredura (ok ou abort). Marca status no IDB, encaminha pro
+ * dashboard e limpa a rota. Isso substitui o papel do COLETA_DONE
+ * legado quando os callbacks de streaming estao ativos — mas o
+ * COLETA_DONE legado continua funcional (caso alguem remova os
+ * callbacks no futuro, ou para compatibilidade com varreduras que
+ * sobreviveram a uma atualizacao de extensao a meio caminho).
+ */
+async function handlePrazosFitaColetaFinalized(
+  payload: PrazosFitaFinalizedPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    await finalizePrazosFitaDashboardStream({
+      status: payload.status,
+      tempoTotalMs: payload.tempoTotalMs,
+      abortadoEm: payload.abortadoEm,
+      erroAbort: payload.erroAbort
+    });
+    const rota = await getRota(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FINALIZED,
+          payload
+        })
+        .catch(() => { /* dashboard fechado */ });
+      await deleteRota(payload.requestId);
+    }
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.GESTAO_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(
+      `${LOG_PREFIX} handlePrazosFitaColetaFinalized falhou:`,
+      error
+    );
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }

@@ -17,6 +17,10 @@
 
 * { box-sizing: border-box; }
 
+/* O atributo `hidden` precisa vencer regras como `.diag-summary { display: grid }`,
+   caso contrario o bloco de resumo fica visivel mesmo quando nao ha varreduras. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -132,6 +136,77 @@ html, body {
   background: var(--bg-card);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
+}
+
+.diag-probe {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.diag-probe__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.diag-probe__title {
+  margin: 0;
+  font-size: 13px;
+  color: var(--primary-dark);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.diag-probe__status {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.diag-probe__status--found {
+  background: rgba(30, 126, 52, 0.12);
+  color: var(--success);
+}
+
+.diag-probe__status--notfound {
+  background: rgba(166, 107, 0, 0.14);
+  color: var(--warning);
+}
+
+.diag-probe__status--never {
+  background: rgba(91, 107, 130, 0.14);
+  color: var(--muted);
+}
+
+.diag-probe__body {
+  font-size: 11.5px;
+  color: var(--fg);
+  line-height: 1.6;
+}
+
+.diag-probe__candidate {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(244, 247, 252, 0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.diag-probe__paths {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 .diag-list {
@@ -250,8 +325,9 @@ html, body {
 
 .diag-phase {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   font-size: 11.5px;
@@ -305,3 +381,45 @@ html, body {
   background: rgba(166, 107, 0, 0.14);
   color: var(--warning);
 }
+
+.diag-403-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diag-403-entry {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(244, 247, 252, 0.45);
+  padding: 4px 8px;
+}
+
+.diag-403-entry[open] {
+  background: rgba(244, 247, 252, 0.9);
+}
+
+.diag-403-entry__head {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-403-entry__time {
+  color: var(--muted);
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.diag-403-entry__err {
+  color: var(--danger);
+  font-size: 11px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+

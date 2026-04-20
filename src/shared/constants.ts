@@ -267,6 +267,37 @@ export const MESSAGE_CHANNELS = {
   PRAZOS_FITA_COLETA_READY: 'paidegua/prazos-fita/coleta-ready',
   PRAZOS_FITA_COLETA_FAIL: 'paidegua/prazos-fita/coleta-fail',
   /**
+   * Streaming progressivo do dashboard "Prazos na Fita":
+   *
+   * - `PRAZOS_FITA_SKELETON_READY`: content (aba PJe) → background. Terminou
+   *   a enumeracao de processos em todas as tarefas; o meta inicial (total,
+   *   tarefasSelecionadas, hostname) ja esta gravado no IndexedDB com
+   *   `status: 'running'`. O background encaminha um READY para a aba-painel,
+   *   que redireciona imediatamente para o dashboard. O dashboard abre em
+   *   segundos, com os cartoes em "0/N".
+   *
+   * - `PRAZOS_FITA_SLOT_PATCH`: content (aba PJe) → background → dashboard.
+   *   Um processo acabou de ser coletado; o content grava o slot no IDB e
+   *   emite este canal com `{ requestId, idx, item }`. O background roteia
+   *   para o tab do dashboard. O dashboard agrega e re-renderiza com
+   *   `requestAnimationFrame` (coalescente).
+   *
+   * - `PRAZOS_FITA_COLETA_FINALIZED`: content → background → dashboard.
+   *   Varredura terminou (ok ou abort). Content ja gravou `status: 'done'`
+   *   (ou 'aborted') no meta. Dashboard libera a coluna "Encerrar" e,
+   *   em abort, mostra toast com opcao de retomar.
+   */
+  PRAZOS_FITA_SKELETON_READY: 'paidegua/prazos-fita/skeleton-ready',
+  PRAZOS_FITA_SLOT_PATCH: 'paidegua/prazos-fita/slot-patch',
+  PRAZOS_FITA_HYDRATE_SLOT: 'paidegua/prazos-fita/hydrate-slot',
+  PRAZOS_FITA_COLETA_FINALIZED: 'paidegua/prazos-fita/coleta-finalized',
+  /**
+   * Aba do dashboard (pagehide) → background: pede para apagar o payload
+   * do IndexedDB. Mesma postura LGPD do Painel Gerencial — agregados
+   * não permanecem em disco depois do uso.
+   */
+  PRAZOS_FITA_CLEAR_PAYLOAD: 'paidegua/prazos-fita/clear-payload',
+  /**
    * Aba-painel -> background -> content (aba PJe): consulta se existe um
    * checkpoint persistido em `storage.local` compativel com a assinatura
    * (nomes + filtros) que o usuario acabou de confirmar no seletor.
@@ -403,32 +434,15 @@ export const STORAGE_KEYS = {
    */
   PJE_AUTH_SNAPSHOT: 'paidegua.pjeAuth.snapshot',
   /**
-   * Chave em `chrome.storage.session` (volatil) com o payload consolidado
-   * do painel "Prazos na Fita". Gravada pelo background ao receber
-   * PRAZOS_FITA_COLETA_DONE e lida pela aba do dashboard.
-   */
-  PRAZOS_FITA_DASHBOARD_PAYLOAD: 'paidegua.prazosFita.dashboardPayload',
-  /**
-   * Cache do token `ca` (chaveAcessoProcesso) em `chrome.storage.session`.
-   * Formato: `{ [idProcesso: number]: string }`. O `ca` e estavel enquanto
-   * o processo existir no servidor — reusar entre varreduras elimina a
-   * chamada `gerarChaveAcessoProcesso` (que usa Bearer e expira em 5-15 min)
-   * e corta ~50% dos round-trips na 2a varredura em diante.
-   *
-   * `session` (volatil) porque o `ca` e "bom pra sessao" — se o usuario
-   * deslogar, tudo precisa ser regerado de qualquer forma.
+   * DEPRECATED — chave legada do cache de `ca` (chaveAcessoProcesso).
+   * O cache foi removido: no PJe TRF5 a `ca` expira silenciosamente no
+   * servidor (resposta 200 com HTML stub em vez de 4xx), o que fazia a
+   * coleta exibir "0 expedientes" sem erro visivel em ~99% dos processos.
+   * A chave so permanece aqui para permitir a limpeza one-shot em
+   * `limparCacheCaLegado` (prazos-fita-coordinator.ts) — remover em uma
+   * versao futura quando nao houver mais instalacoes com a chave escrita.
    */
   PRAZOS_FITA_CA_CACHE: 'paidegua.prazosFita.caCache',
-  /**
-   * Prefixo em `chrome.storage.local` dos checkpoints de varredura
-   * "Prazos na Fita" em andamento. Chave final:
-   * `${PREFIX}${scanId}` onde `scanId` = hash SHA-256 de
-   * `${host}|${nomes ordenados}|${filtros}`. Permite retomar uma
-   * varredura interrompida (fechamento do Chrome, 403 persistente,
-   * cancelamento). Entradas sao expiradas se `updatedAt` tiver
-   * mais de 24h. Conteudo nao vai para nuvem nem LLM.
-   */
-  PRAZOS_FITA_SCAN_STATE_PREFIX: 'paidegua.prazosFita.scanState.',
   /**
    * Mapa em `chrome.storage.local` com o estado por tarefa do encerramento
    * automatico acionado pelo painel "Prazos na Fita". Chave do mapa:
@@ -445,7 +459,44 @@ export const STORAGE_KEYS = {
    * vai para a LLM nem para nuvem. Serve para o proprio usuario conferir,
    * depois, o que foi fechado automaticamente pelo painel.
    */
-  PRAZOS_ENCERRAR_AUDIT: 'paidegua.prazosFita.encerrarAudit'
+  PRAZOS_ENCERRAR_AUDIT: 'paidegua.prazosFita.encerrarAudit',
+  /**
+   * Chave em `chrome.storage.local` com o ultimo relatorio de probe do
+   * adapter Keycloak do PJe. Gravada pelo bridge isolated-world ao receber
+   * o evento `paidegua:kc-probe` despachado pelo interceptor page-world.
+   * Uso: decidir se a estrategia de refresh proativo via
+   * `keycloak.updateToken()` e viavel no setup do tribunal — se nenhum
+   * candidato for encontrado, recaimos no fluxo de espera + prompt.
+   * Conteudo: `{ timestamp, url, angularVersion, foundAny, candidates[],
+   * attemptedPaths[] }`. Nao contem tokens nem PII.
+   */
+  KEYCLOAK_PROBE: 'paidegua.keycloakProbe',
+  /**
+   * Chave em `chrome.storage.session` (volatil) usada pela hidratacao
+   * progressiva de URLs dos autos nos dashboards (Triagem Inteligente +
+   * Painel Gerencial). O content script abre o relatorio IMEDIATAMENTE
+   * com processos sem link e, em segundo plano, resolve `ca` via
+   * `gerarChaveAcessoProcesso` em lote, gravando mapas parciais nesta
+   * chave. Os dashboards escutam `chrome.storage.onChanged` e atualizam
+   * os cartoes progressivamente. Formato:
+   * `{ scanId, status: 'running'|'done', updatedAt, urls: Record<idProcesso, string> }`.
+   * Indexado por `scanId` para nao colidir com varreduras concorrentes.
+   */
+  DASHBOARD_URL_HYDRATION_PREFIX: 'paidegua.dashboardUrlHydration.',
+  /**
+   * Chave em `chrome.storage.local` com o log dos ultimos 50 diagnosticos
+   * de HTTP 403 capturados por chamadas REST do PJe. Ring buffer (cap 50)
+   * gravado por `pje-api-from-content.ts` sempre que um 403 sobe. Cada
+   * entrada inclui idade do snapshot de auth, exp do JWT em cache,
+   * presenca do JSESSIONID no document.cookie, resultado do silent SSO
+   * (ok, erro detalhado do Keycloak, duracao) e trecho truncado do body.
+   * Uso: card no painel de Diagnostico — permite analisar CAUSA provavel
+   * de falhas em varreduras longas (JWT expirado e Angular nao renovou,
+   * SSO session caducou, cookie KEYCLOAK_IDENTITY invalido, rede do SSO
+   * indisponivel, etc.). Nao contem o Bearer token completo nem dados
+   * de partes.
+   */
+  HTTP_403_LOG: 'paidegua.http403Log'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

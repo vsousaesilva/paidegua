@@ -6,31 +6,32 @@
  * sem ser renovado em 60s, ou se o usuario cancelar a aba — sem
  * checkpoint, todo o trabalho anterior e perdido.
  *
- * Este modulo encapsula o ciclo de vida do checkpoint em
- * `chrome.storage.local`:
+ * Persistencia: IndexedDB (`paidegua.prazosFitaScanState`, store `states`)
+ * keyado por `scanId`. Migramos de `chrome.storage.local` porque este
+ * ultimo tem teto fixo de 10 MB — em varreduras grandes (visto em 2335
+ * processos), o checkpoint estoura com `Resource::kQuotaBytes quota
+ * exceeded`, a escrita passa a falhar silenciosamente e a varredura
+ * para. IDB nao tem esse teto fixo; quota e proporcional ao disco.
+ *
+ * API publica preservada:
  *   - `computeScanId` deriva um id deterministico de (host, nomes,
  *     filtros). Relancar a mesma selecao reaproveita o checkpoint.
- *   - `salvar`/`ler`/`apagar` operam sobre uma chave indexada por id.
- *   - `consultarPorAssinatura` responde a pergunta do painel:
- *     "existe um scan incompleto para esta selecao?"
- *   - `expirarAntigos` descarta checkpoints com >24h (evita lixo).
+ *   - `salvarEstado`/`lerEstado`/`apagarEstado` operam por id.
+ *   - `consultarPorAssinatura` responde "existe um scan incompleto?"
+ *   - `expirarAntigos` descarta checkpoints com >24h (GC oportunista).
  *
- * Conteudo: processos + expedientes ja coletados. NUNCA vai para a
- * LLM nem sai do dispositivo — o dashboard le deste storage apenas
- * quando o usuario retoma.
+ * Conteudo: processos + expedientes ja coletados. NUNCA vai para a LLM
+ * nem sai do dispositivo.
  */
-
-import { STORAGE_KEYS } from '../../shared/constants';
 import type {
   PrazosFitaScanState,
   PrazosFitaScanStateInfo
 } from '../../shared/types';
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h
-
-function chaveDoScan(scanId: string): string {
-  return `${STORAGE_KEYS.PRAZOS_FITA_SCAN_STATE_PREFIX}${scanId}`;
-}
+const DB_NAME = 'paidegua.prazosFitaScanState';
+const DB_VERSION = 1;
+const STORE = 'states';
 
 /**
  * Hash SHA-256 hex (primeiros 16 bytes) de uma string. Determinismo:
@@ -64,20 +65,118 @@ export async function computeScanId(params: {
   return sha256Hex32(payload);
 }
 
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () =>
+      reject(req.error ?? new Error('Falha ao abrir o IndexedDB.'));
+    req.onblocked = () =>
+      reject(new Error('IndexedDB bloqueado por outra versão aberta.'));
+  });
+}
+
+async function idbGet(scanId: string): Promise<PrazosFitaScanState | null> {
+  const db = await openDb();
+  try {
+    return await new Promise<PrazosFitaScanState | null>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(scanId);
+      req.onsuccess = () =>
+        resolve((req.result as PrazosFitaScanState | undefined) ?? null);
+      req.onerror = () =>
+        reject(req.error ?? new Error('Falha ao ler do IndexedDB.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbPut(state: PrazosFitaScanState): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(state, state.scanId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(tx.error ?? new Error('Falha ao gravar no IndexedDB.'));
+      tx.onabort = () =>
+        reject(tx.error ?? new Error('Transação do IndexedDB abortada.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbDelete(scanId: string): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(scanId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(tx.error ?? new Error('Falha ao apagar no IndexedDB.'));
+      tx.onabort = () =>
+        reject(tx.error ?? new Error('Transação de delete abortada.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Itera todos os states via cursor. Para GC: nao carrega tudo em
+ * memoria de uma so vez — inspeciona `updatedAt` por registro e apaga
+ * na mesma transacao os expirados.
+ */
+async function idbExpireOld(ttlMs: number): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      const req = store.openCursor();
+      const agora = Date.now();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return;
+        const v = cur.value as PrazosFitaScanState | undefined;
+        if (!v || typeof v.updatedAt !== 'number' || agora - v.updatedAt > ttlMs) {
+          cur.delete();
+        }
+        cur.continue();
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(tx.error ?? new Error('Falha ao expirar states no IndexedDB.'));
+      tx.onabort = () =>
+        reject(tx.error ?? new Error('Transação de expiração abortada.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /**
  * Le um checkpoint pelo id. Retorna null se nao existir ou estiver
- * expirado (passa no GC e apaga o expirado de passagem).
+ * expirado (apaga o expirado de passagem).
  */
 export async function lerEstado(
   scanId: string
 ): Promise<PrazosFitaScanState | null> {
   try {
-    const chave = chaveDoScan(scanId);
-    const out = await chrome.storage.local.get(chave);
-    const raw = out[chave] as PrazosFitaScanState | undefined;
+    const raw = await idbGet(scanId);
     if (!raw || typeof raw !== 'object') return null;
     if (typeof raw.updatedAt !== 'number' || Date.now() - raw.updatedAt > TTL_MS) {
-      await chrome.storage.local.remove(chave);
+      await idbDelete(scanId).catch(() => {});
       return null;
     }
     return raw;
@@ -88,9 +187,7 @@ export async function lerEstado(
 
 export async function salvarEstado(state: PrazosFitaScanState): Promise<void> {
   try {
-    await chrome.storage.local.set({
-      [chaveDoScan(state.scanId)]: state
-    });
+    await idbPut(state);
   } catch (err) {
     console.warn('[pAIdegua] salvarEstado falhou:', err);
   }
@@ -98,9 +195,31 @@ export async function salvarEstado(state: PrazosFitaScanState): Promise<void> {
 
 export async function apagarEstado(scanId: string): Promise<void> {
   try {
-    await chrome.storage.local.remove(chaveDoScan(scanId));
+    await idbDelete(scanId);
   } catch (err) {
     console.warn('[pAIdegua] apagarEstado falhou:', err);
+  }
+}
+
+/**
+ * Limpeza unica dos checkpoints legados que ficaram em
+ * `chrome.storage.local` antes da migracao para IndexedDB. Best-effort:
+ * um erro aqui nao aborta o fluxo. Roda dentro de `expirarAntigos`, que
+ * ja e oportunista.
+ */
+const LEGACY_LOCAL_PREFIX = 'paidegua.prazosFita.scanState.';
+async function limparLegadoChromeLocal(): Promise<void> {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const paraApagar: string[] = [];
+    for (const k of Object.keys(all)) {
+      if (k.startsWith(LEGACY_LOCAL_PREFIX)) paraApagar.push(k);
+    }
+    if (paraApagar.length > 0) {
+      await chrome.storage.local.remove(paraApagar);
+    }
+  } catch {
+    // sem logs — legado pode nao existir; ausencia e esperada.
   }
 }
 
@@ -110,23 +229,11 @@ export async function apagarEstado(scanId: string): Promise<void> {
  */
 export async function expirarAntigos(): Promise<void> {
   try {
-    const all = await chrome.storage.local.get(null);
-    const prefix = STORAGE_KEYS.PRAZOS_FITA_SCAN_STATE_PREFIX;
-    const paraApagar: string[] = [];
-    const agora = Date.now();
-    for (const [k, v] of Object.entries(all)) {
-      if (!k.startsWith(prefix)) continue;
-      const st = v as PrazosFitaScanState | undefined;
-      if (!st || typeof st.updatedAt !== 'number' || agora - st.updatedAt > TTL_MS) {
-        paraApagar.push(k);
-      }
-    }
-    if (paraApagar.length > 0) {
-      await chrome.storage.local.remove(paraApagar);
-    }
+    await idbExpireOld(TTL_MS);
   } catch (err) {
     console.warn('[pAIdegua] expirarAntigos falhou:', err);
   }
+  await limparLegadoChromeLocal();
 }
 
 /**

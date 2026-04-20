@@ -107,6 +107,17 @@ interface XhrInstrumented extends XMLHttpRequest {
     } catch {
       /* ignore: nunca quebrar a SPA host */
     }
+    // Cache em window apenas com o header de auth corrente — o probe
+    // Keycloak (page world) decodifica o JWT pra extrair o issuer.
+    // Nao persiste; sumira quando a aba fechar. Nao expomos refresh_token
+    // (nao temos acesso) nem identidade do usuario alem do que ja esta no
+    // Bearer que a SPA propria envia.
+    try {
+      (window as unknown as { __paideguaLastAuth?: AuthSnapshotPage }).
+        __paideguaLastAuth = snapshot;
+    } catch {
+      /* ignore */
+    }
   }
 
   // ----- fetch -----

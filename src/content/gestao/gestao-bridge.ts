@@ -23,7 +23,7 @@ import {
   coletarSnapshots,
   listarTodasTarefas
 } from '../triagem/analisar-tarefas';
-import { coletarSnapshotsViaAPI } from './triagem-from-api';
+import { coletarSnapshotsViaAPI, hidratarUrlsViaAPI } from './triagem-from-api';
 import { startScan } from '../../shared/telemetry';
 
 const MSG_LISTAR_REQ = 'paidegua/gestao-listar-req';
@@ -251,6 +251,22 @@ export async function coletarTarefasSelecionadas(opts: {
 }): Promise<{
   ok: boolean;
   snapshots: TriagemTarefaSnapshot[];
+  /**
+   * Quando a coleta foi feita via REST com hidratação progressiva de URLs
+   * (`gerarChaveAcesso` em segundo plano), o bridge devolve o scanId
+   * usado como sufixo da chave de `chrome.storage.session` onde a
+   * resolução parcial é publicada. O caller propaga esse id ao payload
+   * do dashboard para que a aba escute `storage.onChanged` e atualize
+   * os links. Quando a coleta caiu no fallback DOM (que já traz `p.url`
+   * pronto), retorna `undefined`.
+   */
+  urlHydrationScanId?: string;
+  /**
+   * Origin do PJe legacy usado na montagem das URLs. Acompanha
+   * `urlHydrationScanId` para o caller propagar ao payload. Ausente no
+   * fallback DOM.
+   */
+  legacyOrigin?: string;
   error?: string;
 }> {
   const onProgress = opts.onProgress ?? (() => {});
@@ -267,11 +283,18 @@ export async function coletarTarefasSelecionadas(opts: {
   // -- Caminho REST (preferido) ------------------------------------------
   try {
     const endRest = scan.phase('rest');
+    const pjeOrigin = window.location.origin;
+    // Hidratação progressiva: a coleta termina em segundos (sem worker
+    // pool O(n) de `gerarChaveAcesso`). As URLs dos autos entram depois,
+    // em segundo plano via `hidratarUrlsViaAPI`, e o dashboard atualiza
+    // os links conforme cada `ca` resolve. Antes, o usuário via "25 em
+    // 25" segurando o relatório até o fim da resolução.
     const resultadoApi = await coletarSnapshotsViaAPI({
       nomes: opts.nomes,
-      pjeOrigin: window.location.origin,
+      pjeOrigin,
       onProgress,
-      telemetry: scan
+      telemetry: scan,
+      skipCaResolution: true
     });
     await endRest({ ok: resultadoApi.ok });
     if (resultadoApi.ok) {
@@ -281,7 +304,21 @@ export async function coletarTarefasSelecionadas(opts: {
       );
       scan.mergeMeta({ viaUsada: 'rest', totalProcessos: totalProc });
       await scan.success();
-      return { ok: true, snapshots: resultadoApi.snapshots };
+      const urlHydrationScanId = `gestao-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // Fire-and-forget: continua rodando no content script mesmo depois
+      // de `coletarTarefasSelecionadas` retornar.
+      void hidratarUrlsViaAPI(resultadoApi.snapshots, {
+        scanId: urlHydrationScanId,
+        legacyOrigin: pjeOrigin
+      }).catch((err) => {
+        console.warn(`${LOG_PREFIX} hidratacao gestao falhou:`, err);
+      });
+      return {
+        ok: true,
+        snapshots: resultadoApi.snapshots,
+        urlHydrationScanId,
+        legacyOrigin: pjeOrigin
+      };
     }
     scan.counter('fallback-dom');
     scan.mergeMeta({ restError: resultadoApi.error ?? 'sem detalhe' });

@@ -24,6 +24,15 @@ module.exports = (_env, argv) => {
       // segundo entry de content_scripts no manifest com `world: "MAIN"`).
       // Roda no contexto JS da SPA Angular do painel; sem chrome.* APIs.
       'pje-auth-page': './src/content/auth/pje-auth-interceptor-page.ts',
+      // Probe passivo que inspeciona se o adapter Keycloak do Angular do
+      // PJe esta expostao em `window`. Roda tambem em page world; relay
+      // via bridge isolated-world para `chrome.storage.local`.
+      'pje-auth-probe-page': './src/content/auth/pje-auth-probe-page.ts',
+      // Silent SSO refresh (OIDC Authorization Code Flow com prompt=none).
+      // Roda em page world do iframe Angular (frontend-prd.<tribunal>.jus.br)
+      // para que o redirect_uri do iframe seja same-origin e o POST de
+      // token exchange saia do Origin aceito pelo client Keycloak.
+      'pje-auth-refresh-page': './src/content/auth/pje-auth-refresh-page.ts',
       'popup/popup': './src/popup/popup.ts',
       'options/options': './src/options/options.ts',
       'dashboard/dashboard': './src/dashboard/dashboard.ts',

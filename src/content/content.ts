@@ -44,7 +44,6 @@ import type {
   PJeApiProcesso,
   PJeDetection,
   PAIdeguaSettings,
-  PrazosFitaDashboardPayload,
   ProcessoDocumento,
   SynthesizeSpeechResult,
   TriagemProcesso,
@@ -80,7 +79,12 @@ import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { computarIndicadoresGestao } from './gestao/gestao-indicadores';
-import { coletarPrazosPorTarefasViaAPI } from './gestao/prazos-fita-coordinator';
+import {
+  coletarPrazosPorTarefasViaAPI,
+  type ConsolidadoViaAPI,
+  type StreamingEnumeratedMeta,
+  type StreamingFinalizedArgs
+} from './gestao/prazos-fita-coordinator';
 import { consultarPorAssinatura as consultarPorAssinaturaScanState } from './gestao/prazos-fita-scan-state';
 import { listarEtiquetas } from './pje-api/pje-api-from-content';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
@@ -117,6 +121,13 @@ let mounted: MountedUI | null = null;
  */
 let navbarButton: NavbarButtonController | null = null;
 let lastDetectionKey = '';
+/**
+ * Kill-switch global. Segue o campo `extensionEnabled` de
+ * `PAIdeguaSettings`. Quando `false`, nenhum UI é montado no PJe (botão do
+ * header, sidebar, painéis). Alternar o toggle no popup grava o novo valor
+ * em storage e o listener abaixo reage desmontando/remontando a UI.
+ */
+let extensionEnabled = true;
 
 const memory: {
   adapter: BaseAdapter | null;
@@ -2393,6 +2404,7 @@ async function loadSettings(): Promise<void> {
       apiKeyPresence: Record<ProviderId, boolean>;
     };
     memory.settings = response.settings;
+    extensionEnabled = response.settings?.extensionEnabled !== false;
     if (mounted && memory.settings) {
       const provider = memory.settings.activeProvider;
       const present = response.apiKeyPresence[provider];
@@ -3108,59 +3120,85 @@ async function handlePrazosFitaRunColeta(
       `Coleta iniciada em ${nomes.length} tarefa(s) "Controle de prazo". Pode levar alguns minutos.`
     );
 
+    // Streaming: empacota meta + slots em eventos separados, permitindo
+    // ao dashboard abrir em ~2s com cartoes 0/N e preencher
+    // progressivamente. O caminho legado (DONE com payload completo) e
+    // preservado como finalizador — serve como snapshot canonico caso o
+    // dashboard perca um patch.
+    const postSkeleton = async (meta: StreamingEnumeratedMeta): Promise<void> => {
+      try {
+        await chrome.runtime.sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_SKELETON_READY,
+          payload: { requestId, meta }
+        });
+      } catch {
+        /* aba-painel pode ter sido fechada */
+      }
+    };
+    const postSlot = async (idx: number, item: ConsolidadoViaAPI): Promise<void> => {
+      try {
+        await chrome.runtime.sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_SLOT_PATCH,
+          payload: {
+            requestId,
+            idx,
+            item: {
+              ...item,
+              processoApi: enxugarProcessoApiParaDashboard(item.processoApi)
+            }
+          }
+        });
+      } catch {
+        /* dashboard pode ter sido fechado */
+      }
+    };
+    const postHydrateSlot = async (idx: number, item: ConsolidadoViaAPI): Promise<void> => {
+      try {
+        await chrome.runtime.sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_HYDRATE_SLOT,
+          payload: {
+            requestId,
+            idx,
+            item: {
+              ...item,
+              processoApi: enxugarProcessoApiParaDashboard(item.processoApi)
+            }
+          }
+        });
+      } catch {
+        /* dashboard pode ter sido fechado */
+      }
+    };
+    const postFinalizado = async (args: StreamingFinalizedArgs): Promise<void> => {
+      try {
+        await chrome.runtime.sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FINALIZED,
+          payload: { requestId, ...args }
+        });
+      } catch {
+        /* dashboard pode ter sido fechado */
+      }
+    };
+
     const resultado = await coletarPrazosPorTarefasViaAPI({
       nomesTarefas: nomes,
       diasMinNaTarefa,
       maxProcessosTotal,
       retomar: retomar === true,
-      onProgress: postProg
+      onProgress: postProg,
+      onEnumerated: postSkeleton,
+      onSlot: postSlot,
+      onHydrateSlot: postHydrateSlot,
+      onFinalized: postFinalizado
     });
 
-    // Em unidades com milhares de processos, guardar o resultado completo
-    // no `chrome.storage.session` (quota 10 MB) estoura o limite: o
-    // `descricaoUltimoMovimento` + polos + etiquetas somados por 2000+
-    // processos facilmente passam de 10 MB. O dashboard de Prazos na Fita
-    // so le 4 campos do `processoApi` (idProcesso, idTaskInstance,
-    // numeroProcesso, orgaoJulgador) — zeramos aqui os demais. Mantemos
-    // o tipo valido (sem `any`) zerando campos pra preservar o shape.
-    const consolidadoLeve = resultado.consolidado.map((c) => ({
-      ...c,
-      processoApi: enxugarProcessoApiParaDashboard(c.processoApi)
-    }));
-
-    const dashboardPayload: PrazosFitaDashboardPayload = {
-      geradoEm: new Date().toISOString(),
-      hostnamePJe: new URL(window.location.origin).hostname,
-      tarefasSelecionadas: nomes,
-      resultado: {
-        totalDescobertos: resultado.totalDescobertos,
-        tempoTotalMs: resultado.tempoTotalMs,
-        consolidado: consolidadoLeve
-      }
-    };
-
+    // Caminho de streaming: o dashboard ja foi aberto no SKELETON_READY,
+    // preenchido pelos SLOT_PATCH e finalizado pelo FINALIZED (emitido
+    // dentro do coordinator). A mensagem final aqui so serve para o
+    // log textual do painel/dashboard.
     postProg(
       `Coleta concluída: ${resultado.consolidado.length} processo(s) únicos em ${(resultado.tempoTotalMs / 1000).toFixed(1)}s.`
     );
-
-    // Se o background recusar a gravacao (ex.: quota do storage.session
-    // estourada mesmo apos a poda), `resp.ok` volta false. Sem esse
-    // tratamento a aba-painel ficava esperando indefinidamente pelo READY
-    // que nunca chega. Convertendo em COLETA_FAIL, o painel mostra a
-    // mensagem de erro em vez de travar.
-    const resp = await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_DONE,
-      payload: { requestId, dashboardPayload }
-    });
-    if (!resp?.ok) {
-      const msg = resp?.error ?? 'Falha desconhecida ao gravar o dashboard.';
-      await chrome.runtime
-        .sendMessage({
-          channel: MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FAIL,
-          payload: { requestId, error: msg }
-        })
-        .catch(() => { /* aba-painel pode ter sido fechada */ });
-    }
   } catch (err) {
     if (isContextInvalidatedError(err)) {
       // Extensao recarregada no meio da coleta: a aba-painel ja foi
@@ -3269,10 +3307,11 @@ async function handleGestaoRunColeta(
       `Varredura iniciada em ${nomes.length} tarefa(s). Pode levar alguns minutos.`
     );
 
-    const { ok, snapshots, error } = await coletarTarefasSelecionadas({
-      nomes,
-      onProgress: postProg
-    });
+    const { ok, snapshots, error, urlHydrationScanId, legacyOrigin } =
+      await coletarTarefasSelecionadas({
+        nomes,
+        onProgress: postProg
+      });
     if (!ok) {
       await chrome.runtime.sendMessage({
         channel: MESSAGE_CHANNELS.GESTAO_COLETA_FAIL,
@@ -3320,6 +3359,8 @@ async function handleGestaoRunColeta(
     const dashboardPayload = {
       geradoEm,
       hostnamePJe,
+      ...(legacyOrigin ? { legacyOrigin } : {}),
+      ...(urlHydrationScanId ? { urlHydrationScanId } : {}),
       tarefasSelecionadas: nomes,
       tarefas: snapshotsLeve,
       totalProcessos,
@@ -3416,6 +3457,12 @@ function unmountUI(): void {
 }
 
 function runDetection(): void {
+  // Kill-switch: com a extensão desativada, nada é detectado/montado.
+  // Se houver UI pendurada de uma sessão ativa anterior, aplyExtensionState
+  // já tratou o desmonte; aqui só prevenimos remontagem.
+  if (!extensionEnabled) {
+    return;
+  }
   const { detection, adapter } = detect();
   const key = detectionKey(detection);
   if (key === lastDetectionKey) {
@@ -3674,11 +3721,38 @@ chrome.storage.onChanged.addListener((changes, area) => {
     return;
   }
   if (Object.keys(changes).some((k) => k.startsWith('paidegua.'))) {
-    void loadSettings();
+    void loadSettings().then(() => {
+      applyExtensionEnabledState();
+    });
   }
 });
 
-function bootstrap(): void {
+/**
+ * Aplica o estado atual de `extensionEnabled` ao DOM: se estiver desligada,
+ * desmonta sidebar e remove o botão do header; se estiver ligada e a página
+ * for PJe, garante a remontagem. Roda após cada `loadSettings`, que é
+ * disparado pelo listener de `chrome.storage.onChanged`.
+ */
+function applyExtensionEnabledState(): void {
+  if (window !== window.top) return;
+  if (!isPJeHost(window.location.hostname)) return;
+  if (extensionEnabled) {
+    if (!navbarButton) mountGlobalNavbarButton();
+    // Force redetection: runDetection short-circuita quando a chave não
+    // muda, então limpamos para garantir que a UI reapareça.
+    lastDetectionKey = '';
+    runDetection();
+  } else {
+    if (mounted) unmountUI();
+    if (navbarButton) {
+      navbarButton.destroy();
+      navbarButton = null;
+    }
+    lastDetectionKey = '';
+  }
+}
+
+async function bootstrap(): Promise<void> {
   // Com `all_frames: true` no manifest, este script roda também dentro
   // dos iframes do PJe (ex.: o Angular do painel-usuario-interno servido
   // em frontend-prd.trf5.jus.br). Em iframes NÃO montamos UI; instalamos
@@ -3709,10 +3783,33 @@ function bootstrap(): void {
   }
 
   console.log(`${LOG_PREFIX} content script carregado em`, window.location.href);
+  // Bridge isolated-world (tambem instalada aqui no top frame) — relaya o
+  // snapshot de auth despachado pelo interceptor page-world e persiste o
+  // relatorio do probe Keycloak do `pje-auth-probe-page.ts`, que roda
+  // apenas no top frame.
+  instalarBridgeInterceptorAuth();
   pingBackground();
-  mountGlobalNavbarButton();
-  runDetection();
+  // Lê o estado do kill-switch antes de montar qualquer UI para evitar
+  // piscar o botão do header quando o usuário já deixou a extensão
+  // desativada. Um timeout curto garante fallback caso o service worker
+  // esteja em cold start.
+  await loadSettingsGate();
+  if (extensionEnabled) {
+    mountGlobalNavbarButton();
+    runDetection();
+  }
   observeDom();
+}
+
+async function loadSettingsGate(): Promise<void> {
+  try {
+    await Promise.race([
+      loadSettings(),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 500))
+    ]);
+  } catch {
+    /* best-effort: em caso de falha, mantém default (ligada) */
+  }
 }
 
 /**
@@ -3727,6 +3824,7 @@ function bootstrap(): void {
  */
 function mountGlobalNavbarButton(): void {
   if (navbarButton) return;
+  if (!extensionEnabled) return;
   navbarButton = mountNavbarButton({
     onClick: () => {
       // Fallback: se o sidebar ainda não está montado (detecção tardia),
@@ -3780,4 +3878,4 @@ function base64ToBlob(b64: string, mime: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-bootstrap();
+void bootstrap();

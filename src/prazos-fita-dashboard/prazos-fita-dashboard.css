@@ -32,6 +32,7 @@ html, body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 a { color: var(--primary); text-decoration: none; }
@@ -143,6 +144,96 @@ a:hover { text-decoration: underline; }
 .metric--warning .metric__value { color: var(--warning); }
 .metric--success { border-left: 3px solid var(--success); }
 .metric--success .metric__value { color: var(--success); }
+
+/*
+ * Estado "running" — cartao "Processos" enquanto o streaming roda.
+ * Uma barra sutil na borda esquerda (cor primaria) e um pulso animado
+ * no valor indicam que o numero esta subindo. Sem alarmes de cor
+ * (verde/amarelo/vermelho sao para resultado final).
+ */
+.metric--running { border-left: 3px solid var(--primary); }
+.metric--running .metric__value {
+  color: var(--primary);
+  animation: paidegua-pulse 1.6s ease-in-out infinite;
+}
+@keyframes paidegua-pulse {
+  0%,  100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+/*
+ * Banner persistente de varredura interrompida. Diferente do toast, fica
+ * no topo do conteudo ate o usuario agir — a orientacao para retomar
+ * precisa estar visivel enquanto ele navega, nao sumir em 5s.
+ */
+.aborted-banner {
+  background: var(--bg-card);
+  border: 1px solid var(--warning);
+  border-left: 4px solid var(--warning);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-soft);
+}
+.aborted-banner__titulo {
+  font-weight: 600;
+  color: var(--warning);
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.aborted-banner__resumo {
+  font-size: 0.95em;
+  line-height: 1.5;
+  color: var(--text-secondary, #444);
+  margin-bottom: 6px;
+}
+.aborted-banner__resumo strong { color: var(--text, #222); }
+.aborted-banner__motivo {
+  font-size: 0.88em;
+  color: var(--text-secondary, #666);
+  margin-bottom: 10px;
+  font-style: italic;
+}
+.aborted-banner__passos {
+  margin: 10px 0 12px 20px;
+  padding: 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  color: var(--text, #333);
+}
+.aborted-banner__passos li { margin-bottom: 4px; }
+.aborted-banner__passos li em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+.aborted-banner__acoes { margin-top: 10px; }
+.aborted-banner__btn {
+  display: inline-block;
+  padding: 8px 14px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.92em;
+  font-weight: 500;
+  transition: background 120ms ease;
+}
+.aborted-banner__btn:hover { background: var(--primary-dark); }
+
+/*
+ * Virtual list (`shared/virtual-table.ts`): usado quando uma tabela
+ * passa de um N razoavel. Altura fixa do container + row-height
+ * consistente. Atualmente nao esta plugado em nenhum card padrao;
+ * reservado para unidades com >200 processos por tarefa.
+ */
+.vlist {
+  position: relative;
+  overflow-y: auto;
+  max-height: 60vh;
+  contain: strict;
+}
+.vlist__table { width: 100%; border-collapse: collapse; }
+.vlist__table tr { height: 36px; }
 
 .card {
   background: var(--bg-card);

@@ -15,6 +15,21 @@ interface OpenAiChatChunk {
   }>;
 }
 
+// O default global DEFAULT_MAX_TOKENS (32k) serve para modelos com janela de
+// saida grande (Claude Sonnet/Haiku 4.x, Gemini 2.5/3.x). GPT-4o e GPT-4o-mini
+// aceitam no maximo 16.384 tokens de completion — enviar mais retorna HTTP 400
+// invalid_value. O map cap por modelo evita o erro sem baixar o default global.
+const OPENAI_MAX_COMPLETION_TOKENS: Record<string, number> = {
+  'gpt-4o': 16_384,
+  'gpt-4o-mini': 16_384
+};
+const OPENAI_FALLBACK_MAX_COMPLETION = 16_384;
+
+function resolveOpenAiMaxTokens(model: string, requested: number): number {
+  const cap = OPENAI_MAX_COMPLETION_TOKENS[model] ?? OPENAI_FALLBACK_MAX_COMPLETION;
+  return Math.min(Math.max(1, requested), cap);
+}
+
 export const openaiProvider: LLMProvider = {
   id: 'openai',
 
@@ -39,7 +54,7 @@ export const openaiProvider: LLMProvider = {
       body: JSON.stringify({
         model: params.model,
         temperature: params.temperature,
-        max_tokens: params.maxTokens,
+        max_tokens: resolveOpenAiMaxTokens(params.model, params.maxTokens),
         stream: true,
         messages
       })

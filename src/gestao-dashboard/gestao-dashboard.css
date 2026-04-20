@@ -33,6 +33,7 @@ html, body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 a { color: var(--primary); text-decoration: none; }
@@ -83,6 +84,40 @@ a:hover { text-decoration: underline; }
   color: var(--muted);
   text-align: right;
   line-height: 1.4;
+}
+
+.header__hydration {
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.header__hydration-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.header__hydration-track {
+  height: 6px;
+  background: rgba(19, 81, 180, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.header__hydration-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--gradient, linear-gradient(90deg, #1351b4, #2670d9));
+  border-radius: 3px;
+  transition: width 300ms ease-out;
+}
+
+.header__hydration--done .header__hydration-fill {
+  background: #2e7d32;
 }
 
 /* ========== Layout principal ========== */

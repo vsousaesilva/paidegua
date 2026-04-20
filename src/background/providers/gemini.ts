@@ -43,6 +43,24 @@ const SAFETY_SETTINGS_PERMISSIVE = [
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
 ];
 
+// Gemini 2.5/3.x aceitam ate 65.536 tokens de saida — o default global (32k)
+// ja cabe. Mantemos o cap por modelo apenas como rede de seguranca para o
+// caso de DEFAULT_MAX_TOKENS ser aumentado ou de um modelo com teto menor
+// ser adicionado a PROVIDER_MODELS no futuro.
+const GEMINI_MAX_OUTPUT_TOKENS: Record<string, number> = {
+  'gemini-3.1-pro-preview': 65_536,
+  'gemini-3-flash-preview': 65_536,
+  'gemini-3.1-flash-lite-preview': 65_536,
+  'gemini-2.5-pro': 65_536,
+  'gemini-2.5-flash': 65_536
+};
+const GEMINI_FALLBACK_MAX_OUTPUT = 32_768;
+
+function resolveGeminiMaxTokens(model: string, requested: number): number {
+  const cap = GEMINI_MAX_OUTPUT_TOKENS[model] ?? GEMINI_FALLBACK_MAX_OUTPUT;
+  return Math.min(Math.max(1, requested), cap);
+}
+
 export const geminiProvider: LLMProvider = {
   id: 'gemini',
 
@@ -72,7 +90,7 @@ export const geminiProvider: LLMProvider = {
         safetySettings: SAFETY_SETTINGS_PERMISSIVE,
         generationConfig: {
           temperature: params.temperature,
-          maxOutputTokens: params.maxTokens,
+          maxOutputTokens: resolveGeminiMaxTokens(params.model, params.maxTokens),
           // Modelos Gemini 2.5/3.x são "thinking models": gastam tokens em
           // raciocínio interno antes de produzir texto. Para análise jurídica
           // queremos a resposta direta, então zeramos o budget de thinking

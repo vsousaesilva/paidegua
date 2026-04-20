@@ -46,6 +46,7 @@ export function defaultSettings(): PAIdeguaSettings {
     models[id] = defaultModelFor(id);
   }
   return {
+    extensionEnabled: true,
     activeProvider: DEFAULT_PROVIDER,
     models,
     temperature: DEFAULT_TEMPERATURE,
@@ -139,9 +140,15 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
       ? stored.etiquetasPromptCriterios
       : '';
 
+  // Instalações anteriores à Fase de kill-switch não têm `extensionEnabled`.
+  // Preserva o comportamento atual (extensão ligada) para quem atualiza.
+  const storedEnabled =
+    typeof stored.extensionEnabled === 'boolean' ? stored.extensionEnabled : true;
+
   return {
     ...base,
     ...stored,
+    extensionEnabled: storedEnabled,
     models: mergedModels,
     maxTokens: storedMaxTokens,
     defaultProfile: storedProfile,

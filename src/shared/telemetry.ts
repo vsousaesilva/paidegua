@@ -14,7 +14,7 @@
  * O que registramos:
  *   - Início/fim de cada varredura (kind, meta livre, status).
  *   - Fases nomeadas com duração (ex.: "listar", "resolver-ca", "fetch-expedientes").
- *   - Contadores (ex.: processos, 403, cache-hits, fallback-dom).
+ *   - Contadores (ex.: processos, 403, fallback-dom, auth-expired).
  *
  * O que NÃO registramos: qualquer dado sensível (CNJ, CPF, conteúdo de
  * processos). `meta` é livre mas o código chamador deve evitar gravar PII.

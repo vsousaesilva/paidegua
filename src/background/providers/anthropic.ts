@@ -21,13 +21,29 @@ interface AnthropicSseDelta {
   message?: { content?: Array<{ type: string; text?: string }> };
 }
 
+// A API Messages exige que max_tokens <= limite de saida do modelo (Opus 4.x
+// aceita ate 32k; Sonnet e Haiku 4.x aceitam ate 64k). O default global
+// DEFAULT_MAX_TOKENS (32k) cabe em Opus, mas um eventual aumento do default
+// quebraria Opus silenciosamente. O map cap por modelo isola essa regra.
+const ANTHROPIC_MAX_OUTPUT_TOKENS: Record<string, number> = {
+  'claude-opus-4-6': 32_000,
+  'claude-sonnet-4-6': 64_000,
+  'claude-haiku-4-5-20251001': 64_000
+};
+const ANTHROPIC_FALLBACK_MAX_OUTPUT = 8_192;
+
+function resolveAnthropicMaxTokens(model: string, requested: number): number {
+  const cap = ANTHROPIC_MAX_OUTPUT_TOKENS[model] ?? ANTHROPIC_FALLBACK_MAX_OUTPUT;
+  return Math.min(Math.max(1, requested), cap);
+}
+
 export const anthropicProvider: LLMProvider = {
   id: 'anthropic',
 
   async *sendMessage(params: SendMessageParams): AsyncGenerator<StreamChunk, void, void> {
     const body = {
       model: params.model,
-      max_tokens: params.maxTokens,
+      max_tokens: resolveAnthropicMaxTokens(params.model, params.maxTokens),
       temperature: params.temperature,
       system: params.systemPrompt,
       stream: true,

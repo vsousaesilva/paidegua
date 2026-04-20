@@ -51,6 +51,12 @@ export interface ChatMessage {
 
 /** Configurações persistidas do usuário. */
 export interface PAIdeguaSettings {
+  /**
+   * Liga/desliga globalmente a extensão. Quando `false`, o content script
+   * não monta o botão do header nem o sidebar nas páginas do PJe. A chave
+   * permanece em storage para reativação rápida via popup.
+   */
+  extensionEnabled: boolean;
   activeProvider: ProviderId;
   /** Modelo selecionado por provedor. */
   models: Record<ProviderId, string>;
@@ -229,6 +235,22 @@ export interface TriagemDashboardPayload {
   geradoEm: string;
   /** Hostname da instância PJe (ex: "pje1g.trf5.jus.br"). */
   hostnamePJe: string;
+  /**
+   * Origin completo do PJe legacy (ex: "https://pje1g.trf5.jus.br"). Usado
+   * pelo dashboard para montar URLs dos autos quando a hidratação
+   * progressiva de `ca` (chaveAcessoProcesso) resolve cada processo após o
+   * carregamento inicial do relatório. Opcional para compatibilidade com
+   * payloads antigos (caminho DOM já traz `p.url` pronto).
+   */
+  legacyOrigin?: string;
+  /**
+   * Identificador da varredura usado como sufixo da chave em
+   * `chrome.storage.session` (`STORAGE_KEYS.DASHBOARD_URL_HYDRATION_PREFIX`)
+   * onde a resolução progressiva de URLs por `idProcesso` é publicada. Quando
+   * presente, o dashboard assina `chrome.storage.onChanged` e atualiza os
+   * cartões conforme cada `ca` resolve. Ausente nos caminhos DOM.
+   */
+  urlHydrationScanId?: string;
   tarefas: TriagemTarefaSnapshot[];
   /** Total geral de processos. */
   totalProcessos: number;
@@ -354,6 +376,20 @@ export interface GestaoDashboardPayload {
   geradoEm: string;
   /** Hostname da instância PJe (ex: "pje1g.trf5.jus.br"). */
   hostnamePJe: string;
+  /**
+   * Origin completo do PJe legacy (ex: "https://pje1g.trf5.jus.br"). Usado
+   * pelo dashboard para montar URLs dos autos durante a hidratação
+   * progressiva de `ca` (chaveAcessoProcesso). Opcional para
+   * compatibilidade com payloads antigos.
+   */
+  legacyOrigin?: string;
+  /**
+   * Identificador da varredura usado como sufixo da chave em
+   * `chrome.storage.session` com os mapas parciais `idProcesso → url`
+   * publicados pela hidratação em segundo plano. Ver
+   * `TriagemDashboardPayload.urlHydrationScanId`.
+   */
+  urlHydrationScanId?: string;
   /** Nomes das tarefas efetivamente varridas (subset da seleção do usuário). */
   tarefasSelecionadas: string[];
   /** Snapshots completos por tarefa. */
@@ -616,6 +652,56 @@ export interface PJeAuthSnapshot {
 }
 
 /**
+ * Resultado do refresh silencioso de token via OIDC Authorization Code
+ * Flow com `prompt=none`. Executado no page world do Angular (origin
+ * `frontend-prd.<tribunal>.jus.br`) — o unico lugar onde o `redirect_uri`
+ * `silent-check-sso.html` e aceito pelo Keycloak do CNJ e onde o cookie
+ * `KEYCLOAK_IDENTITY` e enviado automaticamente.
+ */
+export interface SilentRefreshResult {
+  ok: boolean;
+  /** Novo `Authorization: Bearer ...` pronto pra header HTTP. */
+  authorization?: string;
+  /** access_token cru (sem prefixo Bearer). */
+  accessToken?: string;
+  /** TTL em segundos reportado pelo Keycloak. */
+  expiresIn?: number;
+  /** exp do JWT (epoch s) — util pra instrumentacao. */
+  jwtExp?: number;
+  /** Quando falha: mensagem curta pra log/diag (sem corpo sensivel). */
+  error?: string;
+  /** Duracao total do fluxo em ms (auth + token exchange). */
+  durationMs?: number;
+}
+
+/**
+ * Snapshot de diagnostico gravado em `chrome.storage.local` sempre que um
+ * HTTP 403 sobe de uma chamada REST do PJe. Nao contem Bearer token
+ * completo nem dados de partes — apenas indicadores da CAUSA provavel.
+ */
+export interface Http403Diagnostic {
+  /** ms epoch. */
+  capturedAt: number;
+  /** URL (path+query) que devolveu 403. */
+  url: string;
+  status: number;
+  /** Idade do snapshot de auth usado (ms entre captura do snap e o 403). */
+  snapshotAgeMs: number | null;
+  /** exp do JWT em cache (epoch s), quando conseguimos decodificar. */
+  jwtExp: number | null;
+  /** Se o JWT em cache ja estava expirado no momento do 403. */
+  jwtExpiredAtRequest: boolean | null;
+  /** `JSESSIONID=` presente no `document.cookie` no momento do 403. */
+  jsessionIdPresent: boolean;
+  /** Trecho do corpo da resposta (max 500 chars). */
+  bodySnippet: string;
+  /** Se tentamos silent refresh e qual foi o resultado. */
+  silentRefreshAttempted: boolean;
+  silentRefreshOk: boolean | null;
+  silentRefreshError?: string;
+}
+
+/**
  * Processo retornado pela API
  * `recuperarProcessosTarefaPendenteComCriterios`. Normalizado a partir
  * do shape variavel do PJe (campos com `descricao` aninhada, arrays
@@ -826,15 +912,39 @@ export interface PrazosFitaScanStateInfo {
 }
 
 /**
- * Payload do dashboard "Prazos na Fita" — gravado em `storage.session`
- * pelo background e lido pela aba dedicada. Sem LGPD no servidor:
- * nomes de partes e numeros CNJ ficam apenas localmente.
+ * Payload do dashboard "Prazos na Fita" — gravado em IndexedDB pelo
+ * background e lido pela aba dedicada. Sem LGPD no servidor: nomes
+ * de partes e numeros CNJ ficam apenas localmente.
+ *
+ * A partir do streaming progressivo, o payload pode ser consultado
+ * com a varredura ainda em andamento — `status` e `progresso`
+ * descrevem esse estado. Quando ausentes (payloads antigos), assume-se
+ * `status = 'done'` e `progresso` derivado de `consolidado.length`.
  */
 export interface PrazosFitaDashboardPayload {
   geradoEm: string;
   hostnamePJe: string;
   /** Nomes das tarefas selecionadas no seletor. */
   tarefasSelecionadas: string[];
+  /**
+   * Estado atual da varredura. Ausente em payloads antigos (compat) —
+   * nesse caso trate como 'done'.
+   */
+  status?: 'running' | 'done' | 'aborted';
+  /**
+   * Progresso ao vivo durante a coleta. Sempre presente em varreduras
+   * novas (mesmo em `status: 'done'`, como snapshot final). O dashboard
+   * usa estes campos para popular os cartoes do cabecalho durante o
+   * streaming e para exibir toast de retomada quando `status = 'aborted'`.
+   */
+  progresso?: {
+    total: number;
+    consolidados: number;
+    /** Data/hora do abort (ISO). So presente em status 'aborted'. */
+    abortadoEm?: string;
+    /** Mensagem humana do abort. */
+    erroAbort?: string;
+  };
   /** Resultado bruto de `coletarPrazosPorTarefasViaAPI`. */
   resultado: {
     totalDescobertos: number;

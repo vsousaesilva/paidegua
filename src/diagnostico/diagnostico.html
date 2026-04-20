@@ -22,6 +22,22 @@
     </header>
 
     <main class="diag-main">
+      <section class="diag-probe" id="probe-section" hidden>
+        <header class="diag-probe__head">
+          <h2 class="diag-probe__title">Probe Keycloak</h2>
+          <span class="diag-probe__status" id="probe-status">—</span>
+        </header>
+        <div class="diag-probe__body" id="probe-body"></div>
+      </section>
+
+      <section class="diag-probe" id="http403-section" hidden>
+        <header class="diag-probe__head">
+          <h2 class="diag-probe__title">Histórico HTTP 403 (últimos 50)</h2>
+          <span class="diag-probe__status" id="http403-status">—</span>
+        </header>
+        <div class="diag-probe__body" id="http403-body"></div>
+      </section>
+
       <section class="diag-summary" id="summary" hidden>
         <div class="diag-summary-item">
           <span class="diag-summary-label">Varreduras</span>
@@ -47,5 +63,6 @@
 
       <div class="diag-list" id="list"></div>
     </main>
+    <script src="diagnostico.js"></script>
   </body>
 </html>

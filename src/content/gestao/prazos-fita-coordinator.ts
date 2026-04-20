@@ -19,11 +19,14 @@ import type {
   TriagemTarefaSnapshot
 } from '../../shared/types';
 import {
-  aguardarNovoSnapshot,
   gerarChaveAcesso,
-  lerCapturadoEmSnapshot,
+  lerSnapshotAuth,
   listarProcessosDaTarefa
 } from '../pje-api/pje-api-from-content';
+import {
+  decodeJwtExp,
+  solicitarRefreshSilent
+} from '../auth/pje-auth-refresh-bridge';
 import { coletarTarefasSelecionadas } from './gestao-bridge';
 import { coletarExpedientesViaFetch } from './prazos-fita-fetch-collector';
 import {
@@ -35,50 +38,25 @@ import {
 import { startScan } from '../../shared/telemetry';
 
 /**
- * Carrega o cache de `ca` persistido em `chrome.storage.local`. Usar
- * `local` (nao `session`) garante que o cache sobrevive ao fechamento do
- * Chrome — cruciais nas varreduras recorrentes, onde 100% dos processos
- * ja tem `ca` conhecido e a primeira chamada (gerarChaveAcessoProcesso)
- * pode ser totalmente pulada, reduzindo pela metade o numero de HTTP
- * calls por varredura.
+ * Limpa o cache morto de `ca` que existia em `chrome.storage.local` na
+ * versao anterior. Rodava como otimizacao para reaproveitar
+ * `chaveAcessoProcesso` entre varreduras — mas no PJe TRF5 a `ca` expira
+ * silenciosamente (servidor responde 200 com stub, sem tbody), o que
+ * levava a coletas aparentemente bem-sucedidas com "0 expedientes" em
+ * ~99% dos processos. Sem forma confiavel de revalidar a chave cacheada
+ * sem refazer a propria requisicao completa, o custo do cache passou a
+ * ser maior que o ganho: removido por completo.
  *
- * Retorna Map vazio em qualquer erro — cache e apenas otimizacao, nunca
- * deve impedir a varredura.
+ * A remocao e idempotente e silenciosa — so serve para limpar os 1000+
+ * itens residuais de usuarios que ja tinham o cache populado. Pode ser
+ * retirada em uma versao futura quando tivermos certeza que nenhuma
+ * instalacao antiga persiste a chave.
  */
-async function carregarCaCache(): Promise<Map<number, string>> {
+async function limparCacheCaLegado(): Promise<void> {
   try {
-    const out = await chrome.storage.local.get(
-      STORAGE_KEYS.PRAZOS_FITA_CA_CACHE
-    );
-    const raw = out[STORAGE_KEYS.PRAZOS_FITA_CA_CACHE];
-    if (!raw || typeof raw !== 'object') return new Map();
-    const result = new Map<number, string>();
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof v === 'string' && v) {
-        const n = Number(k);
-        if (Number.isFinite(n) && n > 0) result.set(n, v);
-      }
-    }
-    return result;
+    await chrome.storage.local.remove(STORAGE_KEYS.PRAZOS_FITA_CA_CACHE);
   } catch {
-    return new Map();
-  }
-}
-
-/**
- * Persiste todo o Map como JSON-like em `storage.local`. Como sempre
- * chamamos com o Map carregado + adicoes desta varredura, o efeito e um
- * merge — nunca perdemos entradas previas.
- */
-async function persistirCaCache(cache: Map<number, string>): Promise<void> {
-  try {
-    const obj: Record<string, string> = {};
-    for (const [k, v] of cache) obj[String(k)] = v;
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.PRAZOS_FITA_CA_CACHE]: obj
-    });
-  } catch (err) {
-    console.warn('[pAIdegua] persistirCaCache falhou:', err);
+    /* ignore: limpeza e best-effort */
   }
 }
 
@@ -93,27 +71,98 @@ function eErro403(errorMsg: string | undefined | null): boolean {
 }
 
 /**
- * Tempo maximo que um worker fica aguardando o Angular renovar o token
- * Keycloak apos detectar 403. 60s cobre a janela tipica de refresh
- * automatico; se passar disso e porque ninguem esta ativo no PJe.
+ * Reconhece erros transientes pos-retry da fase de expedientes: "Failed
+ * to fetch" (TypeError do browser em rede instavel/rate limit), timeout
+ * do AbortController, HTTP 429 e HTTP 5xx. Esses erros justificam NAO
+ * consolidar o slot — ele vai ficar `null` no checkpoint e sera recoletado
+ * quando o usuario relancar com "retomar". Erros definitivos (404, 400,
+ * etc.) permanecem consolidados com `error` preenchido.
  */
-const REFRESH_TIMEOUT_MS = 60_000;
+function eErroTransienteMsg(errorMsg: string | undefined | null): boolean {
+  if (!errorMsg) return false;
+  // Failed to fetch / NetworkError: emitido como TypeError.message
+  if (/failed to fetch/i.test(errorMsg)) return true;
+  if (/network\s*error/i.test(errorMsg)) return true;
+  // Timeout do AbortController local (DOMException.name === 'TimeoutError')
+  if (/\btimeout\b/i.test(errorMsg)) return true;
+  // Http status classes transientes
+  if (/\bHTTP\s*429\b/i.test(errorMsg)) return true;
+  if (/\bHTTP\s*5\d\d\b/i.test(errorMsg)) return true;
+  return false;
+}
+
+/**
+ * Tempo maximo que um worker fica aguardando o refresh silencioso do
+ * token Keycloak apos detectar 403. 90s cobre varias tentativas de iframe
+ * cross-origin (cada uma pode levar ate 25s quando a aba esta em
+ * background e o Chrome throttla), alem de backoff entre elas.
+ */
+const REFRESH_TIMEOUT_MS = 90_000;
+
+/**
+ * Margem em ms antes do `exp` do JWT em que disparamos refresh proativo.
+ * 45s: cobre o pior caso de iframe cross-origin (25s) + backoff + retry,
+ * com folga para a chamada REST que vai usar o token novo. Reduzir isso
+ * re-introduz o storm de 403 quando 25 workers pegam tokens expirando
+ * no mesmo instante.
+ */
+const JWT_PROACTIVE_MARGIN_MS = 45_000;
+
+/**
+ * Garante que o token corrente ainda tera validade suficiente para a
+ * proxima chamada REST. Se o JWT esta a menos de `JWT_PROACTIVE_MARGIN_MS`
+ * de expirar, dispara silent refresh ANTES de tentar a requisicao. O
+ * `inflight` de `solicitarRefreshSilent` coalesca — 25 workers chamando
+ * simultaneamente compartilham UMA unica requisicao.
+ *
+ * Por que proativo: em varreduras 2k+ (~20min), o token (~5min) expira
+ * varias vezes no meio. Sem refresh proativo, os 25 workers batem em
+ * 403 simultaneamente, o Angular do PJe (se a aba estiver em background)
+ * nao renova sozinho, e o fallback do iframe pode falhar por throttle.
+ * Melhor gastar 1 refresh planejado antes do storm que 25 falhas depois.
+ *
+ * Silencioso em falha: se o refresh proativo falhar, o fluxo segue para
+ * a chamada REST normal — o 403 resultante vai acionar o retry ativo
+ * em `gerarCaComRetryEmRefresh`, sem regressao do caminho atual.
+ */
+async function garantirTokenFresco(
+  onProgress: (msg: string) => void
+): Promise<void> {
+  const snap = await lerSnapshotAuth();
+  if (!snap?.authorization) return;
+  const jwtExpSec = decodeJwtExp(snap.authorization);
+  if (jwtExpSec == null) return;
+  const expMs = jwtExpSec * 1_000;
+  if (expMs - Date.now() > JWT_PROACTIVE_MARGIN_MS) return;
+  // Log apenas quando disparamos — em N workers, o `inflight` garante 1 log.
+  onProgress('[auth] token proximo do vencimento, renovando proativamente...');
+  try {
+    await solicitarRefreshSilent();
+  } catch {
+    /* ignore: coberto pelo retry reativo em caso de 403 */
+  }
+}
 
 /**
  * Chama `gerarChaveAcesso` com recuperacao automatica de 403:
  *
- *  1. Se der 403, le o `capturedAt` atual do snapshot e aguarda
- *     `chrome.storage.onChanged` sinalizar um snapshot mais novo (o
- *     interceptor grava quando o Angular faz qualquer REST com token
- *     renovado).
- *  2. Ao detectar snapshot novo, repete `gerarChaveAcesso` — desta vez
- *     `obterSnapshot` ja le o token fresco.
- *  3. Se 60s se passarem sem refresh, desiste e devolve o 403 original
- *     (coordinator vai setar `authExpired` e abortar com mensagem
- *     instruindo o usuario).
+ *  1. Se der 403 (mesmo apos o silent refresh interno de `gerarChaveAcesso`),
+ *     dispara `solicitarRefreshSilent()` em loop ATIVO com backoff, ate
+ *     `REFRESH_TIMEOUT_MS`. Em cada tentativa bem-sucedida, re-executa
+ *     `gerarChaveAcesso` (que le o snapshot atualizado).
+ *  2. Se esgotar o budget, devolve o 403 original — coordinator seta
+ *     `authExpired` e aborta com mensagem instruindo o usuario.
  *
- * Acorda todos os workers de uma so vez quando o refresh chega — sem
- * polling, sem N timers independentes.
+ * Por que ativo em vez de `aguardarNovoSnapshot`: o wait passivo depende
+ * do Angular do PJe fazer alguma REST que atualize o snapshot via
+ * interceptor. Em aba em background (situacao tipica de varreduras longas,
+ * o usuario ja trocou de aba), o Chrome throttla e isso pode nunca
+ * acontecer. Retries ativos do iframe eventualmente passam (Chrome libera
+ * quando a aba volta a foco, ou simplesmente pelo aquecimento DNS/socket
+ * da segunda tentativa).
+ *
+ * Coalescing via `inflight` de `solicitarRefreshSilent` — N workers
+ * concorrentes em 403 compartilham UMA refresh attempt.
  */
 async function gerarCaComRetryEmRefresh(
   idProcesso: number,
@@ -126,20 +175,33 @@ async function gerarCaComRetryEmRefresh(
   if (primeira?.ok || !eErro403(primeira?.error)) {
     return { caResp: primeira, aguardouRefresh: false };
   }
-  const capturadoEm = (await lerCapturadoEmSnapshot()) ?? 0;
   onProgress(
-    '[auth] token do PJe expirou, aguardando Angular renovar em background...'
+    '[auth] token do PJe expirou, tentando renovar em background...'
   );
-  const refreshOk = await aguardarNovoSnapshot(
-    capturadoEm,
-    REFRESH_TIMEOUT_MS
-  );
-  if (!refreshOk) {
-    return { caResp: primeira, aguardouRefresh: true };
+  const deadline = Date.now() + REFRESH_TIMEOUT_MS;
+  let tentativa = 0;
+  let ultimo: Awaited<ReturnType<typeof gerarChaveAcesso>> = primeira;
+  while (Date.now() < deadline) {
+    tentativa++;
+    const refresh = await solicitarRefreshSilent();
+    if (refresh.ok) {
+      onProgress('[auth] token renovado, retomando varredura.');
+      const segunda = await gerarChaveAcesso(idProcesso);
+      if (segunda?.ok || !eErro403(segunda?.error)) {
+        return { caResp: segunda, aguardouRefresh: true };
+      }
+      // Refresh disse ok mas servidor ainda devolveu 403 — pode ser clock
+      // skew entre iframe e servidor. Continua tentando ate o deadline.
+      ultimo = segunda;
+    }
+    const restante = deadline - Date.now();
+    if (restante <= 0) break;
+    // Backoff exponencial: 2s, 4s, 8s, cap 15s. Em paralelo, o Chrome
+    // pode liberar o iframe (usuario volta pra aba, etc).
+    const waitMs = Math.min(15_000, 2_000 * Math.pow(2, tentativa - 1));
+    await new Promise((res) => setTimeout(res, Math.min(waitMs, restante)));
   }
-  onProgress('[auth] token renovado, retomando varredura.');
-  const segunda = await gerarChaveAcesso(idProcesso);
-  return { caResp: segunda, aguardouRefresh: true };
+  return { caResp: ultimo, aguardouRefresh: true };
 }
 
 export interface ColetarLoteOptions {
@@ -512,6 +574,62 @@ export interface ColetarPorTarefasViaAPIOptions {
    * faz uma varredura do zero (equivalente a `retomar: false`).
    */
   retomar?: boolean;
+  /**
+   * Callbacks de streaming progressivo. Quando fornecidos, permitem ao
+   * chamador abrir o dashboard ANTES da coleta terminar:
+   *   1. `onEnumerated` dispara logo que a enumeracao (Fase 1) conclui
+   *      e `unicos.length` esta estavel. O chamador deve gravar o
+   *      skeleton no IDB e navegar a aba-painel pro dashboard.
+   *   2. `onSlot` dispara para cada processo coletado (sucesso, erro
+   *      definitivo ou transiente ja "resolvido"). O chamador grava no
+   *      IDB como slot:idx e faz broadcast pro dashboard.
+   *   3. `onFinalized` dispara no fim — ok ou abort.
+   *
+   * Opcionais: o pipeline funciona igual sem eles (caminho legado:
+   * tudo num unico COLETA_DONE no final).
+   */
+  onEnumerated?: (meta: StreamingEnumeratedMeta) => void | Promise<void>;
+  onSlot?: (idx: number, item: ConsolidadoViaAPI) => void | Promise<void>;
+  /**
+   * Reemissao de um slot ja presente no checkpoint de retomada. Semantica
+   * identica a `onSlot`, mas o chamador deve gravar no IDB sem mexer no
+   * contador `meta.consolidados` — o init do skeleton ja nasceu com
+   * `consolidadosInicial = X`. Se omitido, o coordinator cai de volta em
+   * `onSlot` (comportamento legado, que mostrava o card subindo de 0).
+   */
+  onHydrateSlot?: (idx: number, item: ConsolidadoViaAPI) => void | Promise<void>;
+  onFinalized?: (args: StreamingFinalizedArgs) => void | Promise<void>;
+}
+
+/** Payload do callback `onEnumerated` (Fase 1 concluida). */
+export interface StreamingEnumeratedMeta {
+  /** Total de processos unicos pos-dedup+filtros+teto. */
+  total: number;
+  /** Total antes da dedup (soma das tarefas). */
+  totalDescobertos: number;
+  /** Hostname do PJe de origem (para o IDB meta). */
+  hostnamePJe: string;
+  /** Nomes de tarefas informados pelo usuario. */
+  tarefasSelecionadas: string[];
+  /** Nome extraido da vara (primeira ocorrencia), quando detectavel. */
+  nomeUnidade: string | null;
+  /** ISO do inicio do scan (ou do scan retomado). */
+  geradoEm: string;
+  /**
+   * Em retomada, quantos processos ja estavam coletados no checkpoint.
+   * Usado pelo dashboard para abrir com o card "Processos" em `X/total`
+   * em vez de `0/total` enquanto os slots sao reemitidos por hidratacao.
+   * Omitido (ou 0) em scans novos.
+   */
+  consolidadosInicial?: number;
+}
+
+/** Payload do callback `onFinalized`. */
+export interface StreamingFinalizedArgs {
+  status: 'done' | 'aborted';
+  tempoTotalMs: number;
+  abortadoEm?: string;
+  erroAbort?: string;
 }
 
 export interface ConsolidadoViaAPI {
@@ -742,6 +860,47 @@ export async function coletarPrazosPorTarefasViaAPI(
     );
   }
 
+  // Streaming: dashboard abre agora, com cartoes em "0/unicos.length".
+  // Feito apos a ordenacao por antiguidade + aplicacao de teto, para que
+  // o idx dos slots bata com a ordem final de renderizacao. Em retomada
+  // tambem emitimos — o chamador precisa do meta para reidratar o IDB.
+  if (opts.onEnumerated) {
+    try {
+      await opts.onEnumerated({
+        total: unicos.length,
+        totalDescobertos,
+        hostnamePJe,
+        tarefasSelecionadas: opts.nomesTarefas,
+        nomeUnidade: nomeUnidade ?? null,
+        geradoEm: new Date(startedAt).toISOString(),
+        consolidadosInicial: retomado ? concluidos : 0
+      });
+    } catch (err) {
+      onProgress(
+        `[aviso] falha emitindo skeleton de streaming: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  // Em retomada com streaming: re-emite os slots ja consolidados para
+  // hidratar o dashboard recem-aberto. Sem isso, ele abriria vazio e o
+  // usuario veria so os slots coletados DAQUI pra frente. Usa
+  // `onHydrateSlot` quando disponivel — esse caminho grava o slot sem
+  // mexer no contador `consolidados`, que ja nasceu no valor certo
+  // no skeleton. Fallback para `onSlot` preserva o comportamento legado.
+  const reemit = opts.onHydrateSlot ?? opts.onSlot;
+  if (retomado && reemit) {
+    for (let i = 0; i < consolidados.length; i++) {
+      const c = consolidados[i];
+      if (c == null) continue;
+      try {
+        await reemit(i, c);
+      } catch {
+        /* ignore: streaming nao deve quebrar a retomada */
+      }
+    }
+  }
+
   // Salva o estado inicial (antes de qualquer worker comecar) — se o
   // usuario fechar o Chrome imediatamente, temos pelo menos o unicos
   // e o setup para retomar sem refazer a Fase 1.
@@ -784,18 +943,22 @@ export async function coletarPrazosPorTarefasViaAPI(
   // feito dentro do worker.
   proximo = 0;
 
-  // Cache de `ca` (chaveAcessoProcesso). O token e estavel enquanto o
-  // processo existir no servidor — reusa-lo entre varreduras elimina a
-  // chamada `gerarChaveAcessoProcesso` (Bearer, sujeita a 403 por token
-  // Keycloak expirado).
-  const caCache = await carregarCaCache();
-  let caCacheHits = 0;
+  // `ca` (chaveAcessoProcesso) e gerada fresca para cada processo. Antes
+  // havia cache persistente em `chrome.storage.local`, mas a `ca` expira
+  // silenciosamente no servidor (200 com stub em vez de 4xx), gerando
+  // coletas com "0 expedientes" em ~99% dos processos sem erro visivel.
+  // Limpa entradas residuais de instalacoes antigas (no-op se vazio).
+  void limparCacheCaLegado();
 
   // Flag compartilhada entre workers: se qualquer um detectar 403 no
   // `gerarChaveAcesso`, todos paramos de pegar trabalho novo. Melhor
   // abortar cedo que listar centenas de "erro: HTTP 403" no log.
   let authExpired = false;
   let authExpiredAtProcId = 0;
+  // Contador de slots deixados em `null` por erro transiente (pos-retry).
+  // Sao preservados no checkpoint para retomada — o dashboard abre com o
+  // que foi consolidado, e a proxima varredura com "retomar" recoleta estes.
+  let pendentesTransientes = 0;
 
   const worker = async (): Promise<void> => {
     while (true) {
@@ -809,34 +972,32 @@ export async function coletarPrazosPorTarefasViaAPI(
       let url: string | null = null;
       let coleta: PrazosProcessoColeta | null = null;
       let error: string | undefined;
-      let caValor: string | null = caCache.get(processoApi.idProcesso) ?? null;
+      let caValor: string | null = null;
 
       try {
-        if (!caValor) {
-          const { caResp } = await gerarCaComRetryEmRefresh(
-            processoApi.idProcesso,
-            onProgress
-          );
-          if (!caResp?.ok || !caResp.ca) {
-            if (eErro403(caResp?.error)) {
-              authExpired = true;
-              authExpiredAtProcId = processoApi.idProcesso;
-              consolidados[idx] = {
-                tarefaNome,
-                processoApi,
-                url: null,
-                coleta: null,
-                error: 'auth expirado (HTTP 403) — varredura abortada.'
-              };
-              return;
-            }
-            error = caResp?.error ?? 'Falha resolvendo chave de acesso.';
-          } else {
-            caValor = caResp.ca;
-            caCache.set(processoApi.idProcesso, caValor);
+        // Proativo: se o JWT esta a menos de 45s de expirar, dispara
+        // refresh ANTES de bater no servidor. Coalesce via `inflight` —
+        // N workers concorrentes viram 1 refresh. Evita o storm de 403
+        // que antes derrubava varreduras 2k+.
+        await garantirTokenFresco(onProgress);
+        const { caResp } = await gerarCaComRetryEmRefresh(
+          processoApi.idProcesso,
+          onProgress
+        );
+        if (!caResp?.ok || !caResp.ca) {
+          if (eErro403(caResp?.error)) {
+            authExpired = true;
+            authExpiredAtProcId = processoApi.idProcesso;
+            // Deixa `consolidados[idx]` como null — auth-expirado e
+            // transiente do ponto de vista da retomada: basta o usuario
+            // renovar a sessao no PJe e relancar. Consolidar com erro
+            // aqui faria o slot ser pulado (`if (consolidados[idx] != null)`)
+            // e o processo 3090332-equivalente nunca seria recoletado.
+            return;
           }
+          error = caResp?.error ?? 'Falha resolvendo chave de acesso.';
         } else {
-          caCacheHits++;
+          caValor = caResp.ca;
         }
 
         if (caValor && !error) {
@@ -861,14 +1022,53 @@ export async function coletarPrazosPorTarefasViaAPI(
         error = err instanceof Error ? err.message : String(err);
       }
 
-      consolidados[idx] = { tarefaNome, processoApi, url, coleta, error };
-      concluidos++;
-      concluidosDesdeUltimoCheckpoint++;
-      onProgress(
-        `[expedientes] ${concluidos}/${unicos.length} — ${
-          processoApi.numeroProcesso ?? `id ${processoApi.idProcesso}`
-        }${error ? ` (erro: ${error})` : ''}`
-      );
+      // Classificacao do slot:
+      //  - erro transiente pos-retry (Failed to fetch, timeout, 429, 5xx):
+      //    nao consolida — deixa consolidados[idx] = null para permitir
+      //    retomada; nao conta em `concluidos`.
+      //  - erro definitivo (ca nao resolvida, HTTP 4xx nao-429, etc.):
+      //    consolida com `error` preenchido — nao vale recoletar.
+      //  - sucesso ou coleta.ok === true: consolida normalmente.
+      const msgErroColeta =
+        coleta && coleta.ok === false ? coleta.error : undefined;
+      const msgTransienteRaiz =
+        (msgErroColeta && eErroTransienteMsg(msgErroColeta) && msgErroColeta) ||
+        (error && eErroTransienteMsg(error) && error) ||
+        null;
+      if (msgTransienteRaiz) {
+        pendentesTransientes++;
+        concluidosDesdeUltimoCheckpoint++;
+        onProgress(
+          `[expedientes] ${concluidos}/${unicos.length} — ${
+            processoApi.numeroProcesso ?? `id ${processoApi.idProcesso}`
+          } (pendente transiente: ${msgTransienteRaiz})`
+        );
+      } else {
+        const slot: ConsolidadoViaAPI = {
+          tarefaNome,
+          processoApi,
+          url,
+          coleta,
+          error
+        };
+        consolidados[idx] = slot;
+        concluidos++;
+        concluidosDesdeUltimoCheckpoint++;
+        onProgress(
+          `[expedientes] ${concluidos}/${unicos.length} — ${
+            processoApi.numeroProcesso ?? `id ${processoApi.idProcesso}`
+          }${error ? ` (erro: ${error})` : ''}`
+        );
+        // Streaming: propaga o slot recem-consolidado. Best-effort — se
+        // o chamador (background) explodir, a coleta continua.
+        if (opts.onSlot) {
+          try {
+            await opts.onSlot(idx, slot);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       if (concluidosDesdeUltimoCheckpoint >= CHECKPOINT_INTERVA) {
         concluidosDesdeUltimoCheckpoint = 0;
         // Fire-and-forget: nao bloqueia o worker; se falhar, GC limpa
@@ -888,20 +1088,8 @@ export async function coletarPrazosPorTarefasViaAPI(
     unicos: unicos.length,
     concluidos,
     concurrency,
-    caCacheHits,
     authExpired
   });
-
-  // Persiste o cache (load + novos `ca` desta varredura) ao final. Feito
-  // aqui em vez de a cada novo `ca` para evitar N writes no storage em
-  // 2000+ processos.
-  await persistirCaCache(caCache);
-  if (caCacheHits > 0) {
-    scan.counter('ca-cache-hits', caCacheHits);
-    onProgress(
-      `[cache] ${caCacheHits} chave(s) de acesso reaproveitadas do cache.`
-    );
-  }
 
   if (authExpired) {
     // Salva checkpoint com o estado parcial antes de abortar — o
@@ -912,21 +1100,53 @@ export async function coletarPrazosPorTarefasViaAPI(
       parciaisPreservados: concluidos,
       authExpiredAtProcId
     });
-    throw new Error(
+    const mensagemAbort =
       `Token do PJe expirou e nao foi renovado automaticamente em 60s ` +
-        `(HTTP 403 no processo ${authExpiredAtProcId}). ` +
-        'Clique em qualquer tarefa no painel do PJe para renovar a sessao e relance a varredura — ' +
-        'a varredura continuara de onde parou (checkpoint preservado). ' +
-        'Dica: mantenha uma aba do PJe ativa durante varreduras longas — o Angular renova o token em background apenas quando a aba esta visivel.'
-    );
+      `(HTTP 403 no processo ${authExpiredAtProcId}). ` +
+      'Clique em qualquer tarefa no painel do PJe para renovar a sessao e relance a varredura — ' +
+      'a varredura continuara de onde parou (checkpoint preservado). ' +
+      'Dica: mantenha uma aba do PJe ativa durante varreduras longas — o Angular renova o token em background apenas quando a aba esta visivel.';
+    // Streaming: finaliza o dashboard em estado aborted. Feito ANTES do
+    // throw para garantir que o dashboard ja aberto (se estiver) saia do
+    // "running" e mostre o toast — o throw sobe para o handler legado
+    // que emite COLETA_FAIL, que continua funcional.
+    if (opts.onFinalized) {
+      try {
+        await opts.onFinalized({
+          status: 'aborted',
+          tempoTotalMs: Date.now() - t0,
+          abortadoEm: new Date().toISOString(),
+          erroAbort: mensagemAbort
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    throw new Error(mensagemAbort);
   }
 
-  // Sucesso: limpa checkpoint — nao precisamos reter 5000 processos em
-  // disco apos o dashboard ter sido gerado.
-  await apagarEstado(scanId);
+  if (pendentesTransientes > 0) {
+    // Varredura incompleta: ha slots deixados em `null` por erros
+    // transientes (Failed to fetch, timeout, 429, 5xx) mesmo apos os
+    // retries locais. Preserva o checkpoint para que o usuario possa
+    // relancar e a UI oferecera "retomar" — so os pendentes serao
+    // recoletados. Ainda geramos o dashboard com o parcial para que o
+    // trabalho ate aqui nao se perca.
+    await persistirCheckpoint();
+    scan.counter('pendentes-transientes', pendentesTransientes);
+    onProgress(
+      `[aviso] ${pendentesTransientes} processo(s) com falha transiente — ` +
+        `checkpoint preservado. Relance a varredura e confirme "retomar" ` +
+        `para recoletar apenas os pendentes.`
+    );
+  } else {
+    // Sucesso total: limpa checkpoint — nao precisamos reter 5000
+    // processos em disco apos o dashboard ter sido gerado.
+    await apagarEstado(scanId);
+  }
 
-  // Normaliza consolidados para filtrar eventuais posicoes null (nao
-  // deveria ocorrer em sucesso; defesa contra bug futuro).
+  // Normaliza consolidados para filtrar posicoes null (slots pendentes
+  // transientes, que serao recoletados na proxima varredura com retomar).
   const consolidadoFinal = consolidados.filter(
     (c): c is ConsolidadoViaAPI => c != null
   );
@@ -934,12 +1154,26 @@ export async function coletarPrazosPorTarefasViaAPI(
   await scan.success({
     totalDescobertos,
     consolidados: consolidadoFinal.length,
+    pendentesTransientes,
     tempoTotalMs: Date.now() - t0
   });
+
+  const tempoTotalMs = Date.now() - t0;
+
+  // Streaming: marca o dashboard como concluido. O background ja recebeu
+  // todos os SLOT_PATCH durante a coleta — aqui so liberamos a coluna
+  // "Encerrar" e trocamos a contagem para o numero final.
+  if (opts.onFinalized) {
+    try {
+      await opts.onFinalized({ status: 'done', tempoTotalMs });
+    } catch {
+      /* ignore */
+    }
+  }
 
   return {
     totalDescobertos,
     consolidado: consolidadoFinal,
-    tempoTotalMs: Date.now() - t0
+    tempoTotalMs
   };
 }

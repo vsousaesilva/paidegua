@@ -20,12 +20,27 @@ import {
   OPEN_TASK_ICON_SVG,
   podeAbrirTarefa
 } from '../shared/pje-task-popup';
+import { loadPrazosFitaDashboardPayload } from '../shared/prazos-fita-indexed-storage';
 import { makeTableSortable } from '../shared/table-sort';
 import type {
   PrazosFitaDashboardPayload,
   ProcessoExpediente,
   StatusPrazo
 } from '../shared/types';
+
+/**
+ * Estado do streaming: o payload carregado pode estar em andamento
+ * (status = 'running'). Eventos subsequentes (SLOT_PATCH, FINALIZED)
+ * mutam este estado e agendam um re-render coalescido via RAF.
+ *
+ * Por que manter tudo em memoria: evita reconstruir o payload completo
+ * do IDB a cada patch (a cada processo coletado) — a cada 10 processos,
+ * 1000 slots, o custo de ler tudo de volta dominava.
+ */
+let payloadAtual: PrazosFitaDashboardPayload | null = null;
+let rootEl: HTMLElement | null = null;
+let metaEl: HTMLElement | null = null;
+let renderRafPending = false;
 
 interface LinhaExpediente {
   tarefaNome: string;
@@ -112,13 +127,38 @@ const encerrarQueue: EncerrarQueueItem[] = [];
 let encerrarRunningKey: string | null = null;
 
 void main();
+instalarCleanupNoFechamento();
+
+/**
+ * Ao fechar a aba do dashboard, avisa o background para apagar o payload
+ * do IndexedDB. Mantém a postura LGPD: agregados do Prazos na Fita não
+ * ficam em disco depois do uso (equivalente ao antigo `storage.session`).
+ * `pagehide` é mais confiável que `beforeunload` neste caso.
+ */
+function instalarCleanupNoFechamento(): void {
+  window.addEventListener('pagehide', () => {
+    try {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PRAZOS_FITA_CLEAR_PAYLOAD,
+          payload: {}
+        })
+        .catch(() => { /* SW pode ter hibernado — não é erro */ });
+    } catch {
+      /* chrome.runtime indisponível em contextos de unload */
+    }
+  });
+}
 
 async function main(): Promise<void> {
   const root = document.getElementById('main') as HTMLElement;
   const meta = document.getElementById('meta') as HTMLElement;
+  rootEl = root;
+  metaEl = meta;
   await restaurarEstadoEncerramento();
   instalarCopyDelegation();
   instalarSortDelegation();
+  instalarStreamListener();
   try {
     const payload = await loadPayload();
     if (!payload) {
@@ -127,8 +167,8 @@ async function main(): Promise<void> {
       meta.textContent = '';
       return;
     }
-    renderMeta(meta, payload);
-    renderDashboard(root, payload);
+    payloadAtual = payload;
+    renderAll();
   } catch (err) {
     console.error(`${LOG_PREFIX} prazos-fita-dashboard falhou:`, err);
     root.innerHTML =
@@ -139,12 +179,144 @@ async function main(): Promise<void> {
 }
 
 async function loadPayload(): Promise<PrazosFitaDashboardPayload | null> {
-  const out = await chrome.storage.session.get(
-    STORAGE_KEYS.PRAZOS_FITA_DASHBOARD_PAYLOAD
-  );
-  const raw = out[STORAGE_KEYS.PRAZOS_FITA_DASHBOARD_PAYLOAD];
-  if (!raw) return null;
-  return raw as PrazosFitaDashboardPayload;
+  return loadPrazosFitaDashboardPayload();
+}
+
+/**
+ * Assina os eventos de streaming do background:
+ *   - SLOT_PATCH: novo processo coletado. Muta `payloadAtual.resultado
+ *     .consolidado[idx]` e agenda re-render coalescido.
+ *   - FINALIZED: fim da coleta (done | aborted). Atualiza status,
+ *     dispara toast em abort, re-renderiza uma ultima vez.
+ *
+ * Um handler de runtime.onMessage — nao conflita com os handlers do
+ * content script do PJe nem do painel, porque filtra por channel.
+ */
+function instalarStreamListener(): void {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || typeof message !== 'object') return false;
+    const msg = message as { channel?: string; payload?: unknown };
+    if (msg.channel === MESSAGE_CHANNELS.PRAZOS_FITA_SLOT_PATCH) {
+      aplicarSlotPatch(
+        msg.payload as {
+          requestId: string;
+          idx: number;
+          item: PrazosFitaDashboardPayload['resultado']['consolidado'][number];
+        }
+      );
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (msg.channel === MESSAGE_CHANNELS.PRAZOS_FITA_HYDRATE_SLOT) {
+      aplicarSlotHydrate(
+        msg.payload as {
+          requestId: string;
+          idx: number;
+          item: PrazosFitaDashboardPayload['resultado']['consolidado'][number];
+        }
+      );
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (msg.channel === MESSAGE_CHANNELS.PRAZOS_FITA_COLETA_FINALIZED) {
+      aplicarFinalizacao(
+        msg.payload as {
+          status: 'done' | 'aborted';
+          tempoTotalMs: number;
+          abortadoEm?: string;
+          erroAbort?: string;
+        }
+      );
+      sendResponse({ ok: true });
+      return false;
+    }
+    return false;
+  });
+}
+
+function aplicarSlotPatch(payload: {
+  idx: number;
+  item: PrazosFitaDashboardPayload['resultado']['consolidado'][number];
+}): void {
+  if (!payloadAtual) return;
+  const { idx, item } = payload;
+  if (typeof idx !== 'number' || !item) return;
+  const cons = payloadAtual.resultado.consolidado;
+  // Cresce o array se idx vier "salteado" (possivel em pequenos casos
+  // de retomada). Os buracos ficam como itens "placeholder" que nao
+  // contam em nenhuma metrica (sao filtrados onde necessario).
+  while (cons.length <= idx) {
+    cons.push(undefined as unknown as (typeof cons)[number]);
+  }
+  cons[idx] = item;
+  if (payloadAtual.progresso) {
+    payloadAtual.progresso.consolidados = Math.min(
+      payloadAtual.progresso.total,
+      payloadAtual.progresso.consolidados + 1
+    );
+  }
+  scheduleRerender();
+}
+
+/**
+ * Reidratacao silenciosa de slots em retomadas: apenas popula o array
+ * de consolidados sem mexer em `progresso.consolidados` (o skeleton ja
+ * abriu a varredura com o contador apontando para a quantidade
+ * completa do checkpoint, via `consolidadosInicial`).
+ */
+function aplicarSlotHydrate(payload: {
+  idx: number;
+  item: PrazosFitaDashboardPayload['resultado']['consolidado'][number];
+}): void {
+  if (!payloadAtual) return;
+  const { idx, item } = payload;
+  if (typeof idx !== 'number' || !item) return;
+  const cons = payloadAtual.resultado.consolidado;
+  while (cons.length <= idx) {
+    cons.push(undefined as unknown as (typeof cons)[number]);
+  }
+  cons[idx] = item;
+  scheduleRerender();
+}
+
+function aplicarFinalizacao(payload: {
+  status: 'done' | 'aborted';
+  tempoTotalMs: number;
+  abortadoEm?: string;
+  erroAbort?: string;
+}): void {
+  if (!payloadAtual) return;
+  payloadAtual.status = payload.status;
+  payloadAtual.resultado.tempoTotalMs = payload.tempoTotalMs;
+  if (payloadAtual.progresso) {
+    payloadAtual.progresso.abortadoEm = payload.abortadoEm;
+    payloadAtual.progresso.erroAbort = payload.erroAbort;
+  }
+  // Status `aborted` nao precisa de trigger separado — o proximo render
+  // (ver `renderDashboard`) detecta o status e monta o banner persistente.
+  scheduleRerender();
+}
+
+/**
+ * Coalesca re-renders com `requestAnimationFrame`: em varreduras
+ * densas (>10 slots por segundo), re-desenhar a cada patch poderia
+ * ocupar a main thread. Com RAF, re-renderizamos no maximo ~60fps e,
+ * na pratica, apenas quando o browser pinta — o usuario ve atualizacao
+ * fluida sem flood.
+ */
+function scheduleRerender(): void {
+  if (renderRafPending) return;
+  renderRafPending = true;
+  requestAnimationFrame(() => {
+    renderRafPending = false;
+    renderAll();
+  });
+}
+
+function renderAll(): void {
+  if (!rootEl || !metaEl || !payloadAtual) return;
+  renderMeta(metaEl, payloadAtual);
+  renderDashboard(rootEl, payloadAtual);
 }
 
 function renderMeta(meta: HTMLElement, payload: PrazosFitaDashboardPayload): void {
@@ -164,6 +336,7 @@ function renderMeta(meta: HTMLElement, payload: PrazosFitaDashboardPayload): voi
 
 function extrairUnidade(payload: PrazosFitaDashboardPayload): string {
   for (const c of payload.resultado.consolidado) {
+    if (!c) continue;
     const og = c.processoApi.orgaoJulgador;
     if (og && og.trim()) return og.trim();
   }
@@ -177,13 +350,16 @@ function renderDashboard(
   const linhas = construirLinhasExpediente(payload);
   const ordenadas = ordenarPorDataLimite(linhas);
 
-  const comAbertos = payload.resultado.consolidado.filter(
+  const consolidadoValidos = payload.resultado.consolidado.filter(
+    (c): c is NonNullable<typeof c> => c != null
+  );
+  const comAbertos = consolidadoValidos.filter(
     (c) => (c.coleta?.extracao?.abertos ?? []).length > 0
   );
-  const semAbertos = payload.resultado.consolidado.filter(
+  const semAbertos = consolidadoValidos.filter(
     (c) => c.coleta?.ok === true && (c.coleta?.extracao?.abertos ?? []).length === 0
   );
-  const falhas = payload.resultado.consolidado.filter(
+  const falhas = consolidadoValidos.filter(
     (c) => !c.coleta || c.coleta.ok === false
   );
 
@@ -199,11 +375,48 @@ function renderDashboard(
 
   root.innerHTML = '';
 
+  // Banner de varredura interrompida — persistente (nao some como o toast).
+  // Mostrado sempre que o status for `aborted`, com orientacao explicita:
+  // o "retomar" nao roda no dashboard (precisa do content script do PJe),
+  // entao apontamos o usuario de volta para o painel.
+  if (payload.status === 'aborted') {
+    root.appendChild(renderBannerAborted(payload));
+  }
+
+  const running = payload.status === 'running';
+  const aborted = payload.status === 'aborted';
+  const totalAlvo = payload.progresso?.total ?? consolidadoValidos.length;
+  const consolidadosVal =
+    payload.progresso?.consolidados ?? consolidadoValidos.length;
+  const incompleto = totalAlvo > consolidadoValidos.length;
+  // Durante o streaming, o cartao "Processos" mostra "coletados/total"
+  // e ganha um modificador `metric--running` para indicar que os
+  // numeros estao subindo. Em abort, mantem o formato "coletados/total"
+  // com `metric--warning` para sinalizar visualmente que a varredura nao
+  // completou — evita ler "535" como se fosse o total real (que era 2399).
+  const rotuloProcessos = running || (aborted && incompleto)
+    ? `${consolidadosVal} / ${totalAlvo}`
+    : String(consolidadoValidos.length);
+  const subProcessos = running
+    ? 'coleta em andamento...'
+    : aborted && incompleto
+      ? `interrompida em ${consolidadosVal} de ${totalAlvo} — retome no painel`
+      : `${comAbertos.length} com expedientes abertos`;
+  const kindProcessos = running
+    ? 'running'
+    : aborted && incompleto
+      ? 'warning'
+      : undefined;
   root.appendChild(
     section(
       'div',
       'metrics',
-      metric('Processos', String(payload.resultado.consolidado.length), `${comAbertos.length} com expedientes abertos`) +
+      metric(
+        'Processos',
+        rotuloProcessos,
+        subProcessos,
+        kindProcessos
+      ) +
       metric('Expedientes abertos', String(totalAbertos), '') +
       metric('Prazo correndo', String(correndo), '', 'success') +
       metric('Próximos 7 dias', String(proximos7), '', 'warning') +
@@ -287,6 +500,9 @@ function construirLinhasExpediente(
 ): LinhaExpediente[] {
   const out: LinhaExpediente[] = [];
   for (const c of payload.resultado.consolidado) {
+    // Durante o streaming, o array pode ter "buracos" (undefined) em
+    // indices ainda nao coletados. Ignoramos silenciosamente.
+    if (!c) continue;
     const abertos = c.coleta?.extracao?.abertos ?? [];
     const numero = c.coleta?.numeroProcesso ?? c.processoApi.numeroProcesso ?? '';
     const idProcesso =
@@ -556,6 +772,57 @@ function renderAnomalias(anoms: readonly string[]): string {
     .join(' ');
 }
 
+/**
+ * Banner persistente no topo do dashboard em estado `aborted`. Orienta o
+ * usuario a voltar ao painel do PJe e relancar — o retomar do checkpoint
+ * e detectado automaticamente pelo painel (dialogo "Detectei varredura
+ * anterior interrompida"). O botao abre uma aba na pagina inicial do PJe,
+ * suficiente para a orientacao. Nao faz sentido disparar a varredura
+ * direto daqui — retomar precisa rodar no content script com acesso a
+ * sessao Keycloak do PJe; pular essa ponte duplicaria infra critica.
+ */
+function renderBannerAborted(
+  payload: PrazosFitaDashboardPayload
+): HTMLElement {
+  const banner = document.createElement('section');
+  banner.className = 'aborted-banner';
+  banner.setAttribute('role', 'alert');
+
+  const totalAlvo = payload.progresso?.total ?? 0;
+  const consolidadosVal = payload.progresso?.consolidados ?? 0;
+  const faltam = Math.max(0, totalAlvo - consolidadosVal);
+  const motivo = payload.progresso?.erroAbort ?? '';
+  const host = payload.hostnamePJe || '';
+  const pjeUrl = host ? `https://${host}/pje/Painel/painel_usuario/` : null;
+
+  const resumoHtml = faltam > 0
+    ? `<strong>Varredura interrompida em ${consolidadosVal} de ${totalAlvo} processo(s).</strong> ` +
+      `Faltam ${faltam} — o trabalho ja coletado esta preservado.`
+    : '<strong>Varredura interrompida.</strong> Os dados coletados estao preservados.';
+
+  const motivoHtml = motivo
+    ? `<div class="aborted-banner__motivo">Motivo: ${escapeHtml(motivo)}</div>`
+    : '';
+
+  const botaoHtml = pjeUrl
+    ? `<a class="aborted-banner__btn" href="${escapeAttr(pjeUrl)}" target="_blank" ` +
+      'rel="noopener noreferrer">Abrir PJe em nova guia</a>'
+    : '';
+
+  banner.innerHTML =
+    '<div class="aborted-banner__titulo">Coleta interrompida — retome pelo painel</div>' +
+    `<div class="aborted-banner__resumo">${resumoHtml}</div>` +
+    motivoHtml +
+    '<ol class="aborted-banner__passos">' +
+    '<li>Volte para a aba do PJe (perfil Gestao).</li>' +
+    '<li>Clique novamente no botao <em>Prazos na Fita pAIdegua</em> no painel.</li>' +
+    '<li>Confirme <em>OK</em> no dialogo "Detectei varredura anterior interrompida" — a coleta continua de onde parou (o trabalho ja feito nao sera refeito).</li>' +
+    '</ol>' +
+    (botaoHtml ? `<div class="aborted-banner__acoes">${botaoHtml}</div>` : '');
+
+  return banner;
+}
+
 function renderColapsivel(titulo: string, body: HTMLElement): HTMLElement {
   const d = document.createElement('details');
   d.className = 'card';
@@ -671,7 +938,7 @@ function metric(
   label: string,
   value: string,
   hint: string,
-  kind?: 'danger' | 'warning' | 'success'
+  kind?: 'danger' | 'warning' | 'success' | 'running'
 ): string {
   const cls = kind ? ` metric--${kind}` : '';
   return (
@@ -808,6 +1075,19 @@ function renderEncerrarCell(l: LinhaExpediente): string {
     !podeAbrirTarefa(l.idProcesso, l.idTaskInstance)
   ) {
     return '';
+  }
+  // Durante o streaming nao faz sentido encerrar expedientes — a coleta
+  // ainda nao acabou de enumerar todos os prazos. Botao vai disabled
+  // com tooltip explicando. O estado real do botao (pronto/sucesso/erro)
+  // e preservado quando o status mudar para 'done'.
+  if (payloadAtual?.status === 'running') {
+    return (
+      '<button type="button" class="proc-encerrar proc-encerrar--pronto" disabled ' +
+      'title="Aguarde a coleta terminar para encerrar expedientes." ' +
+      'aria-label="Aguarde a coleta terminar para encerrar expedientes.">' +
+      iconeEncerrar('pronto') +
+      '</button>'
+    );
   }
   const cnj = extractCNJ(l.numeroProcesso || '');
   // Chave por TAREFA (idProcesso+idTaskInstance) — todas as linhas da

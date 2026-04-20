@@ -22,6 +22,7 @@
 
 import { LOG_PREFIX, STORAGE_KEYS } from '../../shared/constants';
 import type {
+  Http403Diagnostic,
   PJeApiEtiqueta,
   PJeApiEtiquetaRaw,
   PJeApiEtiquetasListResponse,
@@ -31,6 +32,11 @@ import type {
   PJeApiResolveCaResponse,
   PJeAuthSnapshot
 } from '../../shared/types';
+import {
+  decodeJwtExp,
+  registrar403Diag,
+  solicitarRefreshSilent
+} from '../auth/pje-auth-refresh-bridge';
 
 async function obterSnapshot(): Promise<PJeAuthSnapshot | null> {
   try {
@@ -51,6 +57,16 @@ async function obterSnapshot(): Promise<PJeAuthSnapshot | null> {
 export async function lerCapturadoEmSnapshot(): Promise<number | null> {
   const s = await obterSnapshot();
   return s ? s.capturedAt : null;
+}
+
+/**
+ * Le o snapshot de auth completo. Usado pelo coordinator de Prazos na Fita
+ * para inspecionar `jwtExp` e disparar refresh proativo antes do token
+ * expirar (em varreduras 2k+, a aba pode ficar em background e o Angular
+ * nao renova sozinho — proativo evita o storm de 403).
+ */
+export async function lerSnapshotAuth(): Promise<PJeAuthSnapshot | null> {
+  return obterSnapshot();
 }
 
 /**
@@ -145,6 +161,60 @@ async function fetchTextoComTimeout(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Extrai ":jsessionId" do `document.cookie`. Usado pela instrumentacao
+ * de 403 pra apontar se a causa e sessao Seam legacy expirada (e nao
+ * Bearer expirado). O JSESSIONID do PJe e same-origin, entao temos
+ * acesso via `document.cookie`.
+ */
+function jsessionIdPresente(): boolean {
+  try {
+    return /(^|;)\s*JSESSIONID=/.test(document.cookie);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Registra diagnostico de um 403 e tenta silent refresh do Bearer UMA VEZ.
+ * Em sucesso, o snapshot atualizado ja esta em `chrome.storage.session` —
+ * o caller deve re-executar a chamada (os headers serao relidos). Em
+ * falha, apenas loga e segue (caller trata como 403 definitivo).
+ */
+async function diagnosticarERefrescar403(
+  snap: PJeAuthSnapshot,
+  url: string,
+  status: number,
+  body: string
+): Promise<{ refreshOk: boolean; refreshError?: string }> {
+  const agora = Date.now();
+  const jwtExp = decodeJwtExp(snap.authorization);
+  const diag: Http403Diagnostic = {
+    capturedAt: agora,
+    url,
+    status,
+    snapshotAgeMs: snap.capturedAt ? agora - snap.capturedAt : null,
+    jwtExp,
+    jwtExpiredAtRequest:
+      jwtExp != null ? jwtExp * 1000 <= agora : null,
+    jsessionIdPresent: jsessionIdPresente(),
+    bodySnippet: body.slice(0, 500),
+    silentRefreshAttempted: false,
+    silentRefreshOk: null
+  };
+
+  const r = await solicitarRefreshSilent();
+  diag.silentRefreshAttempted = true;
+  diag.silentRefreshOk = r.ok;
+  if (!r.ok) diag.silentRefreshError = r.error;
+  await registrar403Diag(diag);
+
+  return {
+    refreshOk: r.ok,
+    refreshError: r.error
+  };
 }
 
 /**
@@ -578,7 +648,7 @@ export async function listarProcessosDaTarefa(
 export async function gerarChaveAcesso(
   idProcesso: number
 ): Promise<PJeApiResolveCaResponse> {
-  const snap = await obterSnapshot();
+  let snap = await obterSnapshot();
   if (!snap) {
     return { ok: false, ca: null, error: 'Sem snapshot de auth.' };
   }
@@ -587,14 +657,39 @@ export async function gerarChaveAcesso(
   }
   const baseUrl = pjeBaseUrl(snap);
   const url = `${baseUrl}/painelUsuario/gerarChaveAcessoProcesso/${idProcesso}`;
-  const headers = montarHeaders(snap);
+  let headers = montarHeaders(snap);
+  // Single-shot: so tentamos silent refresh uma vez por chamada. Se o 403
+  // persistir, e sinal de causa nao relacionada a Bearer (JSESSIONID, auth
+  // de recurso, etc) — o diag em storage.local vai mostrar os detalhes.
+  let tentouRefresh403 = false;
   try {
     return await comRetryTransiente(async () => {
-      const resp = await fetchTextoComTimeout(
+      let resp = await fetchTextoComTimeout(
         url,
         { method: 'GET', headers, credentials: 'include' },
         20_000
       );
+      if (resp.status === 403 && !tentouRefresh403 && snap) {
+        tentouRefresh403 = true;
+        const r = await diagnosticarERefrescar403(
+          snap,
+          url,
+          resp.status,
+          resp.text
+        );
+        if (r.refreshOk) {
+          const novo = await obterSnapshot();
+          if (novo && novo.authorization !== snap.authorization) {
+            snap = novo;
+            headers = montarHeaders(snap);
+            resp = await fetchTextoComTimeout(
+              url,
+              { method: 'GET', headers, credentials: 'include' },
+              20_000
+            );
+          }
+        }
+      }
       if (!resp.ok) {
         return {
           resultado: {

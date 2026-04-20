@@ -2,11 +2,12 @@
 
 **Projeto:** pAIdegua — Assistente IA para o PJe
 **Perfil:** Gestão → *Prazos na Fita pAIdegua*
-**Última revisão:** Abril/2026
-**Documento companheiro:** `docs/post-mortem-prazos-na-fita.md` (bugs pontuais
-e a regressão de 18/04/2026). Este aqui descreve a *arquitetura*: por que
-chegamos à configuração atual, quais caminhos foram descartados, e como ela
-se compara com os outros relatórios da extensão.
+**Última revisão:** 20/04/2026 (remoção do cache de `ca` envenenado)
+**Documento companheiro:** `docs/post-mortem-prazos-na-fita.md` — bugs
+pontuais, a regressão de 18/04/2026 (SSO Keycloak) e a regressão de
+20/04/2026 (cache de `ca` envenenado). Este aqui descreve a *arquitetura*:
+por que chegamos à configuração atual, quais caminhos foram descartados,
+e como ela se compara com os outros relatórios da extensão.
 
 ---
 
@@ -57,7 +58,7 @@ grandeza é o pano de fundo de tudo que se segue.
 │   ↓ dedup por idProcesso, filtro por dias, corte no teto           │
 │                                                                    │
 │   Fase 2: pool concorrente (25 workers):                           │
-│     a) ca = cache.get(id) ?? await gerarChaveAcesso(id)            │
+│     a) ca = await gerarChaveAcesso(id)   [sempre fresca]           │
 │     b) fetch(listAutosDigitais.seam?ca=...&aba=expedienteTab)      │
 │     c) DOMParser → extractExpedientes(html)                        │
 │     d) checkpoint a cada 100 concluídos                            │
@@ -73,7 +74,7 @@ grandeza é o pano de fundo de tudo que se segue.
 | Intervalo de checkpoint    | 100 proc. | Overhead ~0.1%, perda máx. ~20 s   |
 | TTL do checkpoint          | 24 h      | Evita lixo se o usuário abandonar  |
 | Timeout de refresh 403     | 60 s      | Cobre renovação Keycloak em bg     |
-| TTL do cache `ca`          | Indefinido (storage.local) | `ca` é estável por processo  |
+| Cache de `ca`              | **removido** (Abril/2026) | Ver §4.1 — expiração silenciosa no servidor |
 | Teto default do seletor    | 2 000     | Varredura em ~4–8 min              |
 
 ---
@@ -189,22 +190,59 @@ A migração para fetch resolveu o gargalo de latência. Mas expôs uma
 segunda classe de problemas — os que só aparecem quando a coleta é *rápida
 o suficiente para ser longa*.
 
-### 4.1 Cache persistente de `ca`
+### 4.1 Cache persistente de `ca` — **removido (Abril/2026)**
 
-O `ca` (`chaveAcessoProcesso`) é estável enquanto o processo existir no
-servidor. Na primeira versão cacheamos em `chrome.storage.session`
-(volátil, apagado ao fechar o Chrome) — o que forçava uma nova chamada
-`gerarChaveAcessoProcesso` em cada reabertura do navegador.
+**Hipótese original (incorreta):** o `ca` (`chaveAcessoProcesso`) seria
+estável enquanto o processo existisse no servidor. Com base nisso, o
+cache foi movido de `chrome.storage.session` (volátil) para
+`chrome.storage.local` (persistente entre sessões), pulando a chamada
+`gerarChaveAcesso` em ~99% dos processos após a primeira varredura.
 
-**Correção:** cache passou para `chrome.storage.local`. Após a primeira
-varredura bem-sucedida, 100% dos processos conhecidos pulam a chamada
-`gerarChaveAcesso` — e é *exatamente essa chamada* que está sujeita a 403
-por token Keycloak expirado (`gerarChaveAcesso` usa Bearer; o fetch dos
-autos não).
+**O que realmente acontece:** o `ca` expira no servidor **sem devolver
+erro**. Em vez de responder 4xx à requisição `listAutosDigitais.seam`,
+o PJe devolve **HTTP 200 com um stub HTML de ~32 KB** em que o `tbody`
+da tabela de expedientes simplesmente não existe. O extrator
+`extractExpedientesFromDoc` trata `tbody` ausente como "processo sem
+expedientes" (`{abertos: [], fechados: 0}`) — um valor legítimo no
+modelo de dados.
 
-**Lição:** tokens com TTL curto (Bearer, 5–15 min) e tokens com TTL longo
-(`ca`, estável por processo) têm requisitos de storage diferentes. Não
-usar a mesma política para os dois.
+**Cadeia de envenenamento observada:**
+
+1. Primeira varredura: todas as 1 072 `ca` geradas frescas, tudo bem.
+2. Segunda varredura (horas depois): 1 067 `ca` vêm do cache, 5 novas.
+3. As 1 067 `ca` cacheadas já não valem no servidor → todas devolvem
+   o stub de 32 KB em vez do HTML de ~208 KB.
+4. Relatório mostra **8 expedientes abertos em 1 072 processos** (em
+   "Controle de prazo"!), quando a regra de negócio exige o oposto.
+
+**Como foi diagnosticado:** teste comparativo na console — mesmo id,
+duas `ca` (cacheada + recém-gerada) → a cacheada retorna 32 KB sem
+tbody; a fresca retorna 208 KB com 16 linhas de expediente.
+
+**Por que o cache não pôde ser "revalidado":** revalidar o `ca` custaria
+a mesma requisição que usa o `ca` — ou seja, a revalidação *é* o próprio
+fetch dos autos. Não há endpoint de validação barato. O cache passou a
+custar mais do que economizava.
+
+**Correção:** `ca` agora é gerada fresca em cada varredura. Limpeza
+one-shot do cache residual em `limparCacheCaLegado` na entrada do
+coordinator (idempotente; no-op quando vazio). A chave
+`STORAGE_KEYS.PRAZOS_FITA_CA_CACHE` sobrevive em `constants.ts`
+**apenas** como alvo dessa limpeza; pode ser removida numa versão
+futura quando nenhuma instalação antiga conservar a chave.
+
+**Custo real da remoção:** ~300 ms adicionais por processo
+(`gerarChaveAcesso` é um POST REST barato, paralelizado em 25 streams
+HTTP/2 — absorvido dentro do mesmo pool). Varreduras ficam ~20 %
+mais lentas no pior caso; ganho é correção de dados.
+
+**Lição (revisada):** "token estável por processo" só é verdade quando
+o servidor *confirma* isso por resposta de erro. Cache persistente
+contra um backend que não distingue `ca` expirada de `ca` válida
+produz **resultado silenciosamente errado** — classe de bug
+especialmente perigosa porque o sistema continua "operando".
+Entre otimização e correção, escolher correção e medir o custo
+depois.
 
 ### 4.2 Auto-refresh em 403
 
@@ -335,7 +373,7 @@ Fita" são diferentes — e não imitáveis a partir dos outros.
 | Analisar tarefas     | DOM scrape (iframe)| não         | n/a          | n/a            |
 | Etiquetas            | REST               | não         | n/a          | IndexedDB (catálogo) |
 | Triagem              | DOM da aba ativa   | não         | n/a          | n/a            |
-| **Prazos na Fita**   | **REST + SSR fetch**| **sim**     | **sim**      | **storage.local (`ca`)** |
+| **Prazos na Fita**   | **REST + SSR fetch**| **sim**     | **sim**      | **não** (ver §4.1) |
 
 Toda a complexidade extra está concentrada na última linha, e ela vem
 *inteiramente* da assimetria descrita na §1.
@@ -359,9 +397,12 @@ Toda a complexidade extra está concentrada na última linha, e ela vem
    rota mais barata. Vale procurar essas chaves (`aba=`, `tab=`,
    `view=`) antes de sintetizar cliques.
 
-4. **Token curto vs. token longo → storage diferente.** Bearer em
-   `session`; `ca` e similares em `local`. Misturar é desperdiçar
-   cache útil ou guardar segredo volátil além do necessário.
+4. **Cache durável exige erro explícito de invalidação.** Só faz
+   sentido cachear contra um backend que distingue "chave inválida"
+   de "recurso vazio". O PJe TRF5 responde HTTP 200 + stub para `ca`
+   expirada, igualando os dois cenários — cache persistente vira
+   envenenamento silencioso (§4.1). Regra prática: sem rota barata de
+   revalidação, não cache.
 
 5. **Interceptor page-world é a única forma honesta de reaproveitar
    auth do Angular.** Qualquer tentativa de "chutar" headers quebra
@@ -429,17 +470,25 @@ recuar em horário de pico sem configuração manual do usuário.
 **Custo:** médio — é simples implementar; mais trabalhoso é *medir
 direito* em campo antes de tornar default.
 
-### 7.4 Pré-aquecimento do cache `ca`
+### 7.4 Pré-aquecimento de `ca` (sem cache durável)
 
-A primeira varredura de uma unidade paga `gerarChaveAcesso` em N
-processos. Se a listagem da Fase 1 disparasse um pool de
-`gerarChaveAcesso` em paralelo (mesmo antes de a Fase 2 começar),
-poderíamos sobrepor custo de auth com custo de listagem — ganhando
-~30 s de varredura inicial.
+Após a remoção do cache persistente (§4.1), toda varredura paga
+`gerarChaveAcesso` em 100 % dos processos. Se a listagem da Fase 1
+disparasse um pool de `gerarChaveAcesso` em paralelo, os tokens
+ficariam disponíveis **em memória** (dicionário local à varredura
+corrente) no momento em que a Fase 2 começar — sobrepondo o custo de
+auth com o de listagem e ganhando ~30 s de varredura inicial.
 
-**Custo:** baixo — adicionar um segundo pool de workers e escrever os
-resultados no mesmo `caCache`. Principal atenção é evitar 403 em
-rajada antes de a refresh lógica existir.
+**Por que não é o antigo cache disfarçado:** o dicionário existiria
+apenas dentro do escopo de uma única varredura (nasce em
+`coletarPrazosPorTarefasViaAPI`, morre com ela). Uma varredura =
+uma geração de `ca` por processo. Não há reaproveitamento entre
+execuções — a fonte do envenenamento.
+
+**Custo:** baixo — segundo pool de workers durante a Fase 1,
+resultados escritos num `Map<idProcesso, string>` local. Atenção
+principal: evitar 403 em rajada — o pool de pré-aquecimento precisa
+respeitar o mesmo `gerarCaComRetryEmRefresh` usado na Fase 2.
 
 ### 7.5 Coleta agendada via `chrome.alarms`
 
@@ -466,8 +515,10 @@ risco é latência extra por checkpoint (medir antes).
 
 ## 8. Fontes e referências cruzadas
 
-- `docs/post-mortem-prazos-na-fita.md` — detalhes da regressão de
-  18/04/2026 (SSO Keycloak, fallback Basic dummy, cascata de 5 bugs).
+- `docs/post-mortem-prazos-na-fita.md` — detalhes das regressões:
+  18/04/2026 (SSO Keycloak, fallback Basic dummy, cascata de 5 bugs);
+  20/04/2026 (cache de `ca` envenenado, "8 expedientes em 1 072
+  processos").
 - `docs/extracao-tarefas-painel-pje.md` — arquitetura DOM do painel
   Angular usada pelos relatórios O(tarefas).
 - `docs/extracao-conteudo-pje.md` — adapter PJe legacy e acesso ao

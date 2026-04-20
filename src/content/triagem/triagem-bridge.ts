@@ -25,7 +25,10 @@ import {
   type AnalisarTarefasResult
 } from './analisar-tarefas';
 import { listarTarefasDoPainel } from '../gestao/gestao-bridge';
-import { coletarSnapshotsViaAPI } from '../gestao/triagem-from-api';
+import {
+  coletarSnapshotsViaAPI,
+  hidratarUrlsViaAPI
+} from '../gestao/triagem-from-api';
 
 const MSG_INICIAR = 'paidegua/triagem-iniciar';
 const MSG_PROGRESSO = 'paidegua/triagem-progresso';
@@ -190,10 +193,16 @@ async function tentarViaApiRest(
 
   onProgress(`Analisando ${nomes.length} tarefa(s) via API REST...`);
   const pjeOrigin = window.location.origin;
+  // Hidratação progressiva: o coletor devolve rapidamente (uma chamada
+  // REST por tarefa, sem resolver `ca` — antes era O(n) `gerarChaveAcesso`
+  // e o usuário via "25 em 25" segurando o relatório). A URL dos autos
+  // entra depois, via `hidratarUrlsViaAPI` em segundo plano, e o
+  // dashboard atualiza as linhas conforme cada `ca` resolve.
   const resultado = await coletarSnapshotsViaAPI({
     nomes,
     pjeOrigin,
-    onProgress
+    onProgress,
+    skipCaResolution: true
   });
   if (!resultado.ok) {
     onProgress(
@@ -203,9 +212,12 @@ async function tentarViaApiRest(
   }
 
   const totalProcessos = resultado.snapshots.reduce((s, t) => s + t.totalLido, 0);
+  const urlHydrationScanId = `triagem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const payload: TriagemDashboardPayload = {
     geradoEm: new Date().toISOString(),
     hostnamePJe: new URL(pjeOrigin).hostname,
+    legacyOrigin: pjeOrigin,
+    urlHydrationScanId,
     tarefas: resultado.snapshots,
     totalProcessos,
     insightsLLM: null
@@ -221,6 +233,15 @@ async function tentarViaApiRest(
       error: 'Falha ao abrir o dashboard. Veja o console para detalhes.'
     };
   }
+  // Fire-and-forget: resolve `ca` em segundo plano e publica URLs
+  // parciais em `chrome.storage.session`. O dashboard escuta
+  // `storage.onChanged` e atualiza os links sem bloquear a renderização.
+  void hidratarUrlsViaAPI(resultado.snapshots, {
+    scanId: urlHydrationScanId,
+    legacyOrigin: pjeOrigin
+  }).catch((err) => {
+    console.warn(`${LOG_PREFIX} hidratacao triagem falhou:`, err);
+  });
   return {
     ok: true,
     totalTarefas: resultado.snapshots.length,

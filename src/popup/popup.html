@@ -59,6 +59,62 @@
         margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.3;
       }
 
+      /* Card de ativação global da extensão (topo do popup). */
+      .paidegua-popup__power {
+        margin: 14px 18px 0;
+        padding: 14px 16px;
+        display: flex; align-items: center; gap: 14px;
+        background: linear-gradient(135deg, #3B4656 0%, #2A3340 100%);
+        color: #F4F7FC; border-radius: 14px;
+        box-shadow: 0 8px 22px rgba(12,36,58,0.22), inset 0 1px 0 rgba(255,255,255,0.06);
+        transition: filter 180ms ease;
+      }
+      .paidegua-popup__power.is-off { filter: saturate(0.55) brightness(0.92); }
+      .paidegua-popup__power-icon {
+        width: 42px; height: 42px; flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.10);
+        color: #F4F7FC;
+      }
+      .paidegua-popup__power-text { flex: 1; min-width: 0; }
+      .paidegua-popup__power-title {
+        margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.2px;
+        line-height: 1.2;
+      }
+      .paidegua-popup__power-subtitle {
+        margin: 3px 0 0; font-size: 11.5px; color: rgba(244,247,252,0.78);
+        line-height: 1.35;
+      }
+      .paidegua-popup__switch {
+        position: relative; flex-shrink: 0;
+        width: 46px; height: 26px; display: inline-block;
+      }
+      .paidegua-popup__switch input {
+        opacity: 0; width: 0; height: 0; position: absolute;
+      }
+      .paidegua-popup__switch-slider {
+        position: absolute; inset: 0; cursor: pointer;
+        background: rgba(255,255,255,0.22); border-radius: 999px;
+        transition: background-color 200ms ease;
+      }
+      .paidegua-popup__switch-slider::before {
+        content: ""; position: absolute;
+        width: 20px; height: 20px; left: 3px; top: 3px;
+        background: #F4F7FC; border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(12,36,58,0.32);
+        transition: transform 200ms ease;
+      }
+      .paidegua-popup__switch input:checked + .paidegua-popup__switch-slider {
+        background: var(--primary-light);
+      }
+      .paidegua-popup__switch input:checked + .paidegua-popup__switch-slider::before {
+        transform: translateX(20px);
+      }
+      .paidegua-popup__switch input:focus-visible + .paidegua-popup__switch-slider {
+        box-shadow: 0 0 0 3px rgba(89,146,237,0.35);
+      }
+
       .paidegua-popup__main {
         padding: 14px 18px 6px; max-height: 600px; overflow-y: auto;
         scrollbar-width: thin; scrollbar-color: rgba(19,81,180,0.25) transparent;
@@ -397,6 +453,23 @@
         <p class="paidegua-popup__subtitle">Assistente com IA para o PJe &#8212; JFCE</p>
       </div>
     </header>
+
+    <section id="power-card" class="paidegua-popup__power" aria-live="polite">
+      <span class="paidegua-popup__power-icon" aria-hidden="true">
+        <svg id="power-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+          <line x1="12" y1="2" x2="12" y2="12"/>
+        </svg>
+      </span>
+      <div class="paidegua-popup__power-text">
+        <p id="power-title" class="paidegua-popup__power-title">Extens&#227;o Ativada</p>
+        <p id="power-subtitle" class="paidegua-popup__power-subtitle">Aproveite e utilize todos os recursos.</p>
+      </div>
+      <label class="paidegua-popup__switch" for="power-toggle" title="Ativar/desativar extens&#227;o">
+        <input type="checkbox" id="power-toggle" checked aria-label="Ativar ou desativar a extens&#227;o" />
+        <span class="paidegua-popup__switch-slider" aria-hidden="true"></span>
+      </label>
+    </section>
 
     <nav class="paidegua-popup__tabs" role="tablist" aria-label="Configura&#231;&#245;es">
       <button type="button" class="paidegua-popup__tab" role="tab" id="tab-geral" aria-controls="panel-geral" aria-selected="true">

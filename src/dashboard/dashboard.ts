@@ -48,12 +48,119 @@ async function main(): Promise<void> {
     }
     renderMeta(meta, payload);
     renderDashboard(main, payload);
+    if (payload.urlHydrationScanId) {
+      instalarHidratacaoUrls(payload);
+    }
   } catch (err) {
     console.error('[pAIdegua dashboard] falha ao montar:', err);
     main.innerHTML = `<p class="loading">Erro ao montar o dashboard: ${escapeHtml(
       err instanceof Error ? err.message : String(err)
     )}</p>`;
   }
+}
+
+/**
+ * Conecta o dashboard à hidratação progressiva de URLs publicada pelo
+ * content script. Lê o estado inicial já acumulado em
+ * `chrome.storage.session` e assina `storage.onChanged` para atualizar
+ * cada célula `.proc-cell[data-id-processo=...]` in-place assim que o
+ * `ca` daquele processo é resolvido. Tolerante a erro.
+ */
+function instalarHidratacaoUrls(payload: TriagemDashboardPayload): void {
+  const scanId = payload.urlHydrationScanId;
+  if (!scanId) return;
+  const storageKey = STORAGE_KEYS.DASHBOARD_URL_HYDRATION_PREFIX + scanId;
+
+  // Índice idProcesso → objeto `p` usado pelo rerender. Precisamos
+  // carregar a URL nele para que o botão "Abrir tarefa" apareça junto.
+  const index = new Map<string, TriagemProcesso>();
+  for (const t of payload.tarefas) {
+    for (const p of t.processos) {
+      if (p.idProcesso) index.set(String(p.idProcesso), p);
+    }
+  }
+
+  // Total de processos que precisam de URL (ignora os que já chegaram
+  // com `url` — caminho DOM preenche; caminho REST deixa vazio). Esse
+  // é o denominador da barra.
+  let totalPendentes = 0;
+  for (const p of index.values()) if (!p.url) totalPendentes++;
+  let resolvidos = 0;
+
+  const hydrationWrap = document.getElementById('hydration') as HTMLElement | null;
+  const hydrationLabel = document.getElementById('hydration-label') as HTMLElement | null;
+  const hydrationFill = document.getElementById('hydration-fill') as HTMLElement | null;
+  const mostrarBarra = totalPendentes > 0 && !!hydrationWrap;
+  if (mostrarBarra && hydrationWrap) {
+    hydrationWrap.hidden = false;
+  }
+
+  const atualizarBarra = (done: boolean): void => {
+    if (!mostrarBarra || !hydrationWrap || !hydrationLabel || !hydrationFill) return;
+    const pct = totalPendentes > 0
+      ? Math.min(100, Math.round((resolvidos / totalPendentes) * 100))
+      : 100;
+    hydrationFill.style.width = `${pct}%`;
+    if (done || resolvidos >= totalPendentes) {
+      hydrationLabel.textContent = `Links dos autos carregados (${resolvidos} de ${totalPendentes})`;
+      hydrationWrap.classList.add('header__hydration--done');
+      // Deixa visível por 2s e some — mantém a página limpa depois.
+      window.setTimeout(() => {
+        if (hydrationWrap) hydrationWrap.hidden = true;
+      }, 2000);
+    } else {
+      hydrationLabel.textContent =
+        `Carregando links dos autos: ${resolvidos} de ${totalPendentes} (${pct}%)`;
+    }
+  };
+
+  const aplicarUrls = (urls: Record<string, string>): void => {
+    for (const [idProc, url] of Object.entries(urls)) {
+      if (!url) continue;
+      const p = index.get(idProc);
+      if (!p) continue;
+      if (p.url === url) continue;
+      p.url = url;
+      resolvidos++;
+      const cells = document.querySelectorAll<HTMLElement>(
+        `.proc-cell[data-id-processo="${cssEscape(idProc)}"]`
+      );
+      cells.forEach((cell) => renderProcCellContent(cell, p));
+    }
+  };
+
+  atualizarBarra(false);
+
+  // 1. Leitura inicial (caso a hidratação já tenha gravado algo antes
+  // do dashboard abrir).
+  void chrome.storage.session.get(storageKey).then((out) => {
+    const entry = out?.[storageKey] as
+      | { urls?: Record<string, string>; status?: 'running' | 'done' }
+      | undefined;
+    if (entry?.urls) aplicarUrls(entry.urls);
+    atualizarBarra(entry?.status === 'done');
+  }).catch(() => { /* ignore */ });
+
+  // 2. Assina mudanças subsequentes. Sempre lemos `newValue.urls` inteiro
+  // — os flushes são aditivos, então isso recupera possíveis chaves que
+  // o browser tenha entregado fora de ordem (raro mas possível).
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'session') return;
+    const ch = changes[storageKey];
+    if (!ch) return;
+    const next = ch.newValue as
+      | { urls?: Record<string, string>; status?: 'running' | 'done' }
+      | undefined;
+    if (next?.urls) aplicarUrls(next.urls);
+    atualizarBarra(next?.status === 'done');
+  });
+}
+
+function cssEscape(s: string): string {
+  if (typeof (CSS as unknown as { escape?: (s: string) => string }).escape === 'function') {
+    return (CSS as unknown as { escape: (s: string) => string }).escape(s);
+  }
+  return s.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }
 
 async function loadPayload(): Promise<TriagemDashboardPayload | null> {
@@ -617,6 +724,25 @@ function tdProcNum(p: TriagemProcesso): HTMLElement {
 function procNumberSpan(p: TriagemProcesso): HTMLElement {
   const wrap = document.createElement('span');
   wrap.className = 'proc-cell';
+  if (p.idProcesso) {
+    // Marcador usado pela hidratação progressiva de URLs: `ca` é resolvido
+    // em segundo plano no content script e publicado em storage.session.
+    // O listener de `storage.onChanged` localiza a célula pelo idProcesso
+    // e substitui o span/link in-place.
+    wrap.setAttribute('data-id-processo', String(p.idProcesso));
+  }
+  renderProcCellContent(wrap, p);
+  return wrap;
+}
+
+/**
+ * Popula (ou repopula) o conteúdo de uma célula `.proc-cell`. Extraído
+ * de `procNumberSpan` para permitir reaproveitamento na hidratação
+ * progressiva — quando a URL chega depois, chamamos isto de novo sobre
+ * a mesma célula sem recriar o `<td>` ou perder posição no DOM.
+ */
+function renderProcCellContent(wrap: HTMLElement, p: TriagemProcesso): void {
+  wrap.textContent = '';
   const cnj = extractCNJ(p.numeroProcesso);
   const label = p.numeroProcesso || '(sem número)';
 
@@ -634,7 +760,7 @@ function procNumberSpan(p: TriagemProcesso): HTMLElement {
     const span = document.createElement('span');
     span.className = 'proc-link proc-link--disabled';
     span.textContent = label;
-    span.title = 'URL do processo indisponível';
+    span.title = 'Carregando link dos autos...';
     main = span;
   }
   wrap.appendChild(main);
@@ -671,8 +797,6 @@ function procNumberSpan(p: TriagemProcesso): HTMLElement {
     });
     wrap.appendChild(openBtn);
   }
-
-  return wrap;
 }
 
 /**

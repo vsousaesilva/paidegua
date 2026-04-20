@@ -32,7 +32,6 @@ Sem medição, as próximas fases são chute. Precisamos saber, por varredura re
 - Quanto tempo cada fase levou.
 - Quantos processos foram lidos, omitidos, falharam.
 - Se o token Keycloak expirou e se a retomada foi usada.
-- Taxa de cache hit da chave de acesso (`ca`).
 
 Tudo **fica no navegador do usuário** (`chrome.storage.local`) e nunca é enviado a nenhum servidor. Não há PII registrada — apenas métricas e nomes de tarefas.
 
@@ -57,7 +56,7 @@ Tudo **fica no navegador do usuário** (`chrome.storage.local`) e nunca é envia
 - Pontos instrumentados:
   - [`triagem-from-api.ts`](../src/content/gestao/triagem-from-api.ts) — rota REST do Painel Gerencial. Fases `listar:<tarefa>` e `resolver-ca:<tarefa>`, contadores `processos-listados`, `processos-omitidos`, `ca-erros`.
   - [`gestao-bridge.ts`](../src/content/gestao/gestao-bridge.ts) — ponto de decisão REST↔DOM. Marca `meta.viaUsada` (`rest`, `dom-top`, `dom-iframe`), contadores `fallback-dom`, `tarefas-truncadas`.
-  - [`prazos-fita-coordinator.ts`](../src/content/gestao/prazos-fita-coordinator.ts) — Prazos na Fita via API. Fases `listar-tarefas` e `fetch-expedientes`, contadores `ca-cache-hits`, `auth-expired`, `retomada`, `tarefas-listar-erro`.
+  - [`prazos-fita-coordinator.ts`](../src/content/gestao/prazos-fita-coordinator.ts) — Prazos na Fita via API. Fases `listar-tarefas` e `fetch-expedientes`, contadores `auth-expired`, `retomada`, `tarefas-listar-erro`. *Obs.: o contador `ca-cache-hits` existia até 2026-04-20 e foi removido junto com o cache persistente de `ca` (ver [arquitetura §4.1](arquitetura-coleta-prazos-na-fita.md#41-cache-persistente-de-ca--removido-abril2026) e [post-mortem §8](post-mortem-prazos-na-fita.md#8-regressão-de-2026-04-20--cache-de-ca-envenenado)).*
 
 ### 2.3. Como consultar
 
