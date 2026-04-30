@@ -41,6 +41,12 @@ export interface SidebarElements {
   /** Botão "Triagem Inteligente" — visível apenas no perfil Secretaria. */
   triagemInteligenteButton: HTMLButtonElement;
   /**
+   * Botão "Perícias pAIdegua" — visível apenas no perfil Secretaria quando
+   * a aba atual é o painel-usuario-interno do PJe (depende da lista de
+   * tarefas "Perícia - Designar / Agendar e administrar" do painel).
+   */
+  periciasPaideguaButton: HTMLButtonElement;
+  /**
    * Botão "Abrir Painel Gerencial" — visível apenas no perfil Gestão e
    * quando a aba atual é o painel-usuario-interno do PJe (fora dessa
    * tela o CSS do container oculta o grupo inteiro).
@@ -629,7 +635,8 @@ export function mountSidebar(
         .join('')}
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações da secretaria</div>
-      <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de triagem inteligente">Triagem Inteligente</button>
+      <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de Triagem Inteligente" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Triagem Inteligente</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui é uma análise!</span></span></button>
+      <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="pericias-paidegua" title="Organiza os processos das tarefas de perícia em uma pauta por perito" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Perícias pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Organize a sua pauta!</span></span></button>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Recursos para a Gestão</div>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Painel Gerencial pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui você se faz!</span></span></button>
@@ -690,6 +697,7 @@ export function mountSidebar(
     if (id) templateActionButtons.set(id, btn);
   }
   const triagemInteligenteButton = q<HTMLButtonElement>('triagem-inteligente');
+  const periciasPaideguaButton = q<HTMLButtonElement>('pericias-paidegua');
   const painelGerencialButton = q<HTMLButtonElement>('painel-gerencial');
   const prazosFitaButton = q<HTMLButtonElement>('prazos-fita');
   const profileSelect = q<HTMLSelectElement>('profile-select');
@@ -741,6 +749,7 @@ export function mountSidebar(
     anonimizarButton,
     templateActionButtons,
     triagemInteligenteButton,
+    periciasPaideguaButton,
     painelGerencialButton,
     prazosFitaButton,
     providerLabel,

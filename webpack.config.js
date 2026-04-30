@@ -33,11 +33,18 @@ module.exports = (_env, argv) => {
       // para que o redirect_uri do iframe seja same-origin e o POST de
       // token exchange saia do Origin aceito pelo client Keycloak.
       'pje-auth-refresh-page': './src/content/auth/pje-auth-refresh-page.ts',
+      // Executa o POST de vinculação de etiqueta no page world do iframe
+      // Angular. O isolated world do content script é silenciosamente
+      // rejeitado pelo PJe para esse endpoint específico; o page world
+      // (mesmo contexto do Angular) passa normalmente.
+      'pericias-etiqueta-page': './src/content/pericias/pericias-etiqueta-page.ts',
       'popup/popup': './src/popup/popup.ts',
       'options/options': './src/options/options.ts',
       'dashboard/dashboard': './src/dashboard/dashboard.ts',
       'gestao-dashboard/gestao-dashboard': './src/gestao-dashboard/gestao-dashboard.ts',
       'gestao-painel/painel': './src/gestao-painel/painel.ts',
+      'pericias-painel/painel': './src/pericias-painel/painel.ts',
+      'pericias-dashboard/pericias-dashboard': './src/pericias-dashboard/pericias-dashboard.ts',
       'prazos-fita-dashboard/prazos-fita-dashboard': './src/prazos-fita-dashboard/prazos-fita-dashboard.ts',
       'save-template/save': './src/save-template/save.ts',
       'diagnostico/diagnostico': './src/diagnostico/diagnostico.ts',
@@ -81,6 +88,10 @@ module.exports = (_env, argv) => {
           { from: 'src/gestao-dashboard/gestao-dashboard.css', to: 'gestao-dashboard/gestao-dashboard.css' },
           { from: 'src/gestao-painel/painel.html', to: 'gestao-painel/painel.html' },
           { from: 'src/gestao-painel/painel.css', to: 'gestao-painel/painel.css' },
+          { from: 'src/pericias-painel/painel.html', to: 'pericias-painel/painel.html' },
+          { from: 'src/pericias-painel/painel.css', to: 'pericias-painel/painel.css' },
+          { from: 'src/pericias-dashboard/pericias-dashboard.html', to: 'pericias-dashboard/pericias-dashboard.html' },
+          { from: 'src/pericias-dashboard/pericias-dashboard.css', to: 'pericias-dashboard/pericias-dashboard.css' },
           { from: 'src/prazos-fita-dashboard/prazos-fita-dashboard.html', to: 'prazos-fita-dashboard/prazos-fita-dashboard.html' },
           { from: 'src/prazos-fita-dashboard/prazos-fita-dashboard.css', to: 'prazos-fita-dashboard/prazos-fita-dashboard.css' },
           { from: 'src/save-template/save.html', to: 'save-template/save.html' },

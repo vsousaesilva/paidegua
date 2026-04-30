@@ -1,0 +1,346 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Microsoft Word 15">
+<title>Auditoria pAIdegua v1.0.1 — Relatório Crítico</title>
+<!--[if gte mso 9]>
+<xml>
+ <w:WordDocument>
+  <w:View>Print</w:View>
+  <w:Zoom>100</w:Zoom>
+  <w:DoNotOptimizeForBrowser/>
+ </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+@page WordSection1 { size: 21cm 29.7cm; margin: 2.5cm 2.2cm 2.5cm 2.5cm; mso-header-margin: 1.25cm; mso-footer-margin: 1.25cm; mso-paper-source: 0; }
+div.WordSection1 { page: WordSection1; }
+body { font-family: "Calibri", "Segoe UI", sans-serif; font-size: 11pt; color: #16243A; line-height: 1.45; }
+h1 { font-size: 20pt; color: #0C326F; border-bottom: 3px solid #1351B4; padding-bottom: 6pt; margin-top: 18pt; }
+h2 { font-size: 15pt; color: #0C326F; margin-top: 22pt; border-left: 5px solid #1351B4; padding-left: 8pt; }
+h3 { font-size: 13pt; color: #1351B4; margin-top: 16pt; }
+h4 { font-size: 11.5pt; color: #0C326F; margin-top: 12pt; }
+.capa { text-align: center; padding: 40pt 0 30pt; border: 2px solid #1351B4; background: #F6F8FC; margin-bottom: 24pt; }
+.capa h1 { border: 0; color: #0C326F; font-size: 26pt; margin-bottom: 4pt; }
+.capa .sub { color: #1351B4; font-size: 14pt; font-weight: 600; }
+.capa .meta { color: #5B6B82; font-size: 10.5pt; margin-top: 18pt; }
+.resumo { background: #FFF7D6; border: 1px solid #FFCD07; padding: 10pt 14pt; border-radius: 6px; margin: 14pt 0; }
+.critico { background: #FDECEA; border-left: 5px solid #C0392B; padding: 8pt 12pt; margin: 8pt 0; }
+.atencao { background: #FFF5E0; border-left: 5px solid #E67E22; padding: 8pt 12pt; margin: 8pt 0; }
+.ok { background: #E9F7EF; border-left: 5px solid #1E7E34; padding: 8pt 12pt; margin: 8pt 0; }
+table { border-collapse: collapse; width: 100%; margin: 10pt 0; font-size: 10.5pt; }
+th, td { border: 1px solid #B5C2D4; padding: 6pt 8pt; vertical-align: top; text-align: left; }
+th { background: #1351B4; color: #fff; font-weight: 700; }
+tr:nth-child(even) td { background: #F6F8FC; }
+.sev-alto { color: #C0392B; font-weight: 700; }
+.sev-medio { color: #E67E22; font-weight: 700; }
+.sev-baixo { color: #1E7E34; font-weight: 700; }
+code { font-family: "Consolas", "Courier New", monospace; background: #EEF2F8; padding: 1pt 4pt; border-radius: 3px; font-size: 10pt; }
+ul, ol { margin-left: 18pt; }
+li { margin: 3pt 0; }
+.assinatura { margin-top: 40pt; font-size: 10.5pt; color: #5B6B82; border-top: 1px solid #B5C2D4; padding-top: 10pt; }
+</style>
+</head>
+<body>
+<div class="WordSection1">
+
+<div class="capa">
+  <h1>Auditoria Crítica do Aplicativo pAIdegua</h1>
+  <div class="sub">Extensão de Navegador para Integração PJe + Inteligência Artificial</div>
+  <div class="meta">
+    Versão analisada: v1.0.1 (manifest.json) · Base de código: branch <code>main</code>, commit <code>d2c79b7</code><br/>
+    Destinatário: Comitê LGPD da SJCE e Diretoria de Tecnologia da Informação e Comunicação (DTIC)<br/>
+    Objeto: adoção institucional na 5ª Região da Justiça Federal<br/>
+    Data do relatório: 20/04/2026
+  </div>
+</div>
+
+<h2>1. Sumário Executivo</h2>
+
+<p>O pAIdegua é uma <strong>extensão Chrome/Edge (Manifest V3)</strong> desenvolvida em TypeScript que adiciona, diretamente na interface do PJe, recursos de: (i) resumo de autos e geração de minutas com apoio de LLM; (ii) triagem inteligente de processos com base em critérios da Nota Técnica 1/2025 do CLI-JFCE; (iii) painel gerencial e painel "Prazos na Fita" para diretores de secretaria; (iv) encerramento em lote de expedientes e encaminhamento automático de emendas à inicial. As chamadas de IA vão diretamente do navegador do servidor para as APIs comerciais de Anthropic, OpenAI ou Google Gemini, escolhidas e custeadas pelo próprio usuário (API key pessoal).</p>
+
+<div class="resumo">
+<strong>Veredicto geral da auditoria — em uma frase:</strong> o código está <em>bem escrito</em> e o projeto demonstra <em>preocupação real</em> com LGPD e com a Res. CNJ 615/2025, porém <strong>não está pronto para adoção institucional em escala na 5ª Região</strong> sem antes superar cinco bloqueios estruturais: (1) ausência de trilha de auditoria central (Art. 19, §6º e Art. 27 da Res. 615/2025 — reconhecidamente "em desenvolvimento"); (2) envio dos autos, ainda que parcialmente anonimizados, a provedores comerciais norte-americanos sem DPA institucional; (3) instrumentação invasiva do PJe (patching de <code>fetch</code>/<code>XMLHttpRequest</code> e automação de ações que alteram estado — "encerrar expedientes em lote") sem autorização formal da DTIC; (4) distribuição por ZIP em modo desenvolvedor, fora de canal oficial e sem mecanismo de desativação remota; (5) ausência de inventário no catálogo de sistemas da JFCE e de registro no CNJ conforme exige o Art. 20 da Res. 615/2025.</p>
+</div>
+
+<p>Os cinco bloqueios são <strong>remediáveis</strong>, mas demandam plano formal conjunto Inovajus + DTIC + Comitê LGPD. O restante do relatório detalha esses pontos à luz dos quatro eixos solicitados.</p>
+
+<h2>2. Ponto 1 — Qualidade do Código e Condições de Auditoria por Dev Sênior</h2>
+
+<h3>2.1. Resposta direta</h3>
+
+<p><strong>Sim, o código tem plena condição de ser auditado por um desenvolvedor sênior especialista em auditoria.</strong> A base é legível, tipada, documentada e organizada em camadas. Abaixo as razões técnicas, em ordem de relevância.</p>
+
+<h3>2.2. Pontos fortes observados</h3>
+
+<table>
+<tr><th style="width:30%">Aspecto</th><th>Observação</th></tr>
+<tr><td><strong>Tipagem estrita</strong></td><td>Projeto em <code>TypeScript 5.4</code> com tsconfig em modo strict (inferido pela ausência de <code>any</code> explícito nos módulos inspecionados). Tipos compartilhados centralizados em <code>src/shared/types.ts</code> e <code>src/shared/constants.ts</code>.</td></tr>
+<tr><td><strong>Separação de contextos</strong></td><td>Respeito à arquitetura MV3: background (service worker), content scripts (isolated + page world), popup, options e páginas de dashboard, cada uma com ponto de entrada próprio no <code>webpack.config.js</code>. Comunicação via <code>chrome.runtime.onMessage</code> e <code>chrome.runtime.connect</code> (portas long-lived para streaming). Nenhuma mistura indevida.</td></tr>
+<tr><td><strong>Provedores de LLM atrás de interface</strong></td><td><code>src/background/providers/base.ts</code> define <code>LLMProvider</code> com <code>sendMessage</code>, <code>testConnection</code>, <code>transcribeAudio</code>, <code>synthesizeSpeech</code>. Cada provedor concreto implementa o contrato; o <code>background.ts</code> apenas seleciona pelo id. Troca de provedor é trivial.</td></tr>
+<tr><td><strong>Comentários de intenção</strong></td><td>Blocos de comentário explicam o <em>porquê</em> de decisões não óbvias (ex.: por que o interceptor de auth roda em page world; por que o IndexedDB substituiu <code>storage.session</code>; por que a ofuscação da API key <em>não</em> é criptografia forte). Isto acelera auditoria e facilita onboarding.</td></tr>
+<tr><td><strong>Tolerância a erros em caminhos auxiliares</strong></td><td>Telemetria (<code>src/shared/telemetry.ts</code>), persistência do probe Keycloak e storage de auth usam <code>try/catch</code> silencioso — a falha de um caminho auxiliar nunca derruba a coleta principal. Padrão adequado para extensão cuja execução depende de contexto de terceiros.</td></tr>
+<tr><td><strong>Segregação de PII em dashboards</strong></td><td><code>src/shared/triagem-anonymize.ts</code> documenta explicitamente a política: dados com PII ficam no dashboard local (nunca saem); versão anonimizada é o único objeto enviado à LLM. Regra descrita em prosa e implementada idempotentemente.</td></tr>
+<tr><td><strong>Build reprodutível</strong></td><td><code>webpack.config.js</code> com modo produção (devtool off, clean output). Sem dependências do sistema além do Node. Dependências listadas em <code>package.json</code>: 3 runtime (<code>mammoth</code>, <code>pdfjs-dist</code>, <code>tesseract.js</code>) e 7 de desenvolvimento — superfície pequena.</td></tr>
+<tr><td><strong>Permissões do manifest</strong></td><td>Apenas <code>activeTab</code>, <code>storage</code>, <code>scripting</code>. Sem <code>tabs</code>, <code>webRequest</code>, <code>cookies</code> ou <code>history</code>, que seriam bandeiras vermelhas.</td></tr>
+</table>
+
+<h3>2.3. Fraquezas que um auditor sênior vai apontar</h3>
+
+<table>
+<tr><th style="width:30%">Achado</th><th>Severidade</th><th>Detalhe</th></tr>
+<tr><td>Ausência total de testes automatizados</td><td class="sev-alto">ALTA</td><td>Não há suíte de testes (Jest, Vitest, Playwright) nem script <code>test</code> no <code>package.json</code>. Projeto com mais de 500 KB de TS em arquivos críticos (<code>background.ts</code> tem ~141 KB; <code>content.ts</code> ~141 KB; <code>prazos-fita-coordinator.ts</code> ~43 KB) não tem rede de segurança contra regressões. Inaceitável para software que altera estado do PJe em produção.</td></tr>
+<tr><td>Arquivos gigantes por single responsibility violada</td><td class="sev-medio">MÉDIA</td><td><code>background.ts</code> com ~2.900 linhas concentra roteamento de mensagens, chamadas a provedores, anonimização, manipulação de tabs, <code>chrome.scripting.executeScript</code>, persistência e orquestração de dashboards. Um <code>switch</code> de ~350 linhas com cases que chamam handlers espalhados. Refatoração por domínio (Triagem, Gestão, PrazosFita, Provedores, Templates) é recomendada.</td></tr>
+<tr><td>Ofuscação de API key confundível com criptografia</td><td class="sev-alto">ALTA</td><td><code>src/background/crypto.ts</code> usa AES-GCM + PBKDF2 <em>com segredo fixo embutido no build</em> (<code>BUILD_SECRET = 'paidegua/jfce/v1/k0e5p-it-s4fe-en0ugh'</code>). O próprio comentário admite: "NÃO é criptografia forte". Quem tiver acesso ao perfil do navegador e ao código aberto reverte em minutos. Um auditor bancário reprovaria sem cerimônia. Aceitável como proteção contra leitura casual; <strong>inaceitável</strong> como garantia de confidencialidade.</td></tr>
+<tr><td>Instrumentação do PJe em page world</td><td class="sev-alto">ALTA</td><td><code>src/content/auth/pje-auth-interceptor-page.ts</code> faz monkey-patch de <code>window.fetch</code> e <code>XMLHttpRequest.prototype</code> no mesmo contexto JS do Angular do PJe, captura o <code>Authorization: Bearer</code> junto com <code>X-pje-cookies</code>, <code>X-pje-legacy-app</code> e <code>X-pje-usuario-localizacao</code>. Depois persiste em <code>chrome.storage.session</code> e usa para chamadas REST em nome do usuário. Funcionalmente <em>é</em> um plug-in oficialmente instalado, mas tecnicamente <em>parece</em> um XSS consentido — qualquer revisor de segurança externo vai pedir autorização formal do gestor do PJe e trilha de auditoria específica.</td></tr>
+<tr><td>Automação de ações que alteram estado do PJe</td><td class="sev-alto">ALTA</td><td>"Encerrar expedientes em lote" (<code>handlePrazosEncerrarRun</code>) e "Encaminhar e inserir emenda" (<code>handleEncaminharEmenda</code>) executam cliques simulados em abas do PJe e inserem conteúdo no editor Badon. O <em>output</em> é igual ao que o servidor faria manualmente, mas o PJe não sabe distinguir — não há marcação "executado via pAIdegua". Auditor vai exigir rastro.</td></tr>
+<tr><td><code>host_permissions</code> amplo demais</td><td class="sev-medio">MÉDIA</td><td><code>manifest.json</code> declara <code>https://*.jus.br/*</code>. Isso cobre qualquer domínio do Judiciário brasileiro (incluindo CNJ, outros TRFs, tribunais estaduais), bem além do escopo real (pje1g/pje2g/pjett do TRF5). Restringir a <code>https://pje*.trf5.jus.br/*</code> é trivial e reduz a superfície drasticamente.</td></tr>
+<tr><td>Sem SBOM ou SCA</td><td class="sev-medio">MÉDIA</td><td>Não há <code>npm audit</code> integrado, nem <code>dependabot</code>, nem <code>sbom.json</code>. Dependências como <code>tesseract.js</code> trazem WebAssembly e workers — precisam ser monitoradas contra CVEs.</td></tr>
+<tr><td>Sem pipeline de CI/CD</td><td class="sev-medio">MÉDIA</td><td>Nenhum arquivo <code>.github/workflows</code>, <code>.gitlab-ci.yml</code> ou equivalente na raiz. Build e publicação são manuais (scripts <code>build.bat</code>, <code>dev.bat</code>, <code>install.bat</code>). Sem verificação automática de <code>tsc --noEmit</code> ou lint a cada merge.</td></tr>
+<tr><td>Distribuição fora de canal oficial</td><td class="sev-alto">ALTA</td><td>A extensão não está publicada na Chrome Web Store nem no Edge Add-ons. É distribuída como <code>dist vX.Y.zip</code> e instalada em modo desenvolvedor, após ativação manual do "Modo do desenvolvedor" pelo usuário. Isso significa: (a) sem assinatura digital; (b) sem atualização automática; (c) sem verificação de integridade; (d) nenhuma garantia de que a versão instalada é a "oficial" — qualquer ZIP modificado passa como se fosse original.</td></tr>
+<tr><td>Ausência de linter e formatação</td><td class="sev-baixo">BAIXA</td><td>Sem <code>.eslintrc</code>, <code>prettierrc</code> ou configuração equivalente versionada. Estilo mantido por disciplina do autor, não por ferramenta.</td></tr>
+</table>
+
+<h3>2.4. Conclusão do Ponto 1</h3>
+
+<p>A auditoria <em>é viável</em>. O código não esconde nada — ao contrário, os comentários antecipam as perguntas que um auditor faria. Um sênior concluirá o trabalho com laudo do tipo "<em>MVP com arquitetura sólida, porém sem os instrumentos de engenharia que se esperam de software crítico — testes, CI, linter, SBOM, distribuição assinada, logs centralizados</em>". Todos esses itens são <strong>remediáveis em poucas sprints</strong> e devem compor o plano de adequação antes da escalada institucional.</p>
+
+<h2>3. Ponto 2 — LGPD e Resolução CNJ 615/2025: Pontos de Tensão</h2>
+
+<h3>3.1. Mapa de dados pessoais tratados</h3>
+
+<table>
+<tr><th>Dado</th><th>Origem</th><th>Onde fica</th><th>Sai do navegador?</th></tr>
+<tr><td>Conteúdo integral dos documentos dos autos</td><td>Extraído do PJe via chamadas REST e OCR local</td><td>Memória do content script (aba) + <code>chrome.storage.local</code> quando cache; OCR em WebWorker</td><td><strong>SIM</strong> — ao clicar em "Resumir", "Minutar", "Analisar o processo", "Chat livre" etc. o conteúdo (após regex para CPF/CNPJ/CEP/email/telefone/banco, se o usuário acionou "Anonimizar autos") vai para a API do provedor ativo.</td></tr>
+<tr><td>Cabeçalho do processo (até 12.000 chars) com nomes das partes, advogados, peritos, curadores, procuradores</td><td>Cabeçalho do texto extraído</td><td>Idem</td><td><strong>SIM</strong>, necessariamente — é o insumo do passo 2 do anonimizador, que pede ao próprio LLM para identificar nomes. Ou seja: para anonimizar, o cabeçalho <em>precisa</em> sair com PII. Dados voltam ao cliente como pares <code>{original, substituto}</code>; então a anonimização é aplicada ao restante do texto.</td></tr>
+<tr><td>Número CNJ do processo</td><td>URL / conteúdo</td><td>Dashboards, payloads LLM</td><td><strong>SIM</strong>, inclusive em versão anonimizada dos dashboards. Justificativa no código: "CNJ é informação pública" e serve para a secretaria localizar os autos nas sugestões da IA.</td></tr>
+<tr><td>Nomes de partes em dashboards gerenciais</td><td>Coleta via API REST do PJe (Painel Gerencial, Prazos na Fita)</td><td>IndexedDB (até o usuário reiniciar o Chrome ou fechar a aba)</td><td><strong>Parcial</strong> — dashboard local guarda nomes reais; versão que vai para LLM substitui por <code>[POLO ATIVO]</code>/<code>[POLO PASSIVO]</code>, exceto entes públicos (INSS, União, CEF, IBAMA etc.).</td></tr>
+<tr><td>Texto da última movimentação</td><td>API do PJe</td><td>Idem</td><td><strong>SIM</strong>, com regex de PII aplicada e CNJ de outros processos trocado por <code>[OUTRO PROC]</code>.</td></tr>
+<tr><td>Token Keycloak (Bearer) + headers institucionais (<code>X-pje-cookies</code>, <code>X-pje-legacy-app</code>, <code>X-pje-usuario-localizacao</code>)</td><td>Interceptação de <code>fetch</code>/<code>XHR</code> do PJe em page world</td><td><code>chrome.storage.session</code> (limpo ao fechar o navegador)</td><td><strong>Não</strong> para fora — mas é usado same-origin para replay de chamadas ao PJe. Ponto sensível para o gestor do PJe.</td></tr>
+<tr><td>API key do provedor de IA</td><td>Digitada pelo usuário no popup</td><td><code>chrome.storage.local</code>, ofuscada com AES-GCM + segredo fixo</td><td>Sai a cada chamada no header (<code>x-api-key</code> / <code>Authorization: Bearer</code>).</td></tr>
+<tr><td>E-mails para suporte</td><td>Formulário da página Suporte</td><td>Nada persiste — abre <code>mailto:</code> com destinatário <code>inovajus@jfce.jus.br</code></td><td>Sim, via cliente de e-mail local. <strong>Nenhum dado de processo é enviado</strong>.</td></tr>
+<tr><td>Telemetria de varreduras (kind, duração, contadores, erros)</td><td>Instrumentação interna</td><td><code>chrome.storage.local</code>, últimas 30 varreduras</td><td>Não sai. Visível na página de Diagnóstico.</td></tr>
+</table>
+
+<h3>3.2. Análise à luz da LGPD</h3>
+
+<h4>Base legal e finalidade</h4>
+<p>A ferramenta <strong>trata dados pessoais de terceiros</strong> (partes, advogados, peritos, testemunhas) extraídos dos autos. A base legal aplicável é a <strong>execução de políticas públicas pelo Poder Judiciário</strong> (LGPD, Art. 7º, III c/c Art. 23) para a finalidade de <em>apoio ao exercício da função jurisdicional</em>. A finalidade está razoavelmente documentada no popup (aviso LGPD + Termos Res. 615). <span class="sev-medio">Ponto de atenção:</span> a base legal precisa ser chancelada pelo Encarregado de Dados Pessoais (DPO) da JFCE em parecer formal antes da escalada.</p>
+
+<h4>Minimização (Art. 6º, III)</h4>
+<div class="critico">
+<strong>Tensão real.</strong> O princípio exige tratamento "limitado ao mínimo necessário". Na prática, os fluxos "Resumir", "Minutar" e "Chat livre" enviam <em>o texto inteiro</em> dos autos selecionados para a LLM. Mesmo após a anonimização por regex (CPF/CNPJ/RG/email/telefone/banco) e por LLM (nomes de pessoas físicas), saem dos autos: endereços parcialmente (ruas sem CEP), teses jurídicas específicas do caso, histórico clínico (em previdenciário/assistencial), relatos de violência ou vulnerabilidade (em causas de Benefício de Prestação Continuada — BPC/LOAS) e todas as datas. Em processos sob segredo de justiça, <strong>nem o regex nem o LLM reduzem a sensibilidade intrínseca da causa</strong>. A extensão hoje <em>não</em> bloqueia o uso em processos com sigilo: apenas marca o flag <code>sigiloso: boolean</code> no dashboard.
+</div>
+
+<h4>Consentimento / informação ao titular</h4>
+<p>A LGPD dispensa consentimento quando a base é política pública, mas exige <strong>informação ao titular</strong> e <strong>direitos de acesso, correção, eliminação</strong> (Art. 9º, Art. 18). Hoje, <strong>não há canal algum</strong> pelo qual o titular dos dados (a parte do processo) saiba que seus autos foram submetidos a uma IA de terceiro, nem exerça seus direitos junto ao provedor (Anthropic/OpenAI/Google). Esta lacuna é <strong>a maior vulnerabilidade jurídica do projeto</strong>.</p>
+
+<h4>Transferência internacional (Art. 33)</h4>
+<div class="critico">
+Todos os três provedores (Anthropic, OpenAI, Google) têm infraestrutura <strong>fora do Brasil</strong>. A extensão envia payloads para <code>api.anthropic.com</code>, <code>api.openai.com</code> e <code>generativelanguage.googleapis.com</code>. A LGPD exige <strong>cláusulas contratuais específicas, certificado de adequação ou garantias expressas de conformidade</strong> (Art. 33, II/IV). Como a JFCE não é contratante direto — o modelo atual é "cada servidor cadastra sua própria API key" — <strong>não há contrato institucional</strong> com os provedores. Os termos genéricos de "Enterprise/Business que não usa dados para treinamento" citados no popup são <em>compromissos de conduta do usuário</em>, não <em>garantias técnicas verificáveis pela extensão</em>.
+</div>
+
+<h4>Segurança (Art. 46)</h4>
+<p>A chave do provedor é "ofuscada", não cifrada — vide seção 2.3. O token Keycloak do PJe fica em <code>chrome.storage.session</code>, o que é aceitável. O IndexedDB do dashboard é limpo no <code>chrome.runtime.onStartup</code> — padrão correto. <span class="sev-medio">Ponto de atenção:</span> se o navegador não for encerrado por dias (comum em estações ligadas 24/7), o IndexedDB pode persistir com PII. Recomenda-se TTL explícito.</p>
+
+<h4>Retenção</h4>
+<p>Boa: dados do dashboard não sobrevivem ao restart do navegador; telemetria limita-se a 30 varreduras; prompt nunca é gravado em disco. Conformidade aqui é clara.</p>
+
+<h3>3.3. Análise à luz da Resolução CNJ 615/2025</h3>
+
+<p>A extensão <strong>cita expressamente</strong> a Resolução 615/2025 no popup (seção "Termos de uso e Governança"), o que é positivo: demonstra ciência normativa. Abaixo, artigo por artigo, a verificação técnica.</p>
+
+<table>
+<tr><th>Dispositivo</th><th>Estado da extensão</th><th>Diagnóstico</th></tr>
+<tr><td><strong>Art. 7º</strong> — Princípios (transparência, responsabilidade, rastreabilidade)</td><td>Parcial. Transparência: popup informa provedor/modelo. Rastreabilidade: <em>ausente</em> — sem log central.</td><td class="sev-medio">ATENÇÃO</td></tr>
+<tr><td><strong>Art. 17, I</strong> — Governança pelos Comitês de IA e Proteção de Dados</td><td>Não submetido formalmente ao Comitê de IA nem ao Comitê LGPD da JFCE.</td><td class="sev-alto">CRÍTICO antes da escalada</td></tr>
+<tr><td><strong>Art. 17, II</strong> — Aprovação pelo órgão colegiado antes da produção</td><td>Ferramenta já está em uso em unidades da JFCE sem essa aprovação formal registrada.</td><td class="sev-alto">CRÍTICO</td></tr>
+<tr><td><strong>Art. 19, II</strong> — Vedação de uso de dados para treinamento</td><td>Depende do <em>usuário</em> ter contratado plano Enterprise/Business do provedor. Não há verificação técnica pela extensão. Popup informa a obrigação, mas ela <em>não é imposta pelo sistema</em>.</td><td class="sev-alto">CRÍTICO — exige DPA institucional</td></tr>
+<tr><td><strong>Art. 19, IV</strong> e <strong>Art. 34</strong> — IA como suporte / supervisão humana</td><td>Atendido. Todas as saídas são minutas, análises ou sugestões; nenhuma publicação automática. O popup alerta expressamente.</td><td class="sev-baixo">OK</td></tr>
+<tr><td><strong>Art. 19, §6º</strong> e <strong>Art. 27</strong> — Registro e trilha de auditoria</td><td class="sev-alto"><strong>EXPLICITAMENTE "em desenvolvimento".</strong> O próprio popup informa que "até a liberação do recurso, não há registro persistente das gerações fora do navegador local do usuário". Telemetria existe, mas só para o próprio usuário.</td><td class="sev-alto">BLOQUEADOR para adoção regional</td></tr>
+<tr><td><strong>Art. 20</strong> — Registro no catálogo institucional e comunicação ao CNJ</td><td>Não existe. Projeto não consta em inventário de sistemas da DTIC.</td><td class="sev-alto">CRÍTICO antes da escalada</td></tr>
+<tr><td><strong>Art. 21</strong> — Identificação de conteúdo gerado com apoio de IA</td><td>Previsto nos Termos; <strong>não implementado no código</strong> — as minutas geradas não trazem carimbo automático "produzido com apoio de IA, versão X, provedor Y, modelo Z, data". O servidor pode fazer à mão, mas não é automático.</td><td class="sev-medio">ATENÇÃO</td></tr>
+<tr><td><strong>Art. 23</strong> — Classificação de risco</td><td>Autoclassificado como "Baixo Risco", BR4 (apoio à confecção de atos) e BR8 (anonimização). Classificação defensável, <em>desde que</em> as ações que alteram estado do PJe ("Encerrar expedientes em lote", "Encaminhar e inserir emenda") não sejam entendidas como parte do objeto BR — caso em que a classificação pode subir para Médio (MR).</td><td class="sev-medio">ATENÇÃO — revisar com o Comitê de IA</td></tr>
+<tr><td><strong>Art. 30</strong> — Proteção de dados pessoais / integração com a LGPD</td><td>Anonimização em dois passos é boa iniciativa, mas vide Seção 3.2 — há lacunas materiais.</td><td class="sev-medio">ATENÇÃO</td></tr>
+<tr><td><strong>Anexo, BR4/BR8</strong> — Cabimento da ferramenta na categoria de baixo risco</td><td>Cabe parcialmente. O que excede o BR é a <strong>automação de transição de tarefa e encerramento de expedientes</strong> — operações <em>executórias</em> no sistema processual, não apenas "produção de texto de apoio".</td><td class="sev-medio">ATENÇÃO</td></tr>
+</table>
+
+<h3>3.4. Limite de usabilidade</h3>
+
+<p>Resumindo o ponto 2 do usuário: <strong>em que o aplicativo chega ao limite?</strong></p>
+
+<ol>
+  <li><strong>Processos sob segredo de justiça</strong> — não há bloqueio técnico. O servidor decide se usa ou não. Recomenda-se impedir explicitamente quando <code>proc.sigiloso === true</code> ou alertar de forma bloqueante.</li>
+  <li><strong>Processos criminais com dados sensíveis de vítimas e réus</strong> — hoje permitido. Risco alto.</li>
+  <li><strong>Processos envolvendo crianças/adolescentes (ECA) ou idosos vulneráveis</strong> — estão em segredo por lei; mesma lacuna do item 1.</li>
+  <li><strong>Automação de ações no PJe</strong> (encerrar expedientes em lote, encaminhar emenda) — não é BR puro; ultrapassa a classificação autodeclarada de baixo risco.</li>
+  <li><strong>Uso sem API key institucional</strong> — cada servidor com sua conta é incompatível com adoção em escala: não há DPA, não há inventário de uso, não há controle de custo, não há garantia de plano Enterprise.</li>
+</ol>
+
+<h2>4. Ponto 3 — Inspeções pelo Comitê LGPD e pela DTIC</h2>
+
+<h3>4.1. Se a inspeção for feita pelo Comitê LGPD da SJCE</h3>
+
+<p>O Comitê tenderá a avaliar: (i) legitimidade da base legal; (ii) mapeamento do tratamento; (iii) garantias de segurança; (iv) rito de atendimento aos direitos do titular; (v) avaliação de risco e impacto (RIPD). Abaixo os pontos que muito provavelmente serão levantados.</p>
+
+<h4>Pontos que vão ser cobrados</h4>
+<ol>
+  <li><strong>Relatório de Impacto à Proteção de Dados Pessoais (RIPD)</strong> — exigível pelo Art. 38 da LGPD e pela Resolução CD/ANPD 2/2022 quando há alto risco. Não há RIPD disponível. <strong>Elaborar antes da adoção</strong>.</li>
+  <li><strong>Parecer formal do Encarregado (DPO)</strong> — precisa constar nos autos administrativos do projeto.</li>
+  <li><strong>Contrato / DPA com os provedores de IA</strong> — hoje inexistente. Se cada servidor contrata pessoalmente, a JFCE tem <strong>responsabilidade compartilhada sem salvaguardas</strong>. Cenário jurídico ruim: em caso de incidente, a JFCE responde como controlador de fato pelo uso institucional.</li>
+  <li><strong>Transferência internacional</strong> — Art. 33 exige garantias. Necessário, no mínimo, documento formal que enquadre a transferência em uma das hipóteses legais e mecanismo de comunicação ao titular.</li>
+  <li><strong>Canal para titulares</strong> — não existe. O DPO da JFCE deverá indicar como um cidadão pode pedir informações sobre o tratamento dos dados de seu processo pela ferramenta.</li>
+  <li><strong>Processo sob segredo de justiça</strong> — exigirão bloqueio técnico ou justificativa robusta para permitir uso.</li>
+  <li><strong>Treinamento obrigatório do usuário</strong> — com registro de aceite eletrônico, não apenas uma checkbox genérica.</li>
+  <li><strong>Trilha de auditoria</strong> — exigirão o que a Res. 615/2025 Art. 27 já exige: identificação de usuário, unidade, tipo de ato, provedor, modelo, data/hora. A extensão admite que isso está "em desenvolvimento" — o Comitê vai querer <em>cronograma</em>.</li>
+  <li><strong>Política de retenção explícita</strong> — OK parcialmente (onStartup limpa IndexedDB); precisa documento formal.</li>
+  <li><strong>Inventário de tratamento de dados</strong> — a ferramenta precisa entrar no ROPA (Record of Processing Activities) da JFCE.</li>
+</ol>
+
+<h4>Provável resultado do parecer do Comitê LGPD</h4>
+<div class="atencao">
+<strong>Aprovação condicionada</strong>, com exigências prévias à escalada: RIPD, parecer do DPO, DPA institucional com pelo menos um provedor (ou alternativa <em>on-premise</em>), bloqueio em processos sigilosos, canal para titulares, trilha de auditoria central implementada. Reprovação definitiva é improvável — a arquitetura é consciente — mas <strong>a liberação para toda a 5ª Região sem as exigências é tecnicamente frágil</strong>.
+</div>
+
+<h3>4.2. Se a inspeção for feita pela DTIC da SJCE</h3>
+
+<p>A DTIC avaliará sob a ótica de gestão de TI: arquitetura, segurança, continuidade, integração, licenciamento, suporte.</p>
+
+<h4>Pontos que vão ser cobrados</h4>
+<ol>
+  <li><strong>Autorização formal para instrumentar o PJe</strong> — o patching de <code>fetch</code>/<code>XHR</code> em page world é funcionalmente legítimo, mas tecnicamente equivale a um interceptor com acesso ao token de sessão. Sem autorização expressa do gestor do PJe (TRF5) e da DTIC, o uso é desconforme.</li>
+  <li><strong>Catálogo de sistemas institucional</strong> — a ferramenta não consta. A DTIC vai exigir cadastro, responsável técnico, responsável de negócio, plano de continuidade.</li>
+  <li><strong>Canal de distribuição</strong> — o modelo atual (ZIP em pasta de rede + modo desenvolvedor) é <em>inaceitável</em> em escala. A DTIC vai pedir: (a) Chrome Web Store privada (unlisted) com política de <em>force install</em> via GPO; (b) assinatura digital; (c) atualização automática; (d) capacidade de desativação remota em caso de incidente.</li>
+  <li><strong>Modelo de licenciamento das APIs de IA</strong> — quem paga? Cada servidor (como hoje) não é sustentável nem controlável. A DTIC vai sugerir um dos três caminhos: (i) contrato central da SJCE com um provedor; (ii) Azure OpenAI em tenant institucional (há consulta em curso, vide <code>docs/dtic-consulta-suporte-paidegua.md</code>); (iii) modelo on-premise (Ollama, vLLM em GPU local).</li>
+  <li><strong>Logs e observabilidade</strong> — DTIC vai pedir que os logs sejam encaminhados a um coletor institucional (ex.: Azure Application Insights, Splunk, Grafana).</li>
+  <li><strong>Suporte e SLA</strong> — hoje é <code>mailto:inovajus@jfce.jus.br</code>. Em escala regional não se sustenta. A DTIC vai pedir ticket oficial com SLA.</li>
+  <li><strong>Compatibilidade com o PJe</strong> — a extensão depende de seletores CSS e do shape do DOM do PJe atual. Qualquer atualização do PJe pode quebrá-la. DTIC pedirá testes automatizados contra o ambiente de homologação do PJe antes de cada release.</li>
+  <li><strong>Segurança do canal de comunicação</strong> — HTTPS sempre; sem certificados self-signed. Já é o caso. OK.</li>
+  <li><strong>Gestão de dependências e CVEs</strong> — sem <code>npm audit</code> ou equivalente no pipeline.</li>
+  <li><strong>Controle de versão e assinatura do artefato</strong> — ZIPs hoje não são assinados. Um servidor pode modificar o ZIP antes de instalar.</li>
+  <li><strong>Acessibilidade</strong> — WCAG não avaliado. Judiciário é obrigado a atender.</li>
+  <li><strong>Política de backup/restore</strong> — dados ficam no navegador do usuário; se houver perda (reinstalação de máquina), é irrecuperável. Para templates de minutas (<code>src/shared/templates-store.ts</code>), não há sincronização institucional.</li>
+  <li><strong>Integração com SSO institucional</strong> — hoje não usa o AD/Entra ID da JFCE; autentica no PJe reaproveitando o token do usuário já logado. Isso é engenhoso, mas frágil se o TRF5 mudar o fluxo OIDC.</li>
+  <li><strong>Plano de desativação</strong> — se, amanhã, o Comitê LGPD mandar parar, como se para? Hoje a única saída é o usuário clicar no toggle de "Extensão Ativada" ou desinstalar. Falta <em>kill switch</em> remoto.</li>
+  <li><strong>Privacy by Default</strong> — o padrão do <code>lgpdAccepted</code> é <code>false</code>; bom. Porém, uma vez aceito, a ferramenta pode ser usada em qualquer processo, inclusive sigilosos, sem distinção.</li>
+</ol>
+
+<h4>Provável resultado do parecer da DTIC</h4>
+<div class="atencao">
+<strong>Não homologar para produção em escala sem um Plano de Adequação</strong> contendo, no mínimo: (i) catálogo de sistemas; (ii) canal de distribuição oficial; (iii) autorização do gestor do PJe; (iv) solução central de chaves de IA; (v) logs enviados a coletor institucional; (vi) SLA de suporte; (vii) plano de continuidade/desativação; (viii) assinatura e versionamento. Como <em>piloto controlado</em> na própria JFCE, a DTIC provavelmente aceita manter o uso atual, <em>desde que com termo de ciência do servidor</em>.
+</div>
+
+<h2>5. Ponto 4 — Pontos Cegos para Adoção Institucional na 5ª Região</h2>
+
+<p>Pontos que ainda <strong>não foram considerados</strong> ou que estão na sombra — ordenados do mais estrutural ao mais operacional.</p>
+
+<h3>5.1. Governança e atores institucionais ainda não mapeados</h3>
+
+<ol>
+  <li><strong>Comitês locais de LGPD e IA dos outros Tribunais e Seções Judiciárias da 5ª Região</strong> (SJCE, SJPE, SJPB, SJRN, SJAL, SJSE, TRF5 e Turmas Recursais) — cada um exigirá seu próprio parecer. Não é automático que a aprovação na SJCE valha para os demais.</li>
+  <li><strong>Coordenadoria dos Juizados Especiais (CJEF) da 5ª Região</strong> — a Triagem Inteligente está baseada na Nota Técnica 1/2025 <em>do CLI-JFCE</em>, que uniformizou critérios entre os 16 JEFs do Ceará. Os outros estados têm NTs próprias, critérios distintos, ou sequer têm NT. Escalar os critérios regionais é <em>trabalho jurídico</em> que precede o técnico.</li>
+  <li><strong>Presidência do TRF5</strong> — a adoção institucional regional é ato que, pela relevância, cabe a portaria presidencial precedida de parecer do Comitê Gestor de TI do Tribunal e do Comitê de IA (se existir).</li>
+  <li><strong>ANPD</strong> — projetos com transferência internacional de dados de grande volume podem acionar comunicação à Autoridade.</li>
+  <li><strong>CNJ</strong> — Art. 20 da Res. 615/2025 obriga à inscrição no catálogo institucional do CNJ; é condição para operação em escala regional.</li>
+  <li><strong>Escritório de Governança de Dados do TRF5</strong> — precisa ciência formal.</li>
+  <li><strong>Ministério Público Federal, OAB, Defensoria Pública da União</strong> — não como aprovadores, mas como atores que podem questionar judicialmente. Melhor informá-los antecipadamente, como política de transparência.</li>
+</ol>
+
+<h3>5.2. Riscos jurídicos ainda não endereçados</h3>
+
+<ol>
+  <li><strong>Responsabilidade por alucinação de IA em minuta inserida no PJe</strong> — se a minuta sugerida contiver citação inexistente, precedente inventado, data ou parte trocada, e for inserida sem revisão, a responsabilidade é do servidor/magistrado. Mas a <em>origem</em> do erro é a ferramenta. O uso em escala aumenta a chance estatística de alguma minuta enganosa passar pela revisão humana apressada. Recomenda-se: (a) carimbo obrigatório "produzido com IA, revisar"; (b) checklist automático de verificação de citações; (c) registro do modelo usado e tokens gastos, por minuta.</li>
+  <li><strong>Vazamento por chave de API comprometida</strong> — a chave é ofuscada, não cifrada. Se a estação do servidor for atacada, a chave é recuperável. Com ela, o atacante acessa todo o histórico da API do provedor daquele servidor — e pode ver os últimos prompts enviados. Em alguns provedores, o histórico expõe o conteúdo dos autos enviados. Risco real.</li>
+  <li><strong>Perfil de uso cruzando contextos</strong> — se o mesmo servidor usa a API key pessoal em casa (laptop próprio) <em>e</em> no trabalho, a chave transita por redes desconhecidas. Precisa política clara: chave institucional vs. pessoal.</li>
+  <li><strong>Uso da ferramenta em processos de corregedoria ou investigação interna</strong> — se um servidor usar pAIdegua para minutar algo relacionado a si próprio ou a colega, pode haver conflito de interesse técnico (dados do processo saem para LLM externo sem que o servidor pesquisado saiba).</li>
+</ol>
+
+<h3>5.3. Riscos técnicos ainda não endereçados</h3>
+
+<ol>
+  <li><strong>Evolução do PJe</strong> — cada TRF tem sua própria instância PJe, com versões ligeiramente distintas. Seletores que funcionam no TRF5 podem falhar no TRF1, TRF2 etc. Os outros tribunais da 5ª Região (SJCE está no TRF5) estão OK, mas as turmas recursais têm nuances. A extensão suporta hoje <code>pje1g.trf5.jus.br</code>, <code>pje2g.trf5.jus.br</code> e <code>pjett.trf5.jus.br</code>. Para tribunais estaduais ou outros TRFs, requer adaptação.</li>
+  <li><strong>Quebra de compatibilidade com Manifest V3</strong> — Google vem ajustando o MV3. Extensões dependentes de service worker persistente ou page-world injection podem enfrentar restrições futuras. A extensão usa ambos. Necessário monitoramento.</li>
+  <li><strong>Concorrência entre varreduras</strong> — se dois dashboards são abertos simultaneamente na mesma máquina, ou se o usuário reinicia uma coleta enquanto outra está em curso, há condições de corrida no <code>chrome.storage</code>. O código trata parcialmente, mas não há teste de stress.</li>
+  <li><strong>Quota de IndexedDB</strong> — unidades muito grandes (comarcas com dezenas de milhares de processos) podem estourar a quota prática. O próprio código reconhece o problema (comentário em <code>gestao-indexed-storage.ts</code>); a migração para IndexedDB mitiga, mas não elimina.</li>
+  <li><strong>OCR com Tesseract.js</strong> — consome memória. Em estações com 8 GB de RAM, documentos longos podem travar o navegador. Limitar <code>ocrMaxPages</code> é mitigante, não solução.</li>
+  <li><strong>Custo das chamadas a LLM</strong> — não há dashboard de custo. Um usuário descuidado pode gastar USD $$$ em uma tarde. A ferramenta não mostra quanto custou cada ação (tokens consumidos, dólares). Ausência importante em uso institucional.</li>
+</ol>
+
+<h3>5.4. Riscos de sustentabilidade e continuidade</h3>
+
+<ol>
+  <li><strong>Bus factor</strong> — a extensão é mantida pela equipe do Inovajus. Se o autor principal sair, quem mantém? Transferência de conhecimento formal (documentação de arquitetura interna, runbooks, treinamento de sucessor) ainda não está estruturada.</li>
+  <li><strong>Evolução de prompts</strong> — os prompts estão embutidos em TypeScript (<code>src/shared/prompts.ts</code>, ~65 KB). Mudanças de redação exigem novo build e redistribuição. Em uma operação regional, o ciclo ideal é: prompts fora do binário, curados por comitê jurídico, versionados e A/B testáveis.</li>
+  <li><strong>Modelos de minutas do usuário</strong> — ficam no computador do usuário (File System Access API). Se a estação for trocada, perde-se o acervo. Não há sincronização com pasta de rede ou SharePoint institucional.</li>
+  <li><strong>Curadoria pedagógica</strong> — sem trilha de treinamento obrigatória, a ferramenta é liberada a quem tiver a chave de API. Em uma população de milhares de servidores, isso gera desvios de uso previsíveis.</li>
+  <li><strong>Feedback loop</strong> — hoje o único canal é o <code>mailto:</code>. Sem estruturação de fila, priorização, métricas de resposta. O documento <code>docs/dtic-consulta-suporte-paidegua.md</code> já propõe esquema com M365 + Power Automate + Planner; é solução necessária antes da escalada.</li>
+</ol>
+
+<h3>5.5. Riscos éticos e reputacionais</h3>
+
+<ol>
+  <li><strong>Viés algorítmico</strong> — os critérios da NT 1/2025 estão OK para benefícios previdenciários e assistenciais, mas os prompts de "Minutar" buscam modelo similar e reproduzem estilo. Se o acervo de modelos de um magistrado for enviesado (ex.: improcedência sistemática em BPC/LOAS), a ferramenta <em>amplifica</em> o viés. Resolução 615/2025 exige atenção a discriminação algorítmica.</li>
+  <li><strong>Automação de decisões</strong> — a ferramenta não decide, mas "sugere" o ato mais adequado (Triagem automática do botão Minutar). Em operação rotineira, a sugestão tende a ser aceita. A fronteira entre "sugestão" e "decisão de fato" se esmaece.</li>
+  <li><strong>Percepção pública</strong> — uma reportagem do tipo "Justiça Federal envia processos a ChatGPT sem consentimento das partes" é plausível se o projeto for adotado sem RIPD e canal de titulares. Gestão de comunicação precisa antecipar a narrativa.</li>
+  <li><strong>Uso em processos criminais contra figuras públicas</strong> — conteúdo sensível trafegando para servidor estrangeiro é noticiável. Bloqueio explícito por classe processual é mitigante.</li>
+</ol>
+
+<h3>5.6. Integrações faltantes</h3>
+
+<ol>
+  <li>Integração com <strong>Keycloak institucional</strong> da SJCE para SSO (em vez de reaproveitar o token do PJe).</li>
+  <li>Integração com <strong>catálogo de pessoas</strong> da JFCE para saber quem autenticou (hoje a ferramenta não sabe o CPF nem o nome do servidor — apenas o token de sessão do PJe).</li>
+  <li>Integração com <strong>e-mail institucional</strong> para notificações (em vez de <code>mailto:</code>).</li>
+  <li>Integração com <strong>dashboard institucional</strong> (Power BI, Grafana) para métricas agregadas de uso — número de gerações por unidade, tempo economizado, etc.</li>
+  <li>Integração com <strong>trilha de auditoria do PJe</strong> — quando a extensão executa "Encerrar expedientes em lote" ou "Encaminhar e inserir emenda", idealmente o próprio PJe deveria registrar que foi via pAIdegua, não via clique manual. Hoje essa diferenciação não existe.</li>
+  <li>Integração com <strong>repositório central de modelos de minutas</strong> — hoje, cada magistrado tem sua pasta local. Em escala regional, é esperado um repositório curado por vara/tribunal.</li>
+</ol>
+
+<h3>5.7. Métricas de sucesso ainda não definidas</h3>
+
+<p>Antes da adoção em escala, o projeto precisa declarar <em>o que é sucesso</em>. Por exemplo:</p>
+<ul>
+  <li>Percentual de minutas geradas com apoio de IA sobre o total de minutas de cada vara — meta, mínimo e máximo.</li>
+  <li>Tempo médio economizado por minuta.</li>
+  <li>Taxa de aceitação das sugestões de triagem (quantas vezes o servidor aceitou a sugestão vs. escolheu manualmente).</li>
+  <li>Taxa de erro material detectado em revisão humana.</li>
+  <li>Tempo médio de resposta do suporte.</li>
+  <li>Número de incidentes LGPD reportados.</li>
+  <li>Custo mensal das chamadas a LLM por unidade.</li>
+</ul>
+
+<p>Sem métricas definidas, <em>não há como aferir adequação</em>.</p>
+
+<h2>6. Plano de Adequação Sugerido (antes da escalada regional)</h2>
+
+<p>Proposta de sequência de trabalho. Prazos são indicativos, dependem de prioridade institucional.</p>
+
+<table>
+<tr><th>Fase</th><th>Entregas mínimas</th><th>Responsáveis</th><th>Prazo indicativo</th></tr>
+<tr><td>1 — Base documental</td><td>RIPD; parecer do DPO; inventário no ROPA; cadastro no catálogo da DTIC; registro no CNJ (Art. 20)</td><td>DPO, DTIC, Inovajus</td><td>30–60 dias</td></tr>
+<tr><td>2 — Acordos com provedores</td><td>DPA institucional com, no mínimo, um provedor (Anthropic, OpenAI, Google ou Azure OpenAI); transferência internacional formalizada</td><td>Administração, Assessoria Jurídica, DTIC</td><td>60–90 dias (paralelo à fase 1)</td></tr>
+<tr><td>3 — Adequação técnica</td><td>Trilha de auditoria central (Art. 27); bloqueio em processos sigilosos; carimbo automático "IA" nas minutas (Art. 21); dashboard de custo; canal para titulares; tests automatizados; CI/CD; SBOM; lint; assinatura do pacote; canal de distribuição (Chrome Web Store privada ou GPO); kill switch remoto; restringir <code>host_permissions</code></td><td>Inovajus + DTIC</td><td>90–120 dias</td></tr>
+<tr><td>4 — Governança</td><td>Portaria presidencial (TRF5); aprovação Comitê de IA; aprovação Comitê LGPD de cada Seção Judiciária; curadoria regional dos critérios de triagem (substituir NT 1/2025 do CLI-JFCE por normativa regional)</td><td>Presidência TRF5, Comitês</td><td>90–150 dias</td></tr>
+<tr><td>5 — Piloto controlado regional</td><td>Piloto de 60–90 dias em uma vara por Seção Judiciária; métricas; feedback loop estruturado; ajustes</td><td>Inovajus + unidades-piloto</td><td>150–240 dias</td></tr>
+<tr><td>6 — Rollout</td><td>Escalada progressiva; treinamento obrigatório; suporte formal com SLA; revisão periódica do Comitê LGPD</td><td>SGI do TRF5</td><td>240+ dias</td></tr>
+</table>
+
+<h2>7. Síntese Final</h2>
+
+<p>O pAIdegua é um <strong>MVP de qualidade acima da média</strong> para o padrão de ferramentas judiciais brasileiras. É legível, tipado, consciente dos limites da LGPD e da Resolução CNJ 615/2025, e entrega valor real aos servidores que o utilizam hoje na JFCE.</p>
+
+<p>Entretanto, a transição de MVP para <em>software institucional da 5ª Região</em> exige o que ele <strong>ainda não tem</strong>: (a) DPA com provedor de IA; (b) trilha de auditoria central; (c) inventário institucional e registro no CNJ; (d) canal oficial de distribuição com assinatura e kill switch; (e) testes automatizados e CI/CD; (f) integração com SSO institucional; (g) dashboard de custo; (h) bloqueio técnico em processos sigilosos; (i) carimbo automático de "produzido com IA"; (j) curadoria regional dos critérios de triagem.</p>
+
+<p>Esses dez pontos compõem uma lista <em>exequível</em> em quatro a oito meses, <em>desde que</em> o projeto receba prioridade institucional e se estruture o tripé Inovajus + DTIC + Comitê LGPD + Comitê de IA do Tribunal. <strong>Essa é a resposta honesta à pergunta do usuário</strong>: a ferramenta não está "pronta para escalar", mas <strong>está a uma distância finita e palpável</strong> de estar.</p>
+
+<div class="assinatura">
+<p>Relatório elaborado em apoio à decisão institucional sobre a adoção do pAIdegua no âmbito da 5ª Região da Justiça Federal. Os pontos levantados foram derivados exclusivamente da inspeção do código-fonte (branch <code>main</code>, commit <code>d2c79b7</code>) e dos documentos do diretório <code>docs/</code> do repositório. Este relatório não substitui parecer formal de DPO, Comitê de IA, Comitê LGPD ou DTIC — é <em>insumo</em> técnico para esses órgãos.</p>
+<p>Justiça Federal no Ceará — Laboratório de Inovação (Inovajus).</p>
+</div>
+
+</div>
+</body>
+</html>

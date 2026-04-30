@@ -437,9 +437,291 @@
         font-size: 10.5px; font-weight: 500; color: var(--muted);
         font-variant-numeric: tabular-nums; letter-spacing: 0.2px;
       }
+
+      /* Per&#237;cias pAIdegua — aba de cadastro de peritos */
+      .paidegua-pericias-toolbar {
+        display: flex; gap: 12px; align-items: center; margin-bottom: 10px;
+      }
+      .paidegua-pericias-lista {
+        list-style: none; margin: 10px 0 0; padding: 0;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .paidegua-pericias-lista__item {
+        padding: 10px 12px; border: 1px solid var(--border);
+        border-radius: var(--radius-sm); background: rgba(255,255,255,0.95);
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      }
+      .paidegua-pericias-lista__item.is-inactive { opacity: 0.55; }
+      .paidegua-pericias-lista__nome {
+        font-weight: 700; color: var(--primary-dark); font-size: 12.5px; flex: 1; min-width: 200px;
+      }
+      .paidegua-pericias-lista__badges {
+        display: flex; gap: 6px; flex-wrap: wrap;
+      }
+      .paidegua-pericias-badge {
+        font-size: 10.5px; font-weight: 600;
+        padding: 3px 8px; border-radius: 999px;
+        background: rgba(19,81,180,0.12); color: var(--primary-dark);
+      }
+      .paidegua-pericias-badge--muted { background: rgba(91,107,130,0.15); color: var(--muted); }
+      .paidegua-pericias-badge--ok { background: rgba(30,126,52,0.18); color: var(--success); }
+      .paidegua-pericias-lista__actions { display: flex; gap: 6px; }
+      .paidegua-pericias-lista__btn {
+        background: transparent; border: 1px solid var(--border-strong);
+        color: var(--primary-dark); padding: 4px 10px;
+        border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; cursor: pointer;
+      }
+      .paidegua-pericias-lista__btn:hover { background: rgba(19,81,180,0.08); }
+      .paidegua-pericias-lista__btn--danger { color: var(--danger); border-color: rgba(192,57,43,0.32); }
+      .paidegua-pericias-lista__btn--danger:hover { background: rgba(192,57,43,0.10); }
+
+      .paidegua-pericias-form h2 {
+        margin: 0 0 10px; font-size: 12.5px; font-weight: 700; color: var(--primary-dark);
+        text-transform: none; letter-spacing: 0;
+      }
+      .paidegua-pericias-autocomplete {
+        position: relative; width: 100%;
+      }
+      .paidegua-pericias-autocomplete__menu {
+        position: absolute; left: 0; right: 0; top: 100%;
+        margin: 2px 0 0; padding: 4px 0;
+        background: #fff; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        box-shadow: 0 8px 20px rgba(12,36,58,0.14);
+        list-style: none; max-height: 220px; overflow-y: auto;
+        z-index: 20;
+      }
+      .paidegua-pericias-autocomplete__item {
+        padding: 7px 11px; cursor: pointer; font-size: 12px;
+        color: var(--fg); line-height: 1.3;
+        display: flex; flex-direction: column; gap: 2px;
+      }
+      .paidegua-pericias-autocomplete__item:hover,
+      .paidegua-pericias-autocomplete__item.is-active {
+        background: rgba(19,81,180,0.08);
+      }
+      .paidegua-pericias-autocomplete__item-nome { font-weight: 600; color: var(--primary-dark); }
+      .paidegua-pericias-autocomplete__item-path {
+        font-size: 10.5px; color: var(--muted);
+      }
+      .paidegua-pericias-autocomplete__empty {
+        padding: 8px 11px; font-size: 11.5px; color: var(--muted); font-style: italic;
+      }
+
+      .paidegua-pericias-chips {
+        list-style: none; margin: 8px 0 0; padding: 0;
+        display: flex; flex-wrap: wrap; gap: 6px;
+      }
+      .paidegua-pericias-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 4px 4px 10px;
+        background: rgba(19,81,180,0.10); color: var(--primary-dark);
+        border: 1px solid var(--border-strong); border-radius: 999px;
+        font-size: 11.5px; font-weight: 600;
+      }
+      .paidegua-pericias-chip__nome { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .paidegua-pericias-chip__order-actions {
+        display: inline-flex; gap: 2px;
+      }
+      .paidegua-pericias-chip__btn {
+        width: 20px; height: 20px; border-radius: 50%;
+        background: rgba(255,255,255,0.8); border: 1px solid var(--border-strong);
+        color: var(--primary-dark); font-size: 11px; line-height: 1; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .paidegua-pericias-chip__btn:hover { background: rgba(19,81,180,0.12); }
+      .paidegua-pericias-chip__btn--remove { color: var(--danger); }
+      .paidegua-pericias-chip__btn--remove:hover { background: rgba(192,57,43,0.14); }
+
+      /* Tela de login (whitelist Inovajus) — overlay que cobre toda a UI ate autenticar. */
+      .paidegua-auth-gate {
+        position: fixed; inset: 0; z-index: 9999;
+        background: radial-gradient(700px 320px at 100% 0%, rgba(89,146,237,0.18), transparent 60%),
+                    radial-gradient(500px 240px at 0% 100%, rgba(255,205,7,0.10), transparent 60%),
+                    var(--bg);
+        display: flex; align-items: center; justify-content: center;
+        padding: 32px 28px; overflow-y: auto;
+      }
+      .paidegua-auth-gate[hidden] { display: none; }
+      .paidegua-auth-gate__card {
+        width: 100%; max-width: 460px;
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: 16px; padding: 28px 26px;
+        box-shadow: 0 12px 32px rgba(12,50,111,0.14);
+      }
+      .paidegua-auth-gate__brand {
+        display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+      }
+      .paidegua-auth-gate__brand-logo {
+        width: 42px; height: 42px; border-radius: 12px;
+        background: var(--gradient); color: #fff;
+        display: inline-flex; align-items: center; justify-content: center;
+        box-shadow: 0 8px 22px rgba(19,81,180,0.32);
+      }
+      .paidegua-auth-gate__brand h2 {
+        margin: 0; font-size: 20px; color: var(--primary-dark); letter-spacing: -0.3px;
+      }
+      .paidegua-auth-gate__brand p {
+        margin: 2px 0 0; font-size: 11.5px; color: var(--muted);
+      }
+      .paidegua-auth-gate__intro {
+        margin: 0 0 18px; font-size: 12.5px; line-height: 1.55; color: var(--fg);
+      }
+      .paidegua-auth-gate__label {
+        display: block; font-size: 11.5px; font-weight: 600;
+        color: var(--primary-dark); margin: 12px 0 6px;
+      }
+      .paidegua-auth-gate__input {
+        width: 100%; box-sizing: border-box;
+        background: rgba(255,255,255,0.95); color: var(--fg);
+        border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        padding: 10px 12px; font-size: 13px; font-family: inherit; outline: none;
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+      .paidegua-auth-gate__input:focus {
+        border-color: var(--primary); box-shadow: 0 0 0 4px rgba(19,81,180,0.14);
+      }
+      .paidegua-auth-gate__input--code {
+        font-size: 22px; font-weight: 700; text-align: center;
+        letter-spacing: 8px; font-variant-numeric: tabular-nums;
+      }
+      .paidegua-auth-gate__hint {
+        margin: 6px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted);
+      }
+      .paidegua-auth-gate__row {
+        display: flex; gap: 8px; margin-top: 14px;
+      }
+      .paidegua-auth-gate__btn {
+        flex: 1; border: 0; border-radius: var(--radius-sm);
+        padding: 11px 14px; font-size: 13px; font-weight: 600;
+        font-family: inherit; cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+      }
+      .paidegua-auth-gate__btn--primary {
+        background: var(--gradient); color: #fff;
+        box-shadow: 0 6px 18px rgba(19,81,180,0.26);
+      }
+      .paidegua-auth-gate__btn--primary:hover:not(:disabled) {
+        transform: translateY(-1px); box-shadow: 0 10px 24px rgba(19,81,180,0.34);
+      }
+      .paidegua-auth-gate__btn--secondary {
+        background: rgba(255,255,255,0.9); color: var(--primary-dark);
+        border: 1px solid var(--border-strong);
+      }
+      .paidegua-auth-gate__btn--secondary:hover:not(:disabled) {
+        background: rgba(19,81,180,0.08);
+      }
+      .paidegua-auth-gate__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .paidegua-auth-gate__status {
+        margin: 12px 0 0; min-height: 16px; font-size: 12px; line-height: 1.45;
+        color: var(--muted);
+      }
+      .paidegua-auth-gate__status.is-ok { color: var(--success); }
+      .paidegua-auth-gate__status.is-error { color: var(--danger); }
+      .paidegua-auth-gate__status.is-info { color: var(--primary); }
+      .paidegua-auth-gate__email-display {
+        font-weight: 700; color: var(--primary-dark);
+      }
+
+      /* Pill com o usuario logado e botao de sair, no footer. */
+      .paidegua-popup__user-pill {
+        display: inline-flex; align-items: center; gap: 8px;
+        margin-left: 10px; padding: 3px 4px 3px 10px;
+        background: rgba(19,81,180,0.08); border: 1px solid var(--border);
+        border-radius: 999px; font-size: 11px;
+      }
+      .paidegua-popup__user-pill[hidden] { display: none; }
+      .paidegua-popup__user-pill-email {
+        font-weight: 600; color: var(--primary-dark);
+        max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .paidegua-popup__user-pill-logout {
+        background: transparent; border: 0; color: var(--danger);
+        font-size: 11px; font-weight: 600; cursor: pointer;
+        padding: 2px 8px; border-radius: 999px;
+      }
+      .paidegua-popup__user-pill-logout:hover { background: rgba(192,57,43,0.12); }
     </style>
   </head>
   <body>
+    <!--
+      Tela de login (whitelist Inovajus). Cobre toda a UI ate `popup.ts`
+      confirmar via `AUTH_GET_STATUS` que existe sessao valida.
+    -->
+    <section id="auth-gate" class="paidegua-auth-gate" aria-label="Acesso restrito" hidden>
+      <div class="paidegua-auth-gate__card" role="dialog" aria-modal="true">
+        <div class="paidegua-auth-gate__brand">
+          <span class="paidegua-auth-gate__brand-logo" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+              <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+              <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+            </svg>
+          </span>
+          <div>
+            <h2>pAIdegua &#8212; Acesso restrito</h2>
+            <p>Piloto institucional Inovajus / TRF5</p>
+          </div>
+        </div>
+
+        <p class="paidegua-auth-gate__intro">
+          Esta extens&#227;o &#233; de uso restrito durante o piloto. Informe seu
+          e-mail institucional para receber um c&#243;digo de acesso. Sua conta
+          precisa estar autorizada pela equipe do Inovajus.
+        </p>
+
+        <div id="auth-stage-email">
+          <label class="paidegua-auth-gate__label" for="auth-email-input">
+            E-mail institucional
+          </label>
+          <input
+            type="email"
+            id="auth-email-input"
+            class="paidegua-auth-gate__input"
+            placeholder="seu.nome@trf5.jus.br"
+            autocomplete="email"
+            spellcheck="false"
+          />
+          <p class="paidegua-auth-gate__hint">
+            Dom&#237;nios aceitos: trf5, jfce, jfrn, jfpb, jfpe, jfal, jfse (.jus.br).
+          </p>
+          <div class="paidegua-auth-gate__row">
+            <button type="button" id="auth-request-btn" class="paidegua-auth-gate__btn paidegua-auth-gate__btn--primary">
+              Receber c&#243;digo por e-mail
+            </button>
+          </div>
+          <p id="auth-status-email" class="paidegua-auth-gate__status" aria-live="polite"></p>
+        </div>
+
+        <div id="auth-stage-code" hidden>
+          <p class="paidegua-auth-gate__intro" style="margin-top:4px">
+            Enviamos um c&#243;digo de 6 d&#237;gitos para
+            <span class="paidegua-auth-gate__email-display" id="auth-email-display"></span>.
+            Verifique sua caixa institucional (e o spam) e cole abaixo.
+          </p>
+          <label class="paidegua-auth-gate__label" for="auth-code-input">
+            C&#243;digo recebido
+          </label>
+          <input
+            type="text"
+            id="auth-code-input"
+            class="paidegua-auth-gate__input paidegua-auth-gate__input--code"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="one-time-code"
+          />
+          <div class="paidegua-auth-gate__row">
+            <button type="button" id="auth-verify-btn" class="paidegua-auth-gate__btn paidegua-auth-gate__btn--primary">
+              Validar e entrar
+            </button>
+            <button type="button" id="auth-back-btn" class="paidegua-auth-gate__btn paidegua-auth-gate__btn--secondary">
+              Voltar
+            </button>
+          </div>
+          <p id="auth-status-code" class="paidegua-auth-gate__status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
     <header class="paidegua-popup__header">
       <span class="paidegua-popup__logo" aria-hidden="true">
         <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -480,6 +762,9 @@
       </button>
       <button type="button" class="paidegua-popup__tab" role="tab" id="tab-etiquetas" aria-controls="panel-etiquetas" aria-selected="false">
         Etiquetas Inteligentes
+      </button>
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-pericias" aria-controls="panel-pericias" aria-selected="false">
+        Per&#237;cias
       </button>
     </nav>
 
@@ -595,6 +880,25 @@
                 Gerenciar modelos
               </button>
             </div>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <h2>Backup de configura&#231;&#245;es</h2>
+            <p class="paidegua-popup__hint">
+              Exporte todas as configura&#231;&#245;es (crit&#233;rios, etiquetas sugestion&#225;veis,
+              peritos) em um arquivo de texto para compartilhar com colegas ou
+              restaurar depois. A <strong>chave de API n&#227;o &#233; exportada</strong>.
+            </p>
+            <div class="paidegua-popup__row paidegua-popup__row--buttons">
+              <button type="button" id="btn-export-config" class="paidegua-popup__btn paidegua-popup__btn--primary">
+                Exportar configura&#231;&#245;es
+              </button>
+              <button type="button" id="btn-import-config" class="paidegua-popup__btn">
+                Importar configura&#231;&#245;es
+              </button>
+              <input type="file" id="import-config-file" accept=".txt,.json" style="display:none" />
+            </div>
+            <p id="backup-status" class="paidegua-popup__status"></p>
           </section>
 
           <section class="paidegua-popup__section">
@@ -833,6 +1137,107 @@
           </section>
         </div>
       </div>
+
+      <div class="paidegua-popup__tabpanel" role="tabpanel" id="panel-pericias" aria-labelledby="tab-pericias" hidden>
+        <p class="paidegua-triagem-intro">
+          Cadastre aqui os <strong>peritos</strong> que a unidade utiliza. A feature
+          <strong>Per&#237;cias pAIdegua</strong> organiza uma pauta, por perito, a partir
+          das tarefas do painel que cont&#234;m &#8220;Per&#237;cia - Designar&#8221; ou
+          &#8220;Per&#237;cia - Agendar e administrar&#8221;. &#201; obrigat&#243;rio vincular ao menos
+          uma etiqueta do cat&#225;logo do PJe para gerar pauta.
+        </p>
+
+        <section class="paidegua-popup__section">
+          <div class="paidegua-pericias-toolbar">
+            <button type="button" id="btn-pericias-novo" class="paidegua-popup__btn paidegua-popup__btn--primary">
+              Adicionar perito
+            </button>
+            <span id="pericias-count" class="paidegua-popup__hint paidegua-popup__hint--small" style="margin:0">0 peritos cadastrados</span>
+          </div>
+          <p id="pericias-status" class="paidegua-popup__status"></p>
+          <ul id="pericias-lista" class="paidegua-pericias-lista" aria-live="polite"></ul>
+        </section>
+
+        <section class="paidegua-popup__section paidegua-pericias-form" id="pericias-form" hidden>
+          <h2 id="pericias-form-titulo">Novo perito</h2>
+          <div class="paidegua-popup__row">
+            <div style="flex:2;min-width:0">
+              <label class="paidegua-popup__hint" for="per-nome-completo" style="margin:0 0 4px;display:block">Nome completo</label>
+              <input type="text" id="per-nome-completo" class="paidegua-popup__input" autocomplete="off" />
+            </div>
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="per-genero" style="margin:0 0 4px;display:block">G&#234;nero (tratamento)</label>
+              <select id="per-genero" class="paidegua-popup__input">
+                <option value="M">Masculino (DR)</option>
+                <option value="F">Feminino (DRA)</option>
+              </select>
+            </div>
+          </div>
+          <div class="paidegua-popup__row">
+            <div style="flex:2;min-width:0">
+              <label class="paidegua-popup__hint" for="per-profissao" style="margin:0 0 4px;display:block">Profiss&#227;o</label>
+              <select id="per-profissao" class="paidegua-popup__input">
+                <option value="MEDICO">M&#233;dico</option>
+                <option value="ASSISTENTE_SOCIAL">Assistente Social</option>
+                <option value="ENGENHEIRO">Engenheiro</option>
+                <option value="GRAFOTECNICO">Grafot&#233;cnico</option>
+              </select>
+              <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin-top:4px">
+                Assistente Social gera etiqueta &#8220;AS [NOME] DD.MM.AA&#8221; (sem distin&#231;&#227;o de g&#234;nero).
+              </p>
+            </div>
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="per-quantidade" style="margin:0 0 4px;display:block">Quantidade-padr&#227;o por pauta</label>
+              <input type="number" id="per-quantidade" class="paidegua-popup__input" min="1" max="500" step="1" value="20" />
+            </div>
+          </div>
+          <div class="paidegua-popup__row">
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="per-nome-etiqueta" style="margin:0 0 4px;display:block">
+                Nome que comp&#245;e a etiqueta da pauta
+              </label>
+              <input type="text" id="per-nome-etiqueta" class="paidegua-popup__input" autocomplete="off" placeholder="Ex.: MARIA, JO&#195;O SILVA" />
+              <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin-top:4px">
+                Formato final: &#8220;DR(A) [NOME] DD.MM.AA&#8221; &#8212; ou &#8220;AS [NOME] DD.MM.AA&#8221; para Assistente Social.
+              </p>
+            </div>
+          </div>
+          <div class="paidegua-popup__row" style="flex-direction:column">
+            <label class="paidegua-popup__hint" for="per-etiquetas-input" style="margin:0 0 4px;display:block">
+              Etiquetas do perito (obrigat&#243;rio pelo menos uma &#8212; ordem = prioridade de cascata)
+            </label>
+            <div class="paidegua-pericias-autocomplete">
+              <input type="text" id="per-etiquetas-input" class="paidegua-popup__input" autocomplete="off" placeholder="Digite para buscar no cat&#225;logo de etiquetas..." />
+              <ul id="per-etiquetas-sugestoes" class="paidegua-pericias-autocomplete__menu" hidden></ul>
+            </div>
+            <ul id="per-etiquetas-selecionadas" class="paidegua-pericias-chips" aria-live="polite"></ul>
+            <p id="per-etiquetas-aviso" class="paidegua-popup__hint paidegua-popup__hint--small" style="margin:6px 0 0"></p>
+          </div>
+          <div class="paidegua-popup__row" style="flex-direction:column">
+            <label class="paidegua-popup__hint" for="per-assuntos-input" style="margin:0 0 4px;display:block">
+              Assuntos preferenciais do perito (opcional &#8212; ordem = prioridade)
+            </label>
+            <div class="paidegua-pericias-autocomplete">
+              <input type="text" id="per-assuntos-input" class="paidegua-popup__input" autocomplete="off" placeholder="Digite para buscar ou criar um assunto (Enter para adicionar)" />
+              <ul id="per-assuntos-sugestoes" class="paidegua-pericias-autocomplete__menu" hidden></ul>
+            </div>
+            <ul id="per-assuntos-selecionados" class="paidegua-pericias-chips" aria-live="polite"></ul>
+            <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin:4px 0 0">
+              Quando preenchido, o perito recebe <strong>apenas</strong> processos cujo assunto principal esteja nesta lista. Deixe vazio para aceitar qualquer assunto.
+            </p>
+          </div>
+          <div class="paidegua-popup__row">
+            <label class="paidegua-popup__checkbox">
+              <input type="checkbox" id="per-ativo" checked />
+              <span>Perito ativo (aparece no seletor da feature).</span>
+            </label>
+          </div>
+          <div class="paidegua-popup__row paidegua-popup__row--buttons" style="margin-top:12px">
+            <button type="button" id="btn-pericias-salvar" class="paidegua-popup__btn paidegua-popup__btn--primary">Salvar</button>
+            <button type="button" id="btn-pericias-cancelar" class="paidegua-popup__btn">Cancelar</button>
+          </div>
+        </section>
+      </div>
     </main>
 
     <footer class="paidegua-popup__footer">
@@ -841,6 +1246,10 @@
         <a href="#" id="open-diagnostico-link" style="color:var(--primary);text-decoration:none;font-weight:600;">Diagn&#243;stico</a>
         ·
         <a href="#" id="open-suporte-link" style="color:var(--primary);text-decoration:none;font-weight:600;">Suporte</a>
+        <span id="auth-user-pill" class="paidegua-popup__user-pill" hidden>
+          <span id="auth-user-email" class="paidegua-popup__user-pill-email"></span>
+          <button type="button" id="auth-logout-btn" class="paidegua-popup__user-pill-logout" title="Encerrar sess&#227;o">sair</button>
+        </span>
       </small>
     </footer>
 

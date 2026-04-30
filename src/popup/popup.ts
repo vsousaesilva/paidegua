@@ -22,8 +22,18 @@ import {
   type TriagemCriterioId,
   type TriagemCriterioSetting
 } from '../shared/constants';
+import { describeAuthError, validateEmailDomain } from '../shared/auth';
+import type {
+  AuthRequestCodeResponse,
+  AuthStatusResponse,
+  AuthVerifyCodeResponse
+} from '../shared/types';
 import type {
   PAIdeguaSettings,
+  PericiaGenero,
+  PericiaPerito,
+  PericiaPeritosStore,
+  PericiaProfissao,
   PJeApiEtiqueta,
   PJeApiEtiquetasListResponse,
   TestConnectionResult,
@@ -41,6 +51,16 @@ import {
   saveEtiquetas,
   type EtiquetaRecord
 } from '../shared/etiquetas-store';
+import {
+  addPerito,
+  deletePerito,
+  listPeritos,
+  loadAssuntosCatalogo,
+  loadPericiasStore,
+  savePericiasStore,
+  updatePerito,
+  type PericiaPeritoInput
+} from '../shared/pericias-store';
 import {
   detectGrauFromHostname,
   isGestaoProfileAvailable,
@@ -245,14 +265,17 @@ async function applyGrauRestrictions(): Promise<void> {
   $<HTMLSelectElement>('default-profile-select').value = valorInicial;
 
   if (!secretariaOk) {
-    // Abas "Triagem Inteligente" e "Etiquetas Inteligentes" são específicas da Secretaria.
+    // Abas "Triagem Inteligente", "Etiquetas Inteligentes" e "Perícias" são específicas da Secretaria.
     const tabTriagem = document.getElementById('tab-triagem');
     if (tabTriagem) tabTriagem.setAttribute('hidden', '');
     const tabEtiquetas = document.getElementById('tab-etiquetas');
     if (tabEtiquetas) tabEtiquetas.setAttribute('hidden', '');
+    const tabPericias = document.getElementById('tab-pericias');
+    if (tabPericias) tabPericias.setAttribute('hidden', '');
     const secretariaTabSelected =
       tabTriagem?.getAttribute('aria-selected') === 'true' ||
-      tabEtiquetas?.getAttribute('aria-selected') === 'true';
+      tabEtiquetas?.getAttribute('aria-selected') === 'true' ||
+      tabPericias?.getAttribute('aria-selected') === 'true';
     if (secretariaTabSelected) setActiveTab('tab-geral');
     // Persistir perfil padrão como Gabinete se estiver em Secretaria.
     if (stored === 'secretaria') {
@@ -399,7 +422,7 @@ async function removeApiKey(): Promise<void> {
 // Abas (Geral / Triagem Inteligente)
 // =====================================================================
 
-type TabId = 'tab-geral' | 'tab-triagem' | 'tab-etiquetas';
+type TabId = 'tab-geral' | 'tab-triagem' | 'tab-etiquetas' | 'tab-pericias';
 
 function setActiveTab(tabId: TabId): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>('.paidegua-popup__tab');
@@ -422,6 +445,9 @@ function setActiveTab(tabId: TabId): void {
   // popup abre seria desperdício.
   if (tabId === 'tab-etiquetas') {
     void loadEtiquetasTab();
+  }
+  if (tabId === 'tab-pericias') {
+    void loadPericiasTab();
   }
 }
 
@@ -751,12 +777,237 @@ function bindEvents(): void {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// =====================================================================
+// Tela de login (whitelist Inovajus + OTP)
+// =====================================================================
+//
+// Politica: ate o background confirmar via `AUTH_GET_STATUS` que existe
+// uma sessao valida, o overlay `#auth-gate` permanece visivel e nada da
+// UI normal e inicializado. Apos sucesso de `verifyCode`, o popup roda
+// o mesmo `loadAll()` da inicializacao normal.
+
+let authBootstrapped = false;
+
+function $authEl<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`PAIdegua popup: elemento #${id} ausente`);
+  return el as T;
+}
+
+function setAuthStatus(
+  elId: 'auth-status-email' | 'auth-status-code',
+  text: string,
+  kind: 'ok' | 'error' | 'info' | '' = ''
+): void {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'paidegua-auth-gate__status' + (kind ? ` is-${kind}` : '');
+}
+
+function showAuthStage(stage: 'email' | 'code'): void {
+  const stageEmail = $authEl<HTMLElement>('auth-stage-email');
+  const stageCode = $authEl<HTMLElement>('auth-stage-code');
+  if (stage === 'email') {
+    stageEmail.removeAttribute('hidden');
+    stageCode.setAttribute('hidden', '');
+  } else {
+    stageEmail.setAttribute('hidden', '');
+    stageCode.removeAttribute('hidden');
+  }
+}
+
+function showAuthGate(): void {
+  $authEl<HTMLElement>('auth-gate').removeAttribute('hidden');
+}
+
+function hideAuthGate(): void {
+  $authEl<HTMLElement>('auth-gate').setAttribute('hidden', '');
+}
+
+function renderUserPill(email: string | null): void {
+  const pill = document.getElementById('auth-user-pill');
+  const emailEl = document.getElementById('auth-user-email');
+  if (!pill || !emailEl) return;
+  if (email) {
+    emailEl.textContent = email;
+    pill.removeAttribute('hidden');
+  } else {
+    emailEl.textContent = '';
+    pill.setAttribute('hidden', '');
+  }
+}
+
+async function fetchAuthStatus(): Promise<AuthStatusResponse> {
+  const response = (await chrome.runtime.sendMessage({
+    channel: MESSAGE_CHANNELS.AUTH_GET_STATUS
+  })) as AuthStatusResponse;
+  return response ?? { authenticated: false, reason: 'no_session' };
+}
+
+async function requestLoginCode(email: string): Promise<AuthRequestCodeResponse> {
+  return (await chrome.runtime.sendMessage({
+    channel: MESSAGE_CHANNELS.AUTH_REQUEST_CODE,
+    payload: { email }
+  })) as AuthRequestCodeResponse;
+}
+
+async function verifyLoginCode(
+  email: string,
+  code: string
+): Promise<AuthVerifyCodeResponse> {
+  return (await chrome.runtime.sendMessage({
+    channel: MESSAGE_CHANNELS.AUTH_VERIFY_CODE,
+    payload: { email, code }
+  })) as AuthVerifyCodeResponse;
+}
+
+async function requestLogout(): Promise<void> {
+  await chrome.runtime.sendMessage({ channel: MESSAGE_CHANNELS.AUTH_LOGOUT });
+}
+
+function bindAuthGate(): void {
+  const requestBtn = $authEl<HTMLButtonElement>('auth-request-btn');
+  const verifyBtn = $authEl<HTMLButtonElement>('auth-verify-btn');
+  const backBtn = $authEl<HTMLButtonElement>('auth-back-btn');
+  const emailInput = $authEl<HTMLInputElement>('auth-email-input');
+  const codeInput = $authEl<HTMLInputElement>('auth-code-input');
+  const emailDisplay = $authEl<HTMLSpanElement>('auth-email-display');
+  const logoutBtn = document.getElementById('auth-logout-btn') as HTMLButtonElement | null;
+
+  emailInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      requestBtn.click();
+    }
+  });
+  codeInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      verifyBtn.click();
+    }
+  });
+  codeInput.addEventListener('input', () => {
+    codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
+  });
+
+  requestBtn.addEventListener('click', () => {
+    void (async () => {
+      const email = emailInput.value.trim().toLowerCase();
+      if (!validateEmailDomain(email)) {
+        setAuthStatus(
+          'auth-status-email',
+          'E-mail invalido. Use um endereco institucional dos tribunais autorizados.',
+          'error'
+        );
+        return;
+      }
+      requestBtn.disabled = true;
+      setAuthStatus('auth-status-email', 'Enviando codigo...', 'info');
+      try {
+        const result = await requestLoginCode(email);
+        if (result.ok) {
+          emailDisplay.textContent = email;
+          codeInput.value = '';
+          showAuthStage('code');
+          setAuthStatus('auth-status-code', '', '');
+          codeInput.focus();
+        } else {
+          setAuthStatus(
+            'auth-status-email',
+            describeAuthError(result.error),
+            'error'
+          );
+        }
+      } finally {
+        requestBtn.disabled = false;
+      }
+    })();
+  });
+
+  verifyBtn.addEventListener('click', () => {
+    void (async () => {
+      const email = (emailDisplay.textContent ?? '').trim().toLowerCase();
+      const code = codeInput.value.trim();
+      if (!email || code.length !== 6) {
+        setAuthStatus(
+          'auth-status-code',
+          'Cole o codigo de 6 digitos recebido por e-mail.',
+          'error'
+        );
+        return;
+      }
+      verifyBtn.disabled = true;
+      backBtn.disabled = true;
+      setAuthStatus('auth-status-code', 'Validando...', 'info');
+      try {
+        const result = await verifyLoginCode(email, code);
+        if (result.ok && result.email) {
+          await enterAuthenticatedUI(result.email);
+        } else {
+          setAuthStatus(
+            'auth-status-code',
+            describeAuthError(result.error),
+            'error'
+          );
+        }
+      } finally {
+        verifyBtn.disabled = false;
+        backBtn.disabled = false;
+      }
+    })();
+  });
+
+  backBtn.addEventListener('click', () => {
+    showAuthStage('email');
+    setAuthStatus('auth-status-email', '', '');
+    codeInput.value = '';
+  });
+
+  logoutBtn?.addEventListener('click', () => {
+    void (async () => {
+      await requestLogout();
+      renderUserPill(null);
+      // Sem reload: apenas reabre a tela de login. O usuario pode fechar
+      // o popup; na proxima abertura, o gate ja estara ativo de novo.
+      showAuthStage('email');
+      setAuthStatus('auth-status-email', 'Sessao encerrada.', 'info');
+      showAuthGate();
+    })();
+  });
+}
+
+/**
+ * Roda quando confirmamos sessao valida — dispara a inicializacao normal
+ * do popup. E idempotente: chamar duas vezes nao re-bindeia handlers.
+ */
+async function enterAuthenticatedUI(email: string): Promise<void> {
+  hideAuthGate();
+  renderUserPill(email);
+  if (authBootstrapped) return;
+  authBootstrapped = true;
   bindTabs();
   bindEvents();
   bindTriagemExtras();
   bindEtiquetasEvents();
-  void loadAll();
+  bindPericiasEvents();
+  bindBackupEvents();
+  await loadAll();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  bindAuthGate();
+  void (async () => {
+    const status = await fetchAuthStatus();
+    if (status.authenticated && status.email) {
+      await enterAuthenticatedUI(status.email);
+    } else {
+      showAuthGate();
+      showAuthStage('email');
+      const emailInput = document.getElementById('auth-email-input') as HTMLInputElement | null;
+      emailInput?.focus();
+    }
+  })();
 });
 
 // =====================================================================
@@ -1228,3 +1479,1027 @@ async function _debugCountEtiquetas(): Promise<number> {
   return countEtiquetas();
 }
 void _debugCountEtiquetas;
+
+// =====================================================================
+// Perícias pAIdegua — CRUD de peritos (perfil Secretaria)
+// =====================================================================
+
+interface PericiasTabState {
+  loaded: boolean;
+  peritos: PericiaPerito[];
+  /** Edição em andamento: null = formulário oculto; '' = novo; id = editando. */
+  editingId: string | null;
+  /**
+   * Catálogo acumulativo de `assuntoPrincipal` observados em coletas
+   * anteriores do painel de Perícias. Alimentado pelo coletor (ver
+   * `pericias-coletor.ts`) e usado como fonte primária do autocomplete
+   * do campo "Assuntos preferenciais".
+   */
+  assuntosCatalogo: string[];
+  form: {
+    etiquetas: Array<{ id: number; nomeTag: string; nomeTagCompleto: string }>;
+    assuntos: string[];
+    /** Índice do item destacado na lista de sugestões de etiquetas. */
+    highlight: number;
+    /** Índice do item destacado na lista de sugestões de assuntos. */
+    highlightAssuntos: number;
+  };
+}
+
+const periciasState: PericiasTabState = {
+  loaded: false,
+  peritos: [],
+  editingId: null,
+  assuntosCatalogo: [],
+  form: { etiquetas: [], assuntos: [], highlight: 0, highlightAssuntos: 0 }
+};
+
+function rotuloProfissao(p: PericiaProfissao): string {
+  switch (p) {
+    case 'ASSISTENTE_SOCIAL': return 'Assistente Social';
+    case 'ENGENHEIRO': return 'Engenheiro';
+    case 'GRAFOTECNICO': return 'Grafotécnico';
+    case 'MEDICO':
+    default: return 'Médico';
+  }
+}
+
+function setPericiasStatus(text: string, kind: 'ok' | 'error' | 'info' | '' = ''): void {
+  const el = document.getElementById('pericias-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'paidegua-popup__status' + (kind ? ` is-${kind}` : '');
+}
+
+async function loadPericiasTab(): Promise<void> {
+  try {
+    const peritos = await listPeritos();
+    // Migração transparente: peritos antigos sem `profissao` assumem
+    // MEDICO (preserva o comportamento de etiqueta DR/DRA anterior).
+    periciasState.peritos = peritos.map((p) => {
+      const anyP = p as unknown as { profissao?: PericiaProfissao };
+      if (!anyP.profissao) {
+        return { ...p, profissao: 'MEDICO' as PericiaProfissao };
+      }
+      return p;
+    });
+    periciasState.loaded = true;
+    try {
+      const catalogo = await loadAssuntosCatalogo();
+      periciasState.assuntosCatalogo = Array.isArray(catalogo.assuntos)
+        ? catalogo.assuntos
+        : [];
+    } catch (errCat) {
+      console.warn(`${LOG_PREFIX} loadAssuntosCatalogo:`, errCat);
+      periciasState.assuntosCatalogo = [];
+    }
+    renderPericiasLista();
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} loadPericiasTab:`, err);
+    setPericiasStatus('Falha ao ler peritos do armazenamento local.', 'error');
+  }
+}
+
+function renderPericiasLista(): void {
+  const ul = document.getElementById('pericias-lista') as HTMLUListElement | null;
+  const count = document.getElementById('pericias-count');
+  if (!ul || !count) return;
+  const peritos = periciasState.peritos
+    .slice()
+    .sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto, 'pt-BR'));
+  const total = peritos.length;
+  const ativos = peritos.filter((p) => p.ativo).length;
+  count.textContent =
+    total === 0
+      ? '0 peritos cadastrados'
+      : `${total} perito(s) · ${ativos} ativo(s)`;
+  ul.innerHTML = '';
+  if (total === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'paidegua-popup__hint paidegua-popup__hint--small';
+    empty.textContent =
+      'Nenhum perito cadastrado. Use "Adicionar perito" para começar.';
+    ul.appendChild(empty);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const p of peritos) frag.appendChild(buildPericiaItem(p));
+  ul.appendChild(frag);
+}
+
+function buildPericiaItem(p: PericiaPerito): HTMLElement {
+  const li = document.createElement('li');
+  li.className = 'paidegua-pericias-lista__item' + (p.ativo ? '' : ' is-inactive');
+
+  const left = document.createElement('div');
+  left.style.flex = '1';
+  left.style.minWidth = '0';
+  const nome = document.createElement('div');
+  nome.className = 'paidegua-pericias-lista__nome';
+  nome.textContent = p.nomeCompleto;
+  const badges = document.createElement('div');
+  badges.className = 'paidegua-pericias-lista__badges';
+  const bGenero = document.createElement('span');
+  bGenero.className = 'paidegua-pericias-badge';
+  bGenero.textContent =
+    p.profissao === 'ASSISTENTE_SOCIAL'
+      ? 'AS'
+      : p.genero === 'F'
+        ? 'DRA'
+        : 'DR';
+  badges.appendChild(bGenero);
+  const bProf = document.createElement('span');
+  bProf.className = 'paidegua-pericias-badge paidegua-pericias-badge--muted';
+  bProf.textContent = rotuloProfissao(p.profissao ?? 'MEDICO');
+  badges.appendChild(bProf);
+  const bEtq = document.createElement('span');
+  bEtq.className =
+    'paidegua-pericias-badge ' +
+    (p.etiquetas.length > 0
+      ? 'paidegua-pericias-badge--ok'
+      : 'paidegua-pericias-badge--muted');
+  bEtq.textContent = `${p.etiquetas.length} etiqueta(s)`;
+  badges.appendChild(bEtq);
+  const bQtd = document.createElement('span');
+  bQtd.className = 'paidegua-pericias-badge paidegua-pericias-badge--muted';
+  bQtd.textContent = `qtd. ${p.quantidadePadrao}`;
+  badges.appendChild(bQtd);
+  if (!p.ativo) {
+    const bInativo = document.createElement('span');
+    bInativo.className = 'paidegua-pericias-badge paidegua-pericias-badge--muted';
+    bInativo.textContent = 'inativo';
+    badges.appendChild(bInativo);
+  }
+  left.append(nome, badges);
+
+  const actions = document.createElement('div');
+  actions.className = 'paidegua-pericias-lista__actions';
+  const btnEdit = document.createElement('button');
+  btnEdit.type = 'button';
+  btnEdit.className = 'paidegua-pericias-lista__btn';
+  btnEdit.textContent = 'Editar';
+  btnEdit.addEventListener('click', () => abrirFormularioPericia(p.id));
+  const btnDel = document.createElement('button');
+  btnDel.type = 'button';
+  btnDel.className =
+    'paidegua-pericias-lista__btn paidegua-pericias-lista__btn--danger';
+  btnDel.textContent = 'Excluir';
+  btnDel.addEventListener('click', () => void removerPericia(p.id));
+  actions.append(btnEdit, btnDel);
+
+  li.append(left, actions);
+  return li;
+}
+
+async function removerPericia(id: string): Promise<void> {
+  const alvo = periciasState.peritos.find((p) => p.id === id);
+  const nome = alvo?.nomeCompleto ?? 'este perito';
+  if (!confirm(`Remover "${nome}" do cadastro?`)) return;
+  try {
+    await deletePerito(id);
+    periciasState.peritos = periciasState.peritos.filter((p) => p.id !== id);
+    setPericiasStatus('Perito removido.', 'ok');
+    renderPericiasLista();
+  } catch (err) {
+    setPericiasStatus(
+      err instanceof Error ? err.message : 'Falha ao remover perito.',
+      'error'
+    );
+  }
+}
+
+function abrirFormularioPericia(id: string | null): void {
+  periciasState.editingId = id;
+  const form = document.getElementById('pericias-form');
+  const titulo = document.getElementById('pericias-form-titulo');
+  if (!form || !titulo) return;
+  const alvo =
+    id === null ? null : periciasState.peritos.find((p) => p.id === id) ?? null;
+  titulo.textContent = alvo ? 'Editar perito' : 'Novo perito';
+  ($<HTMLInputElement>('per-nome-completo')).value = alvo?.nomeCompleto ?? '';
+  ($<HTMLInputElement>('per-nome-etiqueta')).value = alvo?.nomeEtiquetaPauta ?? '';
+  ($<HTMLSelectElement>('per-genero')).value = (alvo?.genero as string) ?? 'M';
+  ($<HTMLSelectElement>('per-profissao')).value =
+    (alvo?.profissao as string) ?? 'MEDICO';
+  ($<HTMLInputElement>('per-quantidade')).value = String(
+    alvo?.quantidadePadrao ?? 20
+  );
+  ($<HTMLInputElement>('per-ativo')).checked = alvo ? alvo.ativo : true;
+  periciasState.form.etiquetas = alvo
+    ? alvo.etiquetas.map((e) => ({ ...e }))
+    : [];
+  periciasState.form.assuntos = alvo ? [...alvo.assuntos] : [];
+  periciasState.form.highlight = 0;
+  periciasState.form.highlightAssuntos = 0;
+  ($<HTMLInputElement>('per-etiquetas-input')).value = '';
+  ($<HTMLInputElement>('per-assuntos-input')).value = '';
+  renderEtiquetasSelecionadasChips();
+  renderAssuntosChips();
+  hideEtiquetasSugestoes();
+  hideAssuntosSugestoes();
+  form.removeAttribute('hidden');
+  limparAvisoEtiquetas();
+  ($<HTMLInputElement>('per-nome-completo')).focus();
+}
+
+function fecharFormularioPericia(): void {
+  periciasState.editingId = null;
+  const form = document.getElementById('pericias-form');
+  if (form) form.setAttribute('hidden', '');
+  hideEtiquetasSugestoes();
+  hideAssuntosSugestoes();
+}
+
+function limparAvisoEtiquetas(): void {
+  const el = document.getElementById('per-etiquetas-aviso');
+  if (el) {
+    el.textContent = '';
+    el.className = 'paidegua-popup__hint paidegua-popup__hint--small';
+  }
+}
+
+function mostrarAvisoEtiquetas(texto: string, erro = true): void {
+  const el = document.getElementById('per-etiquetas-aviso');
+  if (!el) return;
+  el.textContent = texto;
+  el.className =
+    'paidegua-popup__hint paidegua-popup__hint--small' +
+    (erro ? ' is-error' : '');
+}
+
+function renderEtiquetasSelecionadasChips(): void {
+  const ul = document.getElementById('per-etiquetas-selecionadas');
+  if (!ul) return;
+  ul.innerHTML = '';
+  const lista = periciasState.form.etiquetas;
+  if (lista.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'paidegua-popup__hint paidegua-popup__hint--small';
+    empty.textContent = 'Nenhuma etiqueta vinculada ainda.';
+    ul.appendChild(empty);
+    return;
+  }
+  lista.forEach((e, idx) => {
+    const li = document.createElement('li');
+    li.className = 'paidegua-pericias-chip';
+    const ordem = document.createElement('span');
+    ordem.className = 'paidegua-pericias-chip__order';
+    ordem.textContent = `${idx + 1}.`;
+    const nome = document.createElement('span');
+    nome.className = 'paidegua-pericias-chip__nome';
+    nome.textContent = e.nomeTag;
+    nome.title = e.nomeTagCompleto || e.nomeTag;
+
+    const ordemActions = document.createElement('span');
+    ordemActions.className = 'paidegua-pericias-chip__order-actions';
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'paidegua-pericias-chip__btn';
+    up.textContent = '▲';
+    up.title = 'Mover para cima (maior prioridade)';
+    up.disabled = idx === 0;
+    up.addEventListener('click', () => {
+      if (idx === 0) return;
+      const copia = [...periciasState.form.etiquetas];
+      [copia[idx - 1], copia[idx]] = [copia[idx], copia[idx - 1]];
+      periciasState.form.etiquetas = copia;
+      renderEtiquetasSelecionadasChips();
+    });
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'paidegua-pericias-chip__btn';
+    down.textContent = '▼';
+    down.title = 'Mover para baixo (menor prioridade)';
+    down.disabled = idx === lista.length - 1;
+    down.addEventListener('click', () => {
+      if (idx === lista.length - 1) return;
+      const copia = [...periciasState.form.etiquetas];
+      [copia[idx + 1], copia[idx]] = [copia[idx], copia[idx + 1]];
+      periciasState.form.etiquetas = copia;
+      renderEtiquetasSelecionadasChips();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className =
+      'paidegua-pericias-chip__btn paidegua-pericias-chip__btn--remove';
+    remove.textContent = '×';
+    remove.title = 'Remover esta etiqueta';
+    remove.addEventListener('click', () => {
+      periciasState.form.etiquetas = periciasState.form.etiquetas.filter(
+        (_, i) => i !== idx
+      );
+      renderEtiquetasSelecionadasChips();
+    });
+    ordemActions.append(up, down, remove);
+    li.append(ordem, nome, ordemActions);
+    ul.appendChild(li);
+  });
+}
+
+function renderAssuntosChips(): void {
+  const ul = document.getElementById('per-assuntos-selecionados');
+  if (!ul) return;
+  ul.innerHTML = '';
+  const lista = periciasState.form.assuntos;
+  if (lista.length === 0) return;
+  lista.forEach((texto, idx) => {
+    const li = document.createElement('li');
+    li.className = 'paidegua-pericias-chip';
+    const ordem = document.createElement('span');
+    ordem.className = 'paidegua-pericias-chip__order';
+    ordem.textContent = `${idx + 1}.`;
+    const nome = document.createElement('span');
+    nome.className = 'paidegua-pericias-chip__nome';
+    nome.textContent = texto;
+    nome.title = texto;
+
+    const actions = document.createElement('span');
+    actions.className = 'paidegua-pericias-chip__order-actions';
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'paidegua-pericias-chip__btn';
+    up.textContent = '▲';
+    up.title = 'Mover para cima (maior prioridade)';
+    up.disabled = idx === 0;
+    up.addEventListener('click', () => {
+      if (idx === 0) return;
+      const copia = [...periciasState.form.assuntos];
+      [copia[idx - 1], copia[idx]] = [copia[idx], copia[idx - 1]];
+      periciasState.form.assuntos = copia;
+      renderAssuntosChips();
+    });
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'paidegua-pericias-chip__btn';
+    down.textContent = '▼';
+    down.title = 'Mover para baixo (menor prioridade)';
+    down.disabled = idx === lista.length - 1;
+    down.addEventListener('click', () => {
+      if (idx === lista.length - 1) return;
+      const copia = [...periciasState.form.assuntos];
+      [copia[idx + 1], copia[idx]] = [copia[idx], copia[idx + 1]];
+      periciasState.form.assuntos = copia;
+      renderAssuntosChips();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className =
+      'paidegua-pericias-chip__btn paidegua-pericias-chip__btn--remove';
+    remove.textContent = '×';
+    remove.title = 'Remover este assunto';
+    remove.addEventListener('click', () => {
+      periciasState.form.assuntos = periciasState.form.assuntos.filter(
+        (_, i) => i !== idx
+      );
+      renderAssuntosChips();
+    });
+    actions.append(up, down, remove);
+    li.append(ordem, nome, actions);
+    ul.appendChild(li);
+  });
+}
+
+function hideAssuntosSugestoes(): void {
+  const menu = document.getElementById('per-assuntos-sugestoes');
+  if (menu) {
+    menu.innerHTML = '';
+    menu.setAttribute('hidden', '');
+  }
+}
+
+/**
+ * Fonte das sugestões de assuntos do autocomplete. Une duas origens:
+ *   1. Catálogo acumulativo de `assuntoPrincipal` coletados do painel de
+ *      Perícias (gravado em `chrome.storage.local` pelo coletor — ver
+ *      `pericias-coletor.ts`). É a fonte primária, não depende do usuário.
+ *   2. Assuntos já cadastrados em OUTROS peritos do store (peer-reuse).
+ * O PJe não expõe endpoint dedicado de catálogo de assuntos; a coleta
+ * incremental alimenta o autocomplete com o que aparece de verdade no
+ * painel desta unidade.
+ */
+function fontesDeAssuntos(): string[] {
+  const set = new Map<string, string>(); // lowercase → forma original
+  for (const a of periciasState.assuntosCatalogo) {
+    const v = a.trim();
+    if (!v) continue;
+    const norm = v.toLowerCase();
+    if (!set.has(norm)) set.set(norm, v);
+  }
+  for (const p of periciasState.peritos) {
+    if (p.id === periciasState.editingId) continue;
+    for (const a of p.assuntos) {
+      const v = a.trim();
+      if (!v) continue;
+      const norm = v.toLowerCase();
+      if (!set.has(norm)) set.set(norm, v);
+    }
+  }
+  return Array.from(set.values()).sort((a, b) =>
+    a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })
+  );
+}
+
+function pesquisarAssuntos(termo: string): string[] {
+  const alvo = termo.trim().toLowerCase();
+  const escolhidos = new Set(
+    periciasState.form.assuntos.map((a) => a.trim().toLowerCase())
+  );
+  const base = fontesDeAssuntos().filter(
+    (a) => !escolhidos.has(a.trim().toLowerCase())
+  );
+  if (!alvo) return base.slice(0, 20);
+  return base.filter((a) => a.toLowerCase().includes(alvo)).slice(0, 20);
+}
+
+function atualizarSugestoesAssuntos(): void {
+  const input = $<HTMLInputElement>('per-assuntos-input');
+  const menu = document.getElementById('per-assuntos-sugestoes');
+  if (!menu) return;
+  const sugestoes = pesquisarAssuntos(input.value);
+  menu.innerHTML = '';
+  if (sugestoes.length === 0) {
+    const termo = input.value.trim();
+    if (!termo) {
+      hideAssuntosSugestoes();
+      return;
+    }
+    const empty = document.createElement('li');
+    empty.className = 'paidegua-pericias-autocomplete__empty';
+    empty.textContent =
+      'Sem sugestões. Pressione Enter para criar "' + termo + '".';
+    menu.appendChild(empty);
+    menu.removeAttribute('hidden');
+    return;
+  }
+  periciasState.form.highlightAssuntos = Math.min(
+    periciasState.form.highlightAssuntos,
+    sugestoes.length - 1
+  );
+  sugestoes.forEach((texto, idx) => {
+    const li = document.createElement('li');
+    li.className =
+      'paidegua-pericias-autocomplete__item' +
+      (idx === periciasState.form.highlightAssuntos ? ' is-active' : '');
+    const nome = document.createElement('div');
+    nome.className = 'paidegua-pericias-autocomplete__item-nome';
+    nome.textContent = texto;
+    li.appendChild(nome);
+    li.addEventListener('mouseenter', () => {
+      periciasState.form.highlightAssuntos = idx;
+      menu.querySelectorAll('.is-active').forEach((n) => n.classList.remove('is-active'));
+      li.classList.add('is-active');
+    });
+    li.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      adicionarAssuntoEscolhido(texto);
+    });
+    menu.appendChild(li);
+  });
+  menu.removeAttribute('hidden');
+}
+
+function adicionarAssuntoEscolhido(texto: string): void {
+  const v = texto.trim();
+  if (!v) return;
+  const existe = periciasState.form.assuntos.some(
+    (a) => a.toLowerCase() === v.toLowerCase()
+  );
+  if (!existe) {
+    periciasState.form.assuntos.push(v);
+    renderAssuntosChips();
+  }
+  const input = $<HTMLInputElement>('per-assuntos-input');
+  input.value = '';
+  periciasState.form.highlightAssuntos = 0;
+  hideAssuntosSugestoes();
+  input.focus();
+}
+
+function hideEtiquetasSugestoes(): void {
+  const menu = document.getElementById('per-etiquetas-sugestoes');
+  if (menu) {
+    menu.innerHTML = '';
+    menu.setAttribute('hidden', '');
+  }
+}
+
+async function pesquisarEtiquetasCatalogo(
+  termo: string
+): Promise<EtiquetaRecord[]> {
+  if (!etiqState.loaded) {
+    try {
+      etiqState.catalogo = await listEtiquetas();
+      etiqState.loaded = true;
+    } catch {
+      return [];
+    }
+  }
+  const alvo = termo.trim().toLowerCase();
+  if (!alvo) return [];
+  const jaEscolhidos = new Set(
+    periciasState.form.etiquetas.map((e) => e.id)
+  );
+  return etiqState.catalogo
+    .filter((e) => !jaEscolhidos.has(e.id))
+    .filter((e) => {
+      const hay =
+        e.nomeTag.toLowerCase() + ' ' + (e.nomeTagCompleto ?? '').toLowerCase();
+      return hay.includes(alvo);
+    })
+    .sort((a, b) => a.nomeTag.localeCompare(b.nomeTag, 'pt-BR'))
+    .slice(0, 20);
+}
+
+async function atualizarSugestoesEtiquetas(): Promise<void> {
+  const input = $<HTMLInputElement>('per-etiquetas-input');
+  const menu = document.getElementById('per-etiquetas-sugestoes');
+  if (!menu) return;
+  const termo = input.value;
+  if (!termo.trim()) {
+    hideEtiquetasSugestoes();
+    return;
+  }
+  const sugestoes = await pesquisarEtiquetasCatalogo(termo);
+  menu.innerHTML = '';
+  if (sugestoes.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'paidegua-pericias-autocomplete__empty';
+    empty.textContent = etiqState.catalogo.length === 0
+      ? 'Catálogo de etiquetas não carregado. Abra a aba "Etiquetas Inteligentes" e busque o catálogo do PJe.'
+      : 'Nenhuma etiqueta encontrada para este termo.';
+    menu.appendChild(empty);
+    menu.removeAttribute('hidden');
+    return;
+  }
+  periciasState.form.highlight = Math.min(
+    periciasState.form.highlight,
+    sugestoes.length - 1
+  );
+  sugestoes.forEach((e, idx) => {
+    const li = document.createElement('li');
+    li.className =
+      'paidegua-pericias-autocomplete__item' +
+      (idx === periciasState.form.highlight ? ' is-active' : '');
+    const nome = document.createElement('div');
+    nome.className = 'paidegua-pericias-autocomplete__item-nome';
+    nome.textContent = e.nomeTag + (e.favorita ? ' ★' : '');
+    const path = document.createElement('div');
+    path.className = 'paidegua-pericias-autocomplete__item-path';
+    path.textContent = e.nomeTagCompleto || '';
+    li.append(nome, path);
+    li.addEventListener('mouseenter', () => {
+      periciasState.form.highlight = idx;
+      menu.querySelectorAll('.is-active').forEach((n) => n.classList.remove('is-active'));
+      li.classList.add('is-active');
+    });
+    li.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      adicionarEtiquetaEscolhida(e);
+    });
+    menu.appendChild(li);
+  });
+  menu.removeAttribute('hidden');
+}
+
+function adicionarEtiquetaEscolhida(e: EtiquetaRecord): void {
+  const jaTem = periciasState.form.etiquetas.some((x) => x.id === e.id);
+  if (!jaTem) {
+    periciasState.form.etiquetas.push({
+      id: e.id,
+      nomeTag: e.nomeTag,
+      nomeTagCompleto: e.nomeTagCompleto
+    });
+    renderEtiquetasSelecionadasChips();
+    limparAvisoEtiquetas();
+  }
+  $<HTMLInputElement>('per-etiquetas-input').value = '';
+  periciasState.form.highlight = 0;
+  hideEtiquetasSugestoes();
+  $<HTMLInputElement>('per-etiquetas-input').focus();
+}
+
+function handleEtiquetasInputKeydown(ev: KeyboardEvent): void {
+  const menu = document.getElementById('per-etiquetas-sugestoes');
+  const hasMenu = menu && !menu.hasAttribute('hidden');
+  const items = menu
+    ? Array.from(
+        menu.querySelectorAll<HTMLLIElement>('.paidegua-pericias-autocomplete__item')
+      )
+    : [];
+  if (ev.key === 'ArrowDown' && hasMenu && items.length > 0) {
+    ev.preventDefault();
+    periciasState.form.highlight =
+      (periciasState.form.highlight + 1) % items.length;
+    items.forEach((n, i) =>
+      n.classList.toggle('is-active', i === periciasState.form.highlight)
+    );
+  } else if (ev.key === 'ArrowUp' && hasMenu && items.length > 0) {
+    ev.preventDefault();
+    periciasState.form.highlight =
+      (periciasState.form.highlight - 1 + items.length) % items.length;
+    items.forEach((n, i) =>
+      n.classList.toggle('is-active', i === periciasState.form.highlight)
+    );
+  } else if (ev.key === 'Enter') {
+    if (hasMenu && items.length > 0) {
+      ev.preventDefault();
+      items[periciasState.form.highlight]?.dispatchEvent(
+        new MouseEvent('mousedown')
+      );
+    }
+  } else if (ev.key === 'Escape' && hasMenu) {
+    ev.preventDefault();
+    hideEtiquetasSugestoes();
+  }
+}
+
+function handleAssuntosInputKeydown(ev: KeyboardEvent): void {
+  const menu = document.getElementById('per-assuntos-sugestoes');
+  const hasMenu = menu && !menu.hasAttribute('hidden');
+  const items = menu
+    ? Array.from(
+        menu.querySelectorAll<HTMLLIElement>('.paidegua-pericias-autocomplete__item')
+      )
+    : [];
+
+  if (ev.key === 'ArrowDown' && hasMenu && items.length > 0) {
+    ev.preventDefault();
+    periciasState.form.highlightAssuntos =
+      (periciasState.form.highlightAssuntos + 1) % items.length;
+    items.forEach((n, i) =>
+      n.classList.toggle('is-active', i === periciasState.form.highlightAssuntos)
+    );
+    return;
+  }
+  if (ev.key === 'ArrowUp' && hasMenu && items.length > 0) {
+    ev.preventDefault();
+    periciasState.form.highlightAssuntos =
+      (periciasState.form.highlightAssuntos - 1 + items.length) % items.length;
+    items.forEach((n, i) =>
+      n.classList.toggle('is-active', i === periciasState.form.highlightAssuntos)
+    );
+    return;
+  }
+  if (ev.key === 'Escape' && hasMenu) {
+    ev.preventDefault();
+    hideAssuntosSugestoes();
+    return;
+  }
+  if (ev.key === 'Enter' || ev.key === ',') {
+    ev.preventDefault();
+    if (hasMenu && items.length > 0) {
+      const alvo = items[periciasState.form.highlightAssuntos];
+      if (alvo) {
+        alvo.dispatchEvent(new MouseEvent('mousedown'));
+        return;
+      }
+    }
+    const input = $<HTMLInputElement>('per-assuntos-input');
+    const texto = input.value.trim().replace(/,$/, '').trim();
+    if (texto) adicionarAssuntoEscolhido(texto);
+  }
+}
+
+async function salvarPericia(): Promise<void> {
+  const nomeCompleto = $<HTMLInputElement>('per-nome-completo').value.trim();
+  const nomeEtiquetaPauta = $<HTMLInputElement>('per-nome-etiqueta').value.trim();
+  const genero = $<HTMLSelectElement>('per-genero').value as PericiaGenero;
+  const profissaoRaw = $<HTMLSelectElement>('per-profissao').value;
+  const profissao: PericiaProfissao =
+    profissaoRaw === 'ASSISTENTE_SOCIAL' ||
+    profissaoRaw === 'ENGENHEIRO' ||
+    profissaoRaw === 'GRAFOTECNICO'
+      ? profissaoRaw
+      : 'MEDICO';
+  const quantidadeRaw = parseInt(
+    $<HTMLInputElement>('per-quantidade').value,
+    10
+  );
+  const quantidadePadrao =
+    Number.isFinite(quantidadeRaw) && quantidadeRaw > 0
+      ? Math.min(quantidadeRaw, 500)
+      : 20;
+  const ativo = $<HTMLInputElement>('per-ativo').checked;
+  const etiquetas = [...periciasState.form.etiquetas];
+  const assuntos = [...periciasState.form.assuntos];
+
+  if (!nomeCompleto) {
+    setPericiasStatus('Informe o nome completo do perito.', 'error');
+    $<HTMLInputElement>('per-nome-completo').focus();
+    return;
+  }
+  if (!nomeEtiquetaPauta) {
+    setPericiasStatus(
+      'Informe o nome que comporá a etiqueta da pauta.',
+      'error'
+    );
+    $<HTMLInputElement>('per-nome-etiqueta').focus();
+    return;
+  }
+  if (etiquetas.length === 0) {
+    mostrarAvisoEtiquetas(
+      'Vincule ao menos uma etiqueta do catálogo — é obrigatório para gerar pauta.'
+    );
+    setPericiasStatus('Vincule ao menos uma etiqueta.', 'error');
+    return;
+  }
+
+  const input: PericiaPeritoInput = {
+    nomeCompleto,
+    nomeEtiquetaPauta,
+    genero,
+    profissao,
+    etiquetas,
+    assuntos,
+    quantidadePadrao,
+    ativo
+  };
+
+  try {
+    if (periciasState.editingId) {
+      const atualizado = await updatePerito(periciasState.editingId, input);
+      if (!atualizado) {
+        setPericiasStatus('Perito não encontrado para atualização.', 'error');
+        return;
+      }
+      const idx = periciasState.peritos.findIndex(
+        (p) => p.id === periciasState.editingId
+      );
+      if (idx >= 0) periciasState.peritos[idx] = atualizado;
+    } else {
+      const criado = await addPerito(input);
+      periciasState.peritos.push(criado);
+    }
+    setPericiasStatus('Cadastro salvo.', 'ok');
+    fecharFormularioPericia();
+    renderPericiasLista();
+  } catch (err) {
+    setPericiasStatus(
+      err instanceof Error ? err.message : 'Falha ao salvar perito.',
+      'error'
+    );
+  }
+}
+
+function bindPericiasEvents(): void {
+  document
+    .getElementById('btn-pericias-novo')
+    ?.addEventListener('click', () => abrirFormularioPericia(null));
+  document
+    .getElementById('btn-pericias-salvar')
+    ?.addEventListener('click', () => void salvarPericia());
+  document
+    .getElementById('btn-pericias-cancelar')
+    ?.addEventListener('click', () => fecharFormularioPericia());
+
+  const inputEtq = document.getElementById('per-etiquetas-input') as HTMLInputElement | null;
+  inputEtq?.addEventListener('input', () => {
+    periciasState.form.highlight = 0;
+    void atualizarSugestoesEtiquetas();
+  });
+  inputEtq?.addEventListener('focus', () => {
+    if (inputEtq.value.trim()) void atualizarSugestoesEtiquetas();
+  });
+  inputEtq?.addEventListener('keydown', handleEtiquetasInputKeydown);
+  inputEtq?.addEventListener('blur', () => {
+    // Fecha o menu com leve atraso para permitir clique nas sugestões.
+    window.setTimeout(() => hideEtiquetasSugestoes(), 120);
+  });
+
+  const inputAssuntos = document.getElementById(
+    'per-assuntos-input'
+  ) as HTMLInputElement | null;
+  inputAssuntos?.addEventListener('input', () => {
+    periciasState.form.highlightAssuntos = 0;
+    atualizarSugestoesAssuntos();
+  });
+  inputAssuntos?.addEventListener('focus', () => {
+    atualizarSugestoesAssuntos();
+  });
+  inputAssuntos?.addEventListener('keydown', handleAssuntosInputKeydown);
+  inputAssuntos?.addEventListener('blur', () => {
+    // Leve atraso para permitir mousedown em sugestão; depois se ainda
+    // houver texto digitado, adiciona como chip livre.
+    window.setTimeout(() => {
+      hideAssuntosSugestoes();
+      const texto = inputAssuntos.value.trim();
+      if (
+        texto &&
+        !periciasState.form.assuntos.some(
+          (a) => a.toLowerCase() === texto.toLowerCase()
+        )
+      ) {
+        periciasState.form.assuntos.push(texto);
+        renderAssuntosChips();
+        inputAssuntos.value = '';
+      }
+    }, 150);
+  });
+}
+
+// =====================================================================
+// Backup de configurações — export/import
+// =====================================================================
+
+/**
+ * Versão do pacote de backup. Incrementar se o shape mudar de forma
+ * incompatível (ex.: renomear campos). Leitores devem validar antes
+ * de mesclar no storage.
+ */
+const BACKUP_VERSION = 1 as const;
+
+interface BackupPacote {
+  pacote: 'paidegua-config';
+  version: typeof BACKUP_VERSION;
+  exportedAt: string;
+  /** Config gerais SEM api keys (nunca exportadas). */
+  settings: Partial<PAIdeguaSettings>;
+  /** Store completo de peritos (shape versionado internamente). */
+  peritos: PericiaPeritosStore;
+  /** Etiquetas marcadas como sugestionáveis (idTag). */
+  etiquetasSugestionaveis: number[];
+}
+
+function setBackupStatus(
+  text: string,
+  kind: 'ok' | 'error' | 'info' | '' = ''
+): void {
+  const el = document.getElementById('backup-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'paidegua-popup__status' + (kind ? ` is-${kind}` : '');
+}
+
+function sanitizeSettingsParaExport(
+  s: PAIdeguaSettings
+): Partial<PAIdeguaSettings> {
+  // Copia profunda tolerante para evitar arrastar referências.
+  // API keys NÃO entram no pacote — ficam exclusivamente em
+  // `STORAGE_KEYS.API_KEY_PREFIX` no `chrome.storage.local`.
+  const { ...rest } = s;
+  return JSON.parse(JSON.stringify(rest));
+}
+
+async function exportarConfig(): Promise<void> {
+  setBackupStatus('Preparando backup…', 'info');
+  try {
+    if (!currentSettings) {
+      setBackupStatus('Configurações ainda não carregadas.', 'error');
+      return;
+    }
+    const [peritosStore, sugestionaveis] = await Promise.all([
+      loadPericiasStore(),
+      listSugestionaveis()
+    ]);
+    const pacote: BackupPacote = {
+      pacote: 'paidegua-config',
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      settings: sanitizeSettingsParaExport(currentSettings),
+      peritos: peritosStore,
+      etiquetasSugestionaveis: sugestionaveis.map((s) => s.idTag)
+    };
+    const json = JSON.stringify(pacote, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[:T]/g, '-')
+      .slice(0, 16);
+    a.href = url;
+    a.download = `paidegua-config-${stamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setBackupStatus(
+      'Backup exportado (chaves de API NÃO foram incluídas).',
+      'ok'
+    );
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} exportarConfig:`, err);
+    setBackupStatus(
+      err instanceof Error ? err.message : 'Falha ao exportar backup.',
+      'error'
+    );
+  }
+}
+
+function isBackupPacote(v: unknown): v is BackupPacote {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    o.pacote === 'paidegua-config' &&
+    typeof o.version === 'number' &&
+    typeof o.exportedAt === 'string' &&
+    typeof o.settings === 'object' &&
+    typeof o.peritos === 'object' &&
+    Array.isArray(o.etiquetasSugestionaveis)
+  );
+}
+
+async function importarConfig(file: File): Promise<void> {
+  setBackupStatus('Lendo arquivo…', 'info');
+  try {
+    const texto = await file.text();
+    const parsed = JSON.parse(texto) as unknown;
+    if (!isBackupPacote(parsed)) {
+      setBackupStatus(
+        'Arquivo inválido: não parece um backup da pAIdegua.',
+        'error'
+      );
+      return;
+    }
+    if (parsed.version !== BACKUP_VERSION) {
+      setBackupStatus(
+        `Versão de backup não suportada (${parsed.version}). Esperado: ${BACKUP_VERSION}.`,
+        'error'
+      );
+      return;
+    }
+    const confirmed = confirm(
+      'Importar este backup substituirá:\n' +
+        '  • Configurações gerais (exceto chaves de API);\n' +
+        '  • Todos os peritos cadastrados;\n' +
+        '  • A seleção de etiquetas sugestionáveis.\n\n' +
+        'Deseja prosseguir?'
+    );
+    if (!confirmed) {
+      setBackupStatus('');
+      return;
+    }
+
+    // 1) Settings — grava via canal oficial (sanitizando API keys caso
+    // existam no arquivo por engano, pois o shape pode ser manipulado).
+    const incoming = { ...parsed.settings } as Record<string, unknown>;
+    delete incoming.apiKeys;
+    delete incoming.apiKeysPresence;
+    const respSet = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
+      payload: incoming
+    })) as { ok: boolean; settings?: PAIdeguaSettings; error?: string };
+    if (!respSet?.ok || !respSet.settings) {
+      setBackupStatus(
+        respSet?.error ?? 'Falha ao restaurar configurações.',
+        'error'
+      );
+      return;
+    }
+    currentSettings = respSet.settings;
+
+    // 2) Peritos — sobrescreve o store completo.
+    await savePericiasStore(parsed.peritos);
+    periciasState.loaded = false;
+
+    // 3) Etiquetas sugestionáveis.
+    await replaceSugestionaveis(parsed.etiquetasSugestionaveis);
+    etiqState.selecionados = new Set(parsed.etiquetasSugestionaveis);
+    etiqState.selecionadosOriginais = new Set(etiqState.selecionados);
+    await notificarInvalidateIndex();
+
+    // Re-renderiza para refletir as novidades.
+    populateProviders();
+    populateProfiles();
+    $<HTMLSelectElement>('provider-select').value = currentSettings.activeProvider;
+    $<HTMLSelectElement>('default-profile-select').value = currentSettings.defaultProfile;
+    $<HTMLInputElement>('lgpd-accept').checked = currentSettings.lgpdAccepted;
+    $<HTMLInputElement>('ocr-auto-run').checked = currentSettings.ocrAutoRun;
+    $<HTMLInputElement>('ocr-max-pages').value = String(currentSettings.ocrMaxPages);
+    renderPowerCard(currentSettings.extensionEnabled);
+    renderForProvider(currentSettings.activeProvider);
+    renderTriagemCriterios();
+    await applyGrauRestrictions();
+
+    setBackupStatus(
+      `Backup importado: ${parsed.peritos.peritos.length} perito(s), ${parsed.etiquetasSugestionaveis.length} etiqueta(s) sugestionável(is). Chaves de API não são restauradas.`,
+      'ok'
+    );
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} importarConfig:`, err);
+    setBackupStatus(
+      err instanceof Error ? err.message : 'Falha ao importar backup.',
+      'error'
+    );
+  }
+}
+
+function bindBackupEvents(): void {
+  document
+    .getElementById('btn-export-config')
+    ?.addEventListener('click', () => void exportarConfig());
+  const fileInput = document.getElementById(
+    'import-config-file'
+  ) as HTMLInputElement | null;
+  document
+    .getElementById('btn-import-config')
+    ?.addEventListener('click', () => {
+      fileInput?.click();
+    });
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) void importarConfig(file).finally(() => {
+      fileInput.value = '';
+    });
+  });
+}

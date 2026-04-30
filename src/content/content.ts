@@ -41,6 +41,7 @@ import {
 import type {
   ChatMessage,
   ChatStartPayload,
+  PericiaPerito,
   PJeApiProcesso,
   PJeDetection,
   PAIdeguaSettings,
@@ -78,6 +79,13 @@ import {
 import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
+import { abrirPericiasPainel } from './pericias/pericias-coordinator';
+import { coletarPautasPorPeritos } from './pericias/pericias-coletor';
+import {
+  aplicarEtiquetaEmLoteComBridge,
+  aplicarEtiquetasNoProcessoComBridge,
+  instalarListenerEtiquetaNoIframe
+} from './pericias/pericias-etiqueta-bridge';
 import { computarIndicadoresGestao } from './gestao/gestao-indicadores';
 import {
   coletarPrazosPorTarefasViaAPI,
@@ -822,6 +830,22 @@ function parseDataMovimentacaoToMs(s: string): number {
   }
   const t = Date.parse(s);
   return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+/**
+ * Parseia uma string "YYYY-MM-DD" (vinda de <input type="date">) como
+ * meia-noite LOCAL, preservando o dia escolhido pelo usuário. Usar
+ * `new Date("YYYY-MM-DD")` trata a string como UTC — em fuso BRT
+ * (UTC-3) isso vira o dia anterior às 21h e corrompe `getDate()`.
+ */
+function parseDataLocalYmd(s: string): Date | null {
+  if (typeof s !== 'string') return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
 /**
@@ -2495,7 +2519,12 @@ function wireSidebarEvents(sidebar: SidebarController): void {
 
   els.triagemInteligenteButton.addEventListener('click', (event) => {
     event.preventDefault();
-    handleTriagemInteligente();
+    handleTriagemInteligente('triagem');
+  });
+
+  els.periciasPaideguaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    handleTriagemInteligente('pericias');
   });
 
   els.painelGerencialButton.addEventListener('click', (event) => {
@@ -2525,9 +2554,8 @@ function wireSidebarEvents(sidebar: SidebarController): void {
  * Inteligente" do popup. A configuração fica em
  * `memory.settings.triagemCriterios` e `memory.settings.triagemCriteriosCustom`.
  */
-function handleTriagemInteligente(): void {
+function handleTriagemInteligente(focusGroup?: 'triagem' | 'pericias'): void {
   if (!mounted) return;
-  const chat = ensureChatMounted();
   const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
     mounted?.sidebar.setGlobalNotice(msg, kind);
   };
@@ -2540,7 +2568,7 @@ function handleTriagemInteligente(): void {
     window.location.href.includes('painel-usuario-interno') ||
     Boolean(document.querySelector('iframe[src*="painel-usuario-interno"]'));
   const isProcessoAberto = Boolean(memory.detection?.isProcessoPage);
-  const panel = createTriagemPanel(
+  const card = createTriagemPanel(
     mountShell().shadow,
     {
       onAnalisarTarefas: () => {
@@ -2551,11 +2579,71 @@ function handleTriagemInteligente(): void {
       },
       onInserirEtiquetas: () => {
         void handleInserirEtiquetas(notice);
+      },
+      onAbrirPericias: () => {
+        void handleAbrirPericias();
       }
     },
-    { isPainelUsuario, isProcessoAberto }
+    { isPainelUsuario, isProcessoAberto, focusGroup }
   );
-  chat.addCustomBubble(panel);
+  // Painel do usuário: não há chat — o card renderiza diretamente no body
+  // do sidebar, substituindo o conteúdo anterior. Sem feed.
+  // Janela de processo: reusa a timeline do chat — cada clique cria uma
+  // nova bolha (comportamento de feed legado do chat).
+  if (isPainelUsuario) {
+    const body = mounted.sidebar.elements.body;
+    if (mounted.chat) {
+      mounted.chat.destroy();
+      mounted.chat = null;
+    }
+    if (mounted.docList) {
+      mounted.docList.destroy();
+      mounted.docList = null;
+    }
+    body.innerHTML = '';
+    body.appendChild(card);
+  } else {
+    const chat = ensureChatMounted();
+    chat.addCustomBubble(card);
+  }
+}
+
+/**
+ * Fluxo do botão "Criar pauta" (perfil Secretaria → Perícias pAIdegua):
+ *   1. Lista as tarefas do painel que contenham "Perícia - Designar" ou
+ *      "Perícia - Agendar e administrar" (case/acento-insensível).
+ *   2. Pede ao background para abrir a aba intermediária da feature
+ *      Perícias, passando a lista de tarefas encontradas via
+ *      `chrome.storage.session`. Toda a configuração da pauta, a coleta
+ *      dos processos e a exibição da pauta final acontecem naquela aba.
+ *
+ * O coordenador (`pericias-coordinator`) segue o mesmo padrão do Painel
+ * Gerencial / Prazos na Fita — o sidebar apenas dispara a abertura; a UI
+ * de seleção, progresso e resultado vive em páginas dedicadas.
+ */
+async function handleAbrirPericias(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo "Perícias pAIdegua" em nova aba...');
+  try {
+    const result = await abrirPericiasPainel({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Perícias pAIdegua".', 'error');
+      return;
+    }
+    notice(
+      `"Perícias pAIdegua" aberto em nova aba (${result.totalTarefas} tarefa(s) de perícia disponíveis).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAbrirPericias falhou:`, err);
+    notice(`Falha em "Perícias pAIdegua": ${errorMessage(err)}`, 'error');
+  }
 }
 
 /**
@@ -2655,6 +2743,24 @@ async function handleAnalisarProcesso(
  *      aplicação via API REST entra numa iteração futura (ainda não há
  *      endpoint mapeado para anexar etiquetas a um processo específico).
  */
+/**
+ * Extrai o `idProcesso` da URL atual (query string). O PJe legacy passa
+ * esse parâmetro em telas de autos digitais (`listView.seam?idProcesso=...`
+ * ou similares). Retorna null se não encontrar ou se o valor não for um
+ * número positivo válido.
+ */
+function extrairIdProcessoDaUrl(): number | null {
+  const params = new URLSearchParams(window.location.search);
+  const candidatos = ['idProcesso', 'idProcessoTrf'];
+  for (const key of candidatos) {
+    const raw = params.get(key);
+    if (!raw) continue;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 async function handleInserirEtiquetas(
   notice: (msg: string, kind?: 'info' | 'error') => void
 ): Promise<void> {
@@ -2698,23 +2804,44 @@ async function handleInserirEtiquetas(
     resp.markers ?? [],
     resp.matches ?? [],
     {
-      onCopiarSelecionadas: (etiquetas) => {
+      onInserirSelecionadas: (etiquetas) => {
         if (etiquetas.length === 0) {
-          notice('Nenhuma etiqueta selecionada para copiar.', 'error');
+          notice('Nenhuma etiqueta selecionada para inserir.', 'error');
           return;
         }
-        const texto = etiquetas.map((e) => e.nomeTag).join('\n');
-        void navigator.clipboard
-          .writeText(texto)
-          .then(() => {
-            notice(
-              `${etiquetas.length} etiqueta(s) copiada(s) para a área de transferência.`,
-              'info'
-            );
+        const idProcesso = extrairIdProcessoDaUrl();
+        if (!idProcesso) {
+          notice(
+            'Não foi possível identificar o idProcesso na URL — recarregue os autos digitais e tente novamente.',
+            'error'
+          );
+          return;
+        }
+        notice(`Vinculando ${etiquetas.length} etiqueta(s) ao processo...`, 'info');
+        void aplicarEtiquetasNoProcessoComBridge({
+          etiquetas: etiquetas.map((e) => ({
+            id: e.id,
+            nomeTag: e.nomeTag,
+            nomeTagCompleto: e.nomeTagCompleto
+          })),
+          idProcesso
+        })
+          .then((r) => {
+            if (r.ok) {
+              notice(
+                `${r.aplicadas} etiqueta(s) vinculada(s) ao processo. Recarregue a página para visualizar.`,
+                'info'
+              );
+            } else {
+              notice(
+                r.error ?? 'Falha ao vincular etiquetas ao processo.',
+                'error'
+              );
+            }
           })
           .catch((err) => {
-            console.warn(`${LOG_PREFIX} Falha ao copiar etiquetas:`, err);
-            notice('Falha ao copiar etiquetas para a área de transferência.', 'error');
+            console.warn(`${LOG_PREFIX} Falha ao vincular etiquetas:`, err);
+            notice('Falha inesperada ao vincular etiquetas.', 'error');
           });
       }
     }
@@ -3402,6 +3529,124 @@ async function handleGestaoRunColeta(
   }
 }
 
+// Idempotência: chrome.tabs.sendMessage pode, em cenários raros, disparar
+// o handler duas vezes. A coleta é cara (lista todas as tarefas de perícia
+// + monta pautas) e não-idempotente na experiência do usuário. Um Set de
+// requestIds em curso descarta entradas repetidas com o mesmo id.
+const periciasEmCurso = new Set<string>();
+
+/**
+ * Handler do `PERICIAS_RUN_COLETA` — roda no top frame do PJe legacy.
+ *
+ * Percorre as tarefas de perícia via REST, ordena por antiguidade e
+ * monta uma pauta por perito respeitando a cascata de etiquetas e o
+ * filtro opcional de assuntos. Envia progresso via
+ * `PERICIAS_COLETA_PROG` e resultado final via `PERICIAS_COLETA_DONE`
+ * (payload do dashboard) ou `PERICIAS_COLETA_FAIL` em caso de erro.
+ */
+async function handlePericiasRunColeta(
+  payload: {
+    requestId: string;
+    nomes: string[];
+    peritosSelecionados: PericiaPerito[];
+    dataPericiaISO: string;
+    excluirIds?: number[];
+  }
+): Promise<void> {
+  const { requestId, nomes, peritosSelecionados, dataPericiaISO } = payload;
+  if (periciasEmCurso.has(requestId)) {
+    console.warn(
+      `${LOG_PREFIX} handlePericiasRunColeta: requestId ${requestId} ja em curso — ignorando disparo duplicado.`
+    );
+    return;
+  }
+  periciasEmCurso.add(requestId);
+  try {
+    const postProg = (msg: string): void => {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PERICIAS_COLETA_PROG,
+          payload: { requestId, msg }
+        })
+        .catch(() => { /* aba-painel pode ter fechado */ });
+    };
+
+    postProg('Varredura iniciada. Pode levar alguns instantes.');
+    const hostnamePJe = new URL(window.location.origin).hostname;
+    const legacyOrigin = window.location.origin;
+    // dataPericiaISO vem do <input type="date"> como "YYYY-MM-DD". Parsear
+    // direto com `new Date()` trata como UTC midnight — em fuso BRT
+    // (UTC-3) isso vira o dia anterior às 21h, e a etiqueta sai com a
+    // data errada ("DR NOME 10.05.26" quando foi escolhido 11/05/2026).
+    // Construímos manualmente em horário local para preservar o dia.
+    const dataPericia = parseDataLocalYmd(dataPericiaISO);
+    if (!dataPericia || Number.isNaN(dataPericia.getTime())) {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PERICIAS_COLETA_FAIL,
+        payload: {
+          requestId,
+          error: 'Data da perícia inválida. Refaça a varredura a partir do painel.'
+        }
+      }).catch(() => {});
+      return;
+    }
+    const excluirIds = Array.isArray(payload.excluirIds)
+      ? new Set<number>(payload.excluirIds.filter((n) => Number.isFinite(n)))
+      : undefined;
+    const { ok, payload: dashboardPayload, error } =
+      await coletarPautasPorPeritos({
+        requestId,
+        hostnamePJe,
+        legacyOrigin,
+        nomes,
+        peritosSelecionados,
+        dataPericia,
+        excluirIds,
+        onProgress: postProg
+      });
+    if (!ok || !dashboardPayload) {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PERICIAS_COLETA_FAIL,
+        payload: {
+          requestId,
+          error: error ?? 'Falha ao montar a pauta de perícias.'
+        }
+      }).catch(() => { /* aba-painel pode ter fechado */ });
+      return;
+    }
+
+    postProg(
+      `Pauta montada: ${dashboardPayload.totais.processosNaPauta} processo(s) para ` +
+        `${dashboardPayload.totais.peritosContemplados}/${peritosSelecionados.length} perito(s).`
+    );
+
+    const resp = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.PERICIAS_COLETA_DONE,
+      payload: { requestId, dashboardPayload }
+    });
+    if (!resp?.ok) {
+      const msg = resp?.error ?? 'Falha desconhecida ao gravar a pauta.';
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PERICIAS_COLETA_FAIL,
+        payload: { requestId, error: msg }
+      }).catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
+  } catch (err) {
+    if (isContextInvalidatedError(err)) return;
+    console.warn(`${LOG_PREFIX} handlePericiasRunColeta falhou:`, err);
+    try {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PERICIAS_COLETA_FAIL,
+        payload: { requestId, error: errorMessage(err) }
+      });
+    } catch {
+      /* aba-painel pode ter sido fechada */
+    }
+  } finally {
+    periciasEmCurso.delete(requestId);
+  }
+}
+
 function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
   memory.adapter = adapter;
   memory.detection = detection;
@@ -3492,7 +3737,15 @@ function runDetection(): void {
     return;
   }
 
-  if (!shouldMount && mounted) {
+  // Só desmontamos se realmente saímos do PJe (mudança de host). Falha
+  // transitória do `selectAdapter()` enquanto o PJe legacy reescreve o DOM
+  // — por exemplo durante o JSF/PrimeFaces partial update que ocorre ao
+  // clicar em um anexo na árvore — não justifica desmontar a UI: isso
+  // limparia `memory.documentos`/`memory.extraidos`/`memory.chatMessages`
+  // e destruiria as bolhas de chat (resumos, minutas, análise de triagem)
+  // que o usuário pretende reabrir depois. Se ainda estamos em host PJe,
+  // mantemos o `mounted` atual; a próxima rodada da detecção corrige.
+  if (!shouldMount && mounted && !detection.isPJe) {
     unmountUI();
   }
 }
@@ -3606,6 +3859,70 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     sendResponse({ ok: true });
     void handlePrazosFitaRunColeta(payload);
+    return false;
+  }
+
+  // Perícias pAIdegua → "Aplicar etiquetas": a aba-dashboard pede, o
+  // background escolhe uma aba do PJe aberta e encaminha para ESTA
+  // (content script same-origin). O fetch com cookie só funciona a partir
+  // daqui — ver comentário em pje-api-from-content.ts.
+  if (message.channel === MESSAGE_CHANNELS.PERICIAS_APLICAR_ETIQUETAS) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      etiquetaPauta: string;
+      idsProcesso: number[];
+      favoritarAposCriar?: boolean;
+    };
+    if (
+      !payload ||
+      typeof payload.etiquetaPauta !== 'string' ||
+      !Array.isArray(payload.idsProcesso)
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await aplicarEtiquetaEmLoteComBridge({
+          etiquetaPauta: payload.etiquetaPauta,
+          idsProcesso: payload.idsProcesso,
+          favoritarAposCriar: payload.favoritarAposCriar === true
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({ ok: false, aplicadas: 0, error: errorMessage(err), detalhes: [] });
+      }
+    })();
+    return true;
+  }
+
+  // Perícias pAIdegua: gêmeo de GESTAO_RUN_COLETA, mas monta pauta por
+  // perito respeitando antiguidade → cascata de etiquetas → assunto →
+  // quantidade-padrão. Só o top frame da aba PJe roda — iframes ignoram.
+  if (message.channel === MESSAGE_CHANNELS.PERICIAS_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      requestId: string;
+      nomes: string[];
+      peritosSelecionados: PericiaPerito[];
+      dataPericiaISO: string;
+      excluirIds?: number[];
+    };
+    if (
+      !payload ||
+      !payload.requestId ||
+      !Array.isArray(payload.nomes) ||
+      !Array.isArray(payload.peritosSelecionados) ||
+      typeof payload.dataPericiaISO !== 'string' ||
+      !payload.dataPericiaISO
+    ) {
+      sendResponse({ ok: false, error: 'Payload de coleta de perícias inválido.' });
+      return false;
+    }
+    sendResponse({ ok: true });
+    void handlePericiasRunColeta(payload);
     return false;
   }
 
@@ -3771,6 +4088,7 @@ async function bootstrap(): Promise<void> {
       );
       instalarListenerTriagemNoIframe();
       instalarListenerGestaoNoIframe();
+      instalarListenerEtiquetaNoIframe();
       // Bridge isolated-world: relaya o snapshot de auth do PJe que o
       // interceptor page-world (pje-auth-page.js) dispara via CustomEvent.
       instalarBridgeInterceptorAuth();
@@ -3840,13 +4158,23 @@ function mountGlobalNavbarButton(): void {
       }
       const wasOpen = mounted.sidebar.isOpen();
       mounted.sidebar.toggle();
-      // Auto-carregamento: ao abrir o pAIdegua dentro de um processo,
-      // dispara a listagem de documentos sem exigir clique no botão. Se o
-      // usuário perceber que a árvore do PJe estava com lazy loading (lista
-      // incompleta), ele clica em "Recarregar Documentos" para refazer.
+      // Auto-carregamento: ao abrir o pAIdegua DA PRIMEIRA VEZ dentro de
+      // um processo, dispara a listagem sem exigir clique no botão. Se a
+      // árvore do PJe vier incompleta por lazy loading, o usuário clica
+      // em "Recarregar Documentos" para refazer.
+      //
+      // Usamos `memory.documentos.length === 0` (em vez de `!mounted.docList`)
+      // porque o docList é destruído assim que o chat é montado — ações como
+      // Resumir, Minutar ou enviar mensagem trocam o body do sidebar para o
+      // chat. Reabrir o sidebar com `!mounted.docList` re-disparava o
+      // handleLoadDocuments e zerava `memory.extraidos` + destruía o chat,
+      // apagando resumos/minutas/conteúdo extraído. `memory.documentos` só
+      // é zerado em `unmountUI()` — que roda em F5, fechar a aba, navegar
+      // para fora do PJe ou desligar o kill-switch — exatamente o ciclo
+      // de vida que deve disparar nova carga.
       const abriuAgora = !wasOpen && mounted.sidebar.isOpen();
       const emProcesso = memory.detection?.isProcessoPage === true;
-      const semDocsCarregados = !mounted.docList;
+      const semDocsCarregados = memory.documentos.length === 0;
       if (abriuAgora && emProcesso && semDocsCarregados && memory.adapter) {
         void handleLoadDocuments();
       }

@@ -22,6 +22,22 @@ import {
   type ProviderId
 } from '../shared/constants';
 import {
+  AUTH_REVALIDATE_AFTER_MS,
+  clearAuthState,
+  computeAuthStatus,
+  loadAuthState,
+  remoteRequestCode,
+  remoteVerifyCode,
+  revalidateRemote
+} from '../shared/auth';
+import type {
+  AuthRequestCodePayload,
+  AuthRequestCodeResponse,
+  AuthStatusResponse,
+  AuthVerifyCodePayload,
+  AuthVerifyCodeResponse
+} from '../shared/types';
+import {
   TRIAGEM_LLM_ANON_NOTICE,
   type TriagemPayloadAnon,
   type TriagemProcessoAnon,
@@ -71,6 +87,9 @@ import type {
   GestaoSugestao,
   GestaoTarefaInfo,
   PAIdeguaSettings,
+  PericiaPerito,
+  PericiaTarefaInfo,
+  PericiasDashboardPayload,
   PJeAuthSnapshot,
   PrazosFitaDashboardPayload,
   SugerirEtiquetasRequest,
@@ -158,19 +177,144 @@ chrome.runtime.onStartup.addListener(() => {
 abrirStorageSessionParaContentScripts();
 
 // =====================================================================
+// Autenticacao (whitelist Inovajus + OTP por e-mail)
+// =====================================================================
+
+/**
+ * Canais que NAO exigem login. Tudo o que sair daqui e bloqueado pelo
+ * `requireAuth()` se a sessao local nao for valida.
+ *
+ * Politica: o popup precisa renderizar a tela de login mesmo sem sessao,
+ * por isso `GET_SETTINGS`/`SAVE_SETTINGS` continuam liberados (ler/gravar
+ * preferencias locais nao expoe nenhuma feature de IA). Toda a chamada a
+ * provedor externo, qualquer abertura de painel e qualquer manipulacao
+ * do PJe ficam atras do gate.
+ */
+const AUTH_FREE_CHANNELS: ReadonlySet<string> = new Set<string>([
+  MESSAGE_CHANNELS.PING,
+  MESSAGE_CHANNELS.GET_SETTINGS,
+  MESSAGE_CHANNELS.SAVE_SETTINGS,
+  MESSAGE_CHANNELS.AUTH_REQUEST_CODE,
+  MESSAGE_CHANNELS.AUTH_VERIFY_CODE,
+  MESSAGE_CHANNELS.AUTH_GET_STATUS,
+  MESSAGE_CHANNELS.AUTH_REVALIDATE,
+  MESSAGE_CHANNELS.AUTH_LOGOUT
+]);
+
+/**
+ * Resolve o status atual com base no JWT salvo. Para nao bater no backend
+ * em todo despacho de mensagem, usa apenas `expiresAt` local — a revalidacao
+ * remota e disparada de forma oportunistica em outros pontos
+ * (`scheduleAuthRevalidation`).
+ */
+async function isAuthenticatedFast(): Promise<boolean> {
+  const state = await loadAuthState();
+  return computeAuthStatus(state).authenticated;
+}
+
+/**
+ * Dispara revalidacao remota se a ultima ja estiver mais antiga que
+ * `AUTH_REVALIDATE_AFTER_MS`. Best-effort: erros de rede nao derrubam
+ * a sessao local; somente `revoked` / `invalid_jwt` limpam o JWT.
+ */
+async function scheduleAuthRevalidation(): Promise<void> {
+  try {
+    const state = await loadAuthState();
+    if (!state) return;
+    if (Date.now() - state.lastValidatedAt < AUTH_REVALIDATE_AFTER_MS) return;
+    await revalidateRemote();
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} revalidacao remota falhou:`, err);
+  }
+}
+
+async function handleAuthRequestCode(
+  payload: AuthRequestCodePayload | undefined,
+  sendResponse: (response: AuthRequestCodeResponse) => void
+): Promise<void> {
+  const email = String(payload?.email ?? '').trim();
+  const result = await remoteRequestCode(email);
+  sendResponse(result);
+}
+
+async function handleAuthVerifyCode(
+  payload: AuthVerifyCodePayload | undefined,
+  sendResponse: (response: AuthVerifyCodeResponse) => void
+): Promise<void> {
+  const email = String(payload?.email ?? '').trim();
+  const code = String(payload?.code ?? '').trim();
+  const result = await remoteVerifyCode(email, code);
+  sendResponse(result);
+}
+
+async function handleAuthGetStatus(
+  sendResponse: (response: AuthStatusResponse) => void
+): Promise<void> {
+  const state = await loadAuthState();
+  const status = computeAuthStatus(state);
+  sendResponse(status);
+  // Aproveita a chamada para revalidar em background quando aplicavel.
+  void scheduleAuthRevalidation();
+}
+
+async function handleAuthRevalidate(
+  sendResponse: (response: AuthStatusResponse) => void
+): Promise<void> {
+  const status = await revalidateRemote();
+  sendResponse(status);
+}
+
+async function handleAuthLogout(
+  sendResponse: (response: { ok: true }) => void
+): Promise<void> {
+  await clearAuthState();
+  sendResponse({ ok: true });
+}
+
+// =====================================================================
 // Mensagens curtas (request/response) — popup e content sem streaming.
 // =====================================================================
 
-chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, sender, sendResponse) => {
-    if (!message || typeof message.channel !== 'string') {
-      return false;
-    }
-
+/**
+ * Dispatcher principal — chamado pelo listener apos passar pelo gate de auth.
+ * Mantem a forma de retorno do `chrome.runtime.onMessage.addListener` (true
+ * para handler async, false para sync).
+ */
+function dispatchMessage(
+  message: ExtensionMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: unknown) => void
+): boolean {
     switch (message.channel) {
       case MESSAGE_CHANNELS.PING:
         sendResponse({ ok: true, pong: Date.now() });
         return false;
+
+      case MESSAGE_CHANNELS.AUTH_REQUEST_CODE:
+        void handleAuthRequestCode(
+          message.payload as AuthRequestCodePayload | undefined,
+          sendResponse as (r: AuthRequestCodeResponse) => void
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUTH_VERIFY_CODE:
+        void handleAuthVerifyCode(
+          message.payload as AuthVerifyCodePayload | undefined,
+          sendResponse as (r: AuthVerifyCodeResponse) => void
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUTH_GET_STATUS:
+        void handleAuthGetStatus(sendResponse as (r: AuthStatusResponse) => void);
+        return true;
+
+      case MESSAGE_CHANNELS.AUTH_REVALIDATE:
+        void handleAuthRevalidate(sendResponse as (r: AuthStatusResponse) => void);
+        return true;
+
+      case MESSAGE_CHANNELS.AUTH_LOGOUT:
+        void handleAuthLogout(sendResponse as (r: { ok: true }) => void);
+        return true;
 
       case MESSAGE_CHANNELS.GET_SETTINGS:
         void handleGetSettings(sendResponse);
@@ -449,6 +593,90 @@ chrome.runtime.onMessage.addListener(
         );
         return true;
 
+      case MESSAGE_CHANNELS.PERICIAS_OPEN_PAINEL:
+        void handleOpenPericiasPainel(
+          message.payload as {
+            tarefas: PericiaTarefaInfo[];
+            peritos: PericiaPerito[];
+            hostnamePJe: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PERICIAS_START_COLETA:
+        void handlePericiasStartColeta(
+          message.payload as {
+            requestId: string;
+            nomes: string[];
+            peritosSelecionados: PericiaPerito[];
+            dataPericiaISO: string;
+            excluirIds?: number[];
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PERICIAS_COLETA_PROG:
+        void handlePericiasColetaProg(
+          message.payload as { requestId: string; msg: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PERICIAS_COLETA_DONE:
+        void handlePericiasColetaDone(
+          message.payload as {
+            requestId: string;
+            dashboardPayload: PericiasDashboardPayload;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PERICIAS_COLETA_FAIL:
+        void handlePericiasColetaFail(
+          message.payload as { requestId: string; error: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PERICIAS_APLICAR_ETIQUETAS:
+        void handlePericiasAplicarEtiquetas(
+          message.payload as {
+            etiquetaPauta: string;
+            idsProcesso: number[];
+            favoritarAposCriar?: boolean;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PERICIAS_CLEAR_PAYLOAD:
+        void (async () => {
+          try {
+            const rid = (message.payload as { requestId?: string } | null)
+              ?.requestId;
+            if (rid) {
+              await chrome.storage.session.remove(
+                `${STORAGE_KEYS.PERICIAS_DASHBOARD_PAYLOAD_PREFIX}${rid}`
+              );
+              // Também apaga a rota aqui — é o ponto "encerrar de vez a
+              // sessão de Perícias". O dashboard chama este canal no
+              // beforeunload (quando o usuário fecha a aba) e ao criar
+              // uma nova pauta.
+              await deleteRota(rid);
+            }
+            sendResponse({ ok: true });
+          } catch (err) {
+            console.warn(`${LOG_PREFIX} PERICIAS_CLEAR_PAYLOAD falhou:`, err);
+            sendResponse({ ok: false, error: errorMessage(err) });
+          }
+        })();
+        return true;
+
       case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
         void handleAnalisarProcesso(
           message.payload as AnalisarProcessoRequest,
@@ -513,6 +741,26 @@ chrome.runtime.onMessage.addListener(
       default:
         return false;
     }
+}
+
+chrome.runtime.onMessage.addListener(
+  (message: ExtensionMessage, sender, sendResponse) => {
+    if (!message || typeof message.channel !== 'string') {
+      return false;
+    }
+    const channel = message.channel;
+    if (AUTH_FREE_CHANNELS.has(channel)) {
+      return dispatchMessage(message, sender, sendResponse);
+    }
+    // Canal protegido — checagem assincrona; mantem a porta aberta com return true.
+    void (async () => {
+      if (!(await isAuthenticatedFast())) {
+        sendResponse({ ok: false, error: 'unauthorized' });
+        return;
+      }
+      dispatchMessage(message, sender, sendResponse);
+    })();
+    return true;
   }
 );
 
@@ -1995,7 +2243,16 @@ chrome.runtime.onConnect.addListener((port) => {
       return;
     }
     if (msg.type === CHAT_PORT_MSG.START) {
-      void handleChatStart(port, msg.payload as ChatStartPayload);
+      void (async () => {
+        if (!(await isAuthenticatedFast())) {
+          port.postMessage({
+            type: CHAT_PORT_MSG.ERROR,
+            error: 'Sessao nao autenticada. Faca login no popup do pAIdegua.'
+          });
+          return;
+        }
+        void handleChatStart(port, msg.payload as ChatStartPayload);
+      })();
     } else if (msg.type === CHAT_PORT_MSG.ABORT) {
       const active = activeChats.get(port);
       active?.controller.abort();
@@ -2875,6 +3132,293 @@ async function handlePrazosFitaColetaFail(
     sendResponse({ ok: true });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handlePrazosFitaColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// =====================================================================
+// "Perícias pAIdegua" — aba intermediária (seletor de peritos + pauta)
+// =====================================================================
+//
+// Topologia idêntica ao Painel Gerencial, com canais próprios. O
+// payload da pauta é pequeno (dezenas de processos no total), então
+// usamos `chrome.storage.session` diretamente — não precisa IndexedDB.
+
+function gerarPericiasRequestId(): string {
+  return `pericias-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function handleOpenPericiasPainel(
+  payload: {
+    tarefas: PericiaTarefaInfo[];
+    peritos: PericiaPerito[];
+    hostnamePJe: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou Perícias.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({
+        ok: false,
+        error: 'Payload de abertura de Perícias inválido.'
+      });
+      return;
+    }
+
+    const requestId = gerarPericiasRequestId();
+    const stateKey =
+      `${STORAGE_KEYS.PERICIAS_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        peritos: Array.isArray(payload.peritos) ? payload.peritos : [],
+        hostnamePJe: payload.hostnamePJe ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('pericias-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba de Perícias pAIdegua.'
+      });
+      return;
+    }
+    // Reutilizamos o mesmo `setRota/getRota` do Painel Gerencial. As
+    // chaves são prefixadas por `GESTAO_PAINEL_ROUTE_PREFIX`, mas não
+    // há colisão porque o `requestId` inclui o prefixo "pericias-".
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenPericiasPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePericiasStartColeta(
+  payload: {
+    requestId: string;
+    nomes: string[];
+    peritosSelecionados: PericiaPerito[];
+    dataPericiaISO: string;
+    excluirIds?: number[];
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão de Perícias pAIdegua expirou. Volte ao PJe e abra a feature novamente.'
+      });
+      return;
+    }
+    if (!Array.isArray(payload.nomes) || payload.nomes.length === 0) {
+      sendResponse({ ok: false, error: 'Nenhuma tarefa de perícia selecionada.' });
+      return;
+    }
+    if (
+      !Array.isArray(payload.peritosSelecionados) ||
+      payload.peritosSelecionados.length === 0
+    ) {
+      sendResponse({ ok: false, error: 'Nenhum perito selecionado.' });
+      return;
+    }
+    if (typeof payload.dataPericiaISO !== 'string' || !payload.dataPericiaISO) {
+      sendResponse({ ok: false, error: 'Data da perícia não informada.' });
+      return;
+    }
+    const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.PERICIAS_RUN_COLETA,
+      payload: {
+        requestId: payload.requestId,
+        nomes: payload.nomes,
+        peritosSelecionados: payload.peritosSelecionados,
+        dataPericiaISO: payload.dataPericiaISO,
+        excluirIds: Array.isArray(payload.excluirIds) ? payload.excluirIds : []
+      }
+    });
+    if (!ack?.ok) {
+      sendResponse({
+        ok: false,
+        error:
+          ack?.error ??
+          'A aba do PJe não aceitou iniciar a coleta. Confirme que ela continua aberta no Painel do Usuário.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePericiasStartColeta falhou:`, error);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(error) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handlePericiasColetaProg(
+  payload: { requestId: string; msg: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PERICIAS_COLETA_PROG,
+        payload
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePericiasColetaProg falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePericiasColetaDone(
+  payload: { requestId: string; dashboardPayload: PericiasDashboardPayload },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    if (
+      !payload.dashboardPayload ||
+      !Array.isArray(payload.dashboardPayload.pautas)
+    ) {
+      sendResponse({ ok: false, error: 'Payload da pauta inválido.' });
+      return;
+    }
+
+    const dashKey =
+      `${STORAGE_KEYS.PERICIAS_DASHBOARD_PAYLOAD_PREFIX}${payload.requestId}`;
+    await chrome.storage.session.set({
+      [dashKey]: payload.dashboardPayload
+    });
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.PERICIAS_PAINEL_STATE_PREFIX}${payload.requestId}`
+    );
+
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PERICIAS_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+
+    // Mantém a rota viva após a coleta inicial terminar: o dashboard de
+    // Perícias usa "Atualizar pauta" (re-disparo de PERICIAS_START_COLETA
+    // com `excluirIds`), e esse fluxo precisa encontrar `rota.pjeTabId`
+    // para reenviar `PERICIAS_RUN_COLETA`. A rota é limpa em
+    // `handlePericiasClearPayload` (usuário fecha/recarrega o dashboard)
+    // e naturalmente pela sessão do navegador.
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePericiasColetaDone falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Handler de `PERICIAS_APLICAR_ETIQUETAS` — roteado da aba-dashboard
+ * (chrome-extension://...). A rota precisa executar dentro de uma aba do
+ * PJe (same-origin) para que o cookie de sessão seja anexado ao fetch;
+ * caso contrário o servidor rejeita silenciosamente (padrão já documentado
+ * em `pje-api-from-content.ts`).
+ *
+ * Estratégia: procura qualquer aba aberta em `https://*.jus.br/*` e
+ * encaminha o pedido. Se nenhuma aba do PJe estiver aberta, devolve erro
+ * pedindo ao usuário para manter uma guia do painel logada.
+ */
+async function handlePericiasAplicarEtiquetas(
+  payload: {
+    etiquetaPauta: string;
+    idsProcesso: number[];
+    favoritarAposCriar?: boolean;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload?.etiquetaPauta || !Array.isArray(payload.idsProcesso)) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+    if (tabs.length === 0 || !tabs[0].id) {
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhuma aba do PJe aberta. Abra o painel do PJe (qualquer 1º/2º grau) ' +
+          'em uma aba antes de aplicar etiquetas.'
+      });
+      return;
+    }
+    // Preferir a primeira aba do domínio certo — idealmente a mesma onde
+    // a pauta foi montada (hostnamePJe), mas qualquer aba jus.br serve
+    // para o fetch same-origin com cookie.
+    const tab = tabs[0];
+    const resp = await chrome.tabs.sendMessage(tab.id!, {
+      channel: MESSAGE_CHANNELS.PERICIAS_APLICAR_ETIQUETAS,
+      payload
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePericiasAplicarEtiquetas falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+async function handlePericiasColetaFail(
+  payload: { requestId: string; error: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.PERICIAS_COLETA_FAIL,
+          payload
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+      // Não apaga a rota aqui: o usuário pode querer reabrir o painel e
+      // tentar de novo. A limpeza canônica é via PERICIAS_CLEAR_PAYLOAD.
+    }
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.PERICIAS_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePericiasColetaFail falhou:`, error);
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }

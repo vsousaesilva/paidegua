@@ -10,6 +10,70 @@ import type {
   TriagemCriterioSetting
 } from './constants';
 
+/**
+ * Estado de autenticacao persistido em `chrome.storage.local` sob a chave
+ * `STORAGE_KEYS.AUTH`. Sem este registro (ou se `expiresAt` ja passou /
+ * `lastValidatedAt` esta muito antigo), a extensao bloqueia toda funcionalidade
+ * que dependa de IA.
+ */
+export interface AuthState {
+  jwt: string;
+  email: string;
+  /** Epoch ms da expiracao do JWT (90 dias por padrao). */
+  expiresAt: number;
+  /** Epoch ms da ultima revalidacao bem-sucedida contra o backend. */
+  lastValidatedAt: number;
+}
+
+/**
+ * Codigos de erro padronizados que vem do backend de auth (Apps Script) e
+ * sao traduzidos pela UI. Manter em sincronia com os retornos do
+ * `backend/apps-script/Code.gs`.
+ */
+export type AuthErrorCode =
+  | 'invalid_email'
+  | 'not_whitelisted'
+  | 'rate_limited'
+  | 'missing_fields'
+  | 'no_code'
+  | 'expired'
+  | 'wrong_code'
+  | 'too_many_attempts'
+  | 'invalid_jwt'
+  | 'revoked'
+  | 'server_error'
+  | 'network_error'
+  | 'backend_not_configured';
+
+export interface AuthRequestCodePayload {
+  email: string;
+}
+
+export interface AuthVerifyCodePayload {
+  email: string;
+  code: string;
+}
+
+export interface AuthRequestCodeResponse {
+  ok: boolean;
+  error?: AuthErrorCode;
+}
+
+export interface AuthVerifyCodeResponse {
+  ok: boolean;
+  email?: string;
+  expiresAt?: number;
+  error?: AuthErrorCode;
+}
+
+export interface AuthStatusResponse {
+  authenticated: boolean;
+  email?: string;
+  expiresAt?: number;
+  /** Quando `authenticated` for false e houver causa conhecida (ex.: `revoked`). */
+  reason?: AuthErrorCode | 'expired_local' | 'no_session';
+}
+
 /** Resultado da detecção de uma página do PJe. */
 export interface PJeDetection {
   isPJe: boolean;
@@ -956,5 +1020,215 @@ export interface PrazosFitaDashboardPayload {
       coleta: PrazosProcessoColeta | null;
       error?: string;
     }>;
+  };
+}
+
+/**
+ * Feature "Perícias pAIdegua" (perfil Secretaria).
+ *
+ * Organiza os processos das tarefas do painel cujos nomes contêm
+ * "Perícia - Designar" e "Perícia - Agendar e administrar" em uma pauta
+ * por perito. Os tipos aqui cobrem:
+ *   - o cadastro persistido de peritos (PericiaPerito);
+ *   - o payload passado do seletor ao content script;
+ *   - o snapshot de processo usado para ranking;
+ *   - o payload final da pauta exibido no dashboard.
+ *
+ * O catálogo de etiquetas vinculadas ao perito é do usuário (etiquetas
+ * criadas livremente no PJe). Nenhuma das etiquetas é criada
+ * automaticamente nesta feature — o botão "Aplicar etiquetas" do
+ * dashboard cria (se necessário) apenas a etiqueta da PAUTA (formato
+ * "DR(A) [NOME] DD.MM.AA") e a vincula ao lote de processos.
+ */
+export type PericiaGenero = 'M' | 'F';
+
+/**
+ * Profissão do perito. Define o prefixo da etiqueta da pauta:
+ *   - MEDICO        → "DR"/"DRA" conforme gênero
+ *   - ENGENHEIRO    → "DR"/"DRA" conforme gênero
+ *   - GRAFOTECNICO  → "DR"/"DRA" conforme gênero
+ *   - ASSISTENTE_SOCIAL → "AS" (sem variação de gênero)
+ */
+export type PericiaProfissao =
+  | 'MEDICO'
+  | 'ASSISTENTE_SOCIAL'
+  | 'ENGENHEIRO'
+  | 'GRAFOTECNICO';
+
+export interface PericiaPerito {
+  /** UUID local (crypto.randomUUID). Chave primária do registro. */
+  id: string;
+  /** Nome completo do perito (ex.: "Maria de Fátima da Silva"). */
+  nomeCompleto: string;
+  /**
+   * Nome explícito que comporá a etiqueta da pauta. Geralmente o primeiro
+   * nome, mas o usuário pode escolher outro recorte (ex.: sobrenome
+   * quando há homônimos). NÃO é inferido do nome completo.
+   */
+  nomeEtiquetaPauta: string;
+  /** M → "DR"; F → "DRA" no prefixo da etiqueta da pauta (exceto Assistente Social). */
+  genero: PericiaGenero;
+  /**
+   * Profissão do perito. Afeta o formato da etiqueta da pauta:
+   *   - Assistente Social: "AS [NOME] DD.MM.AA" (sem gênero).
+   *   - Demais: "DR(A) [NOME] DD.MM.AA" conforme gênero.
+   */
+  profissao: PericiaProfissao;
+  /**
+   * Lista ORDENADA de IDs de etiquetas do catálogo do PJe que o perito
+   * atende (na ordem de prioridade do cascateamento: assim que a primeira
+   * esgota, a pauta segue para a próxima). Requisito: ≥ 1 para gerar pauta.
+   */
+  etiquetas: Array<{ id: number; nomeTag: string; nomeTagCompleto: string }>;
+  /**
+   * Lista opcional de assuntos preferenciais do perito (ex.: "Pessoa com
+   * Deficiência", "Aposentadoria por Invalidez"). Quando presente, o
+   * critério C4 só inclui processos cujo `assuntoPrincipal` esteja nesta
+   * lista. Vazia = sem filtro por assunto.
+   */
+  assuntos: string[];
+  /** Quantidade-padrão de processos na pauta para este perito. */
+  quantidadePadrao: number;
+  /** Toggle — quando false, fica fora do seletor do painel. */
+  ativo: boolean;
+  /** ISO do cadastro e da última edição. */
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+/**
+ * Payload em `storage.local[PERICIAS_PERITOS]`. Versão explícita para
+ * tolerar evoluções futuras do shape sem perder dados.
+ */
+export interface PericiaPeritosStore {
+  version: 1;
+  peritos: PericiaPerito[];
+}
+
+/**
+ * Nome da tarefa do painel e a contagem exibida pelo PJe. Espelha o
+ * `GestaoTarefaInfo`, mas mantido separado para documentar que a feature
+ * só aceita as tarefas cujos nomes contêm "Perícia - Designar" ou
+ * "Perícia - Agendar e administrar".
+ */
+export interface PericiaTarefaInfo {
+  nome: string;
+  quantidade: number | null;
+}
+
+/**
+ * Estado da aba-painel de Perícias (gravado em `storage.session` com o
+ * prefixo `PERICIAS_PAINEL_STATE_PREFIX`). A aba lê este payload no load.
+ */
+export interface PericiasPainelState {
+  requestId: string;
+  hostnamePJe: string;
+  abertoEm: string;
+  tarefas: PericiaTarefaInfo[];
+  /**
+   * Snapshot dos peritos ativos copiado do `storage.local` no momento de
+   * abertura. Evita que a aba leia direto do local (que o usuário pode
+   * estar editando em outra aba simultaneamente).
+   */
+  peritos: PericiaPerito[];
+}
+
+/**
+ * Entrada na pauta gerada: um processo já resolvido para um perito
+ * específico com a etiqueta-fonte usada na escolha.
+ */
+export interface PericiaPautaItem {
+  idProcesso: number;
+  numeroProcesso: string | null;
+  idTaskInstance: number | null;
+  classeJudicial: string | null;
+  assuntoPrincipal: string | null;
+  poloAtivo: string | null;
+  dataChegadaTarefa: string | null;
+  /** URL dos autos (quando `ca` foi resolvido). */
+  url: string | null;
+  /**
+   * ID da etiqueta do perito que casou com este processo (uma das
+   * `PericiaPerito.etiquetas`). Permite justificar a escolha no
+   * dashboard ("veio de 'Aposentadoria Rural'").
+   */
+  etiquetaOrigemId: number;
+  etiquetaOrigemNome: string;
+  /** Tarefa onde o processo foi encontrado. */
+  tarefaNome: string;
+  /**
+   * Todas as etiquetas aplicadas ao processo no PJe (nomes exatos). O
+   * dashboard exibe como chips — útil para conferir por que o processo
+   * caiu nesta pauta e quais OUTRAS etiquetas ele carrega.
+   */
+  etiquetasProcesso: string[];
+}
+
+/**
+ * Pauta de um perito: lista ordenada dos processos selecionados (já
+ * respeitando antiguidade + cascata de etiquetas + assunto + quantidade).
+ */
+export interface PericiaPauta {
+  peritoId: string;
+  peritoNomeCompleto: string;
+  peritoNomeEtiquetaPauta: string;
+  peritoGenero: PericiaGenero;
+  /**
+   * Etiqueta-pauta canônica: "DR [NOME] DD.MM.AA" ou "DRA [NOME] DD.MM.AA",
+   * com a data da geração da pauta. Usada pela ação "Aplicar etiquetas".
+   */
+  etiquetaPauta: string;
+  itens: PericiaPautaItem[];
+  /**
+   * Quantidade pedida vs. entregue. Quando `atingida < pedida`, as
+   * etiquetas cadastradas do perito não tinham processos suficientes —
+   * o dashboard deve informar ao usuário.
+   */
+  quantidadePedida: number;
+  quantidadeAtingida: number;
+}
+
+/**
+ * Payload final gravado em `storage.session` e lido pelo dashboard de
+ * Perícias. Contém o resultado da coleta e a pauta gerada.
+ */
+export interface PericiasDashboardPayload {
+  requestId: string;
+  geradoEm: string;
+  hostnamePJe: string;
+  /** Nomes das tarefas de perícia efetivamente varridas. */
+  tarefasVarridas: string[];
+  /**
+   * Data da perícia (ISO `YYYY-MM-DD`) escolhida pelo usuário na tela de
+   * montagem. Compõe a etiqueta da pauta (DR/DRA NOME DD.MM.AA) e é
+   * reaproveitada na regeneração (botão "Atualizar pauta").
+   */
+  dataPericiaISO: string;
+  /** Totais para o cabeçalho. */
+  totais: {
+    processosVarridos: number;
+    processosNaPauta: number;
+    peritosContemplados: number;
+  };
+  /** Uma entrada por perito ativo selecionado. */
+  pautas: PericiaPauta[];
+  /**
+   * Processos que ficaram FORA de qualquer pauta (ex.: nenhuma etiqueta
+   * do processo bate com nenhum perito selecionado). Lista informativa
+   * para o dashboard mostrar o resíduo.
+   */
+  naoDistribuidos: PericiaPautaItem[];
+  /**
+   * Entrada completa da montagem, gravada para permitir a regeneração
+   * da pauta a partir do próprio dashboard ("Atualizar pauta" quando o
+   * usuário exclui itens com o X). O `excluirIds` é aplicado pelo
+   * coletor como veto antes do ranking.
+   */
+  entrada: {
+    nomesTarefas: string[];
+    peritos: PericiaPerito[];
+    dataPericiaISO: string;
+    legacyOrigin: string;
+    excluirIds: number[];
   };
 }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "pAIdegua",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "description": "Inteligência Artificial integrada ao PJe — análise de processos, geração de minutas e extração de informações com IA.",
   "permissions": [
     "activeTab",
@@ -61,6 +61,15 @@
         "https://*.jus.br/*"
       ],
       "js": ["pje-auth-refresh-page.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.jus.br/*"
+      ],
+      "js": ["pericias-etiqueta-page.js"],
       "run_at": "document_idle",
       "all_frames": true,
       "world": "MAIN"

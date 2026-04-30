@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Perícias pAIdegua — Montagem de pauta</title>
+  <link rel="stylesheet" href="painel.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Perícias pAIdegua</h1>
+        <p class="header__subtitle">pAIdegua &mdash; Perfil Secretaria</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta"></div>
+  </header>
+
+  <main class="main">
+    <section id="estado-carregando" class="card estado">
+      <p class="loading">Preparando montagem da pauta...</p>
+    </section>
+
+    <section id="estado-erro" class="card estado" hidden>
+      <h2>Não foi possível iniciar</h2>
+      <p id="erro-msg" class="erro-msg"></p>
+      <div class="toolbar">
+        <button id="btn-fechar" class="btn">Fechar esta aba</button>
+      </div>
+    </section>
+
+    <section id="estado-seletor" class="card" hidden>
+      <h2>Monte a pauta de perícias</h2>
+      <p class="hint">
+        Escolha as tarefas do painel que entrarão no sorteio (quando a unidade
+        usa ambas, selecione as duas) e os peritos para os quais a pauta
+        será montada. Para cada perito selecionado, o pAIdegua irá varrer as
+        tarefas respeitando, na ordem: antiguidade &rarr; etiquetas do perito
+        (cascata pela prioridade) &rarr; assunto (se preenchido) &rarr;
+        quantidade configurada.
+      </p>
+
+      <h3>Data da perícia</h3>
+      <p class="hint">
+        Define a data que aparecerá nas etiquetas da pauta (ex.:
+        <strong>DR FULANO DD.MM.AA</strong>). Informe uma data futura.
+      </p>
+      <div class="toolbar toolbar--start">
+        <label for="input-data-pericia" class="sr-only">Data da perícia</label>
+        <input
+          type="date"
+          id="input-data-pericia"
+          class="input"
+          required
+        />
+        <span class="count" id="data-pericia-aviso"></span>
+      </div>
+
+      <h3>Tarefas do painel</h3>
+      <div class="toolbar toolbar--start">
+        <button id="btn-tarefas-todas" class="btn">Selecionar todas</button>
+        <button id="btn-tarefas-limpar" class="btn">Limpar</button>
+        <span class="count" id="contador-tarefas"></span>
+      </div>
+      <ul id="lista-tarefas" class="lista"></ul>
+
+      <h3>Peritos da pauta</h3>
+      <p class="hint">
+        Apenas peritos ativos (cadastrados no popup da extensão &rarr; aba
+        <strong>Perícias pAIdegua</strong>) aparecem aqui. Cada perito exige
+        ao menos uma etiqueta vinculada; caso contrário, fica desabilitado.
+      </p>
+      <div class="toolbar toolbar--start">
+        <label for="input-peritos-busca" class="sr-only">Buscar perito</label>
+        <input
+          type="search"
+          id="input-peritos-busca"
+          class="input peritos-busca"
+          placeholder="Buscar por nome, etiqueta ou assunto..."
+          autocomplete="off"
+        />
+        <button id="btn-peritos-todos" class="btn">Selecionar todos</button>
+        <button id="btn-peritos-limpar" class="btn">Limpar</button>
+        <span class="count" id="contador-peritos"></span>
+      </div>
+      <ul id="lista-peritos" class="lista lista--peritos"></ul>
+
+      <div class="toolbar toolbar--end">
+        <button id="btn-cancelar" class="btn">Cancelar</button>
+        <button id="btn-confirmar" class="btn primary" disabled>
+          Montar pauta
+        </button>
+      </div>
+    </section>
+
+    <section id="estado-progresso" class="card" hidden>
+      <h2>Montando a pauta...</h2>
+      <p class="hint" id="progresso-resumo">
+        Não feche esta aba enquanto a montagem estiver em andamento.
+      </p>
+
+      <div class="progress">
+        <div class="progress__bar"><div class="progress__fill" id="bar-fill"></div></div>
+        <div class="progress__label" id="bar-label">Preparando...</div>
+      </div>
+
+      <h3 class="log-title">Registro</h3>
+      <ul class="log" id="log"></ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <script src="painel.js"></script>
+</body>
+</html>

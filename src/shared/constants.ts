@@ -7,6 +7,28 @@ export const EXTENSION_NAME = 'pAIdegua';
 export const LOG_PREFIX = '[pAIdegua]';
 
 /**
+ * Dominios institucionais aceitos no login. Qualquer e-mail fora desta lista
+ * e rejeitado pelo backend antes mesmo de consultar a whitelist da planilha.
+ * Mantenha em sincronia com `ALLOWED_DOMAINS` do `backend/apps-script/Code.gs`.
+ */
+export const AUTH_ALLOWED_DOMAINS: readonly string[] = [
+  'trf5.jus.br',
+  'jfce.jus.br',
+  'jfrn.jus.br',
+  'jfpb.jus.br',
+  'jfpe.jus.br',
+  'jfal.jus.br',
+  'jfse.jus.br'
+] as const;
+
+/**
+ * Periodo (ms) entre revalidacoes silenciosas do token contra o backend.
+ * Permite revogar acesso na planilha sem esperar os 90 dias do JWT — na
+ * proxima revalidacao a extensao detecta `revoked` e faz logout automatico.
+ */
+export const AUTH_REVALIDATE_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
+
+/**
  * Padrões de domínio reconhecidos como instâncias do PJe.
  */
 export const PJE_HOST_PATTERNS: readonly RegExp[] = [
@@ -112,6 +134,17 @@ export const DEFAULT_TEMPERATURE = 0.3;
 /** Canais de mensagem entre content script, background e popup. */
 export const MESSAGE_CHANNELS = {
   PING: 'paidegua/ping',
+  /**
+   * Canais de autenticacao (whitelist Inovajus + OTP por e-mail).
+   * Toda chamada a provedor de IA so prossegue se `AUTH_GET_STATUS` indicar
+   * `authenticated: true` no momento do despacho — ver `requireAuth()` no
+   * background.
+   */
+  AUTH_REQUEST_CODE: 'paidegua/auth/request-code',
+  AUTH_VERIFY_CODE: 'paidegua/auth/verify-code',
+  AUTH_GET_STATUS: 'paidegua/auth/get-status',
+  AUTH_REVALIDATE: 'paidegua/auth/revalidate',
+  AUTH_LOGOUT: 'paidegua/auth/logout',
   GET_SETTINGS: 'paidegua/get-settings',
   SAVE_SETTINGS: 'paidegua/save-settings',
   SAVE_API_KEY: 'paidegua/save-api-key',
@@ -352,7 +385,42 @@ export const MESSAGE_CHANNELS = {
    * os marcadores produzidos + as etiquetas ranqueadas (com a métrica de
    * similaridade e os marcadores que contribuíram para cada match).
    */
-  ETIQUETAS_SUGERIR: 'paidegua/etiquetas/sugerir'
+  ETIQUETAS_SUGERIR: 'paidegua/etiquetas/sugerir',
+  /**
+   * Canais da feature "Perícias pAIdegua" (perfil Secretaria → card
+   * irmão da Triagem Inteligente). Mesma topologia do Painel Gerencial /
+   * Prazos na Fita:
+   *
+   * - O content script do PJe dispara `PERICIAS_OPEN_PAINEL` passando a
+   *   lista de tarefas do painel cujos nomes contêm "Perícia - Designar"
+   *   ou "Perícia - Agendar e administrar". O background grava em
+   *   `chrome.storage.session` e cria a aba da feature.
+   * - Ao confirmar a configuração, a aba-painel emite
+   *   `PERICIAS_START_COLETA` e o background dispara `PERICIAS_RUN_COLETA`
+   *   no content script da aba PJe correspondente.
+   * - O content reporta progresso via `PERICIAS_COLETA_PROG` e resultado
+   *   final via `PERICIAS_COLETA_DONE` ou `PERICIAS_COLETA_FAIL`; o
+   *   background grava o payload no IndexedDB e emite
+   *   `PERICIAS_COLETA_READY` para a aba-painel navegar até o dashboard.
+   * - Ao fechar o dashboard, `PERICIAS_CLEAR_PAYLOAD` apaga o payload —
+   *   mesma postura LGPD dos demais dashboards.
+   */
+  PERICIAS_OPEN_PAINEL: 'paidegua/pericias/open-painel',
+  PERICIAS_START_COLETA: 'paidegua/pericias/start-coleta',
+  PERICIAS_RUN_COLETA: 'paidegua/pericias/run-coleta',
+  PERICIAS_COLETA_PROG: 'paidegua/pericias/coleta-prog',
+  PERICIAS_COLETA_DONE: 'paidegua/pericias/coleta-done',
+  PERICIAS_COLETA_READY: 'paidegua/pericias/coleta-ready',
+  PERICIAS_COLETA_FAIL: 'paidegua/pericias/coleta-fail',
+  PERICIAS_CLEAR_PAYLOAD: 'paidegua/pericias/clear-payload',
+  /**
+   * Aba do dashboard de Perícias → background → content (aba PJe): aplica
+   * a etiqueta da pauta (formato "DR(A) [NOME] DD.MM.AA") a um lote de
+   * processos, criando a etiqueta se ainda não existir. Devolve por
+   * processo o resultado (ok/erro). Depende de endpoints REST do PJe —
+   * ver `pericias-etiqueta-applier.ts`.
+   */
+  PERICIAS_APLICAR_ETIQUETAS: 'paidegua/pericias/aplicar-etiquetas'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -374,6 +442,12 @@ export const STORAGE_KEYS = {
   SETTINGS: 'paidegua.settings',
   API_KEY_PREFIX: 'paidegua.apiKey.',
   LGPD_ACCEPTED: 'paidegua.lgpdAccepted',
+  /**
+   * Token de autenticacao do usuario contra o backend Inovajus. Conteudo:
+   * `{ jwt, email, expiresAt, lastValidatedAt }`. Sem este registro, o
+   * background recusa qualquer chamada a provedor de IA.
+   */
+  AUTH: 'paidegua.auth',
   /**
    * Chave usada APENAS em `chrome.storage.session` (volátil — apagada ao
    * fechar o navegador) para entregar o payload do dashboard de triagem
@@ -496,7 +570,49 @@ export const STORAGE_KEYS = {
    * indisponivel, etc.). Nao contem o Bearer token completo nem dados
    * de partes.
    */
-  HTTP_403_LOG: 'paidegua.http403Log'
+  HTTP_403_LOG: 'paidegua.http403Log',
+  /**
+   * Chave em `chrome.storage.local` com o catálogo de peritos cadastrados
+   * na feature "Perícias pAIdegua" (perfil Secretaria). Cada entrada tem
+   * nome completo, nome explícito para compor a etiqueta, gênero (M/F
+   * para DR/DRA), lista ordenada de etiquetas já cadastradas no PJe
+   * (cascateamento da pauta), lista opcional de assuntos preferenciais,
+   * quantidade-padrão por pauta e flag de ativo. O cadastro é do usuário
+   * (escala em volume de peritos); etiquetas vinculadas são requisito
+   * para gerar a pauta.
+   */
+  PERICIAS_PERITOS: 'paidegua.pericias.peritos',
+  /**
+   * Chave em `chrome.storage.local` com o catálogo acumulativo de
+   * `assuntoPrincipal` observados nas coletas do painel de Perícias.
+   * Alimenta o autocomplete do campo "Assuntos preferenciais" no cadastro
+   * do perito. Estrutura: `{ version: 1, assuntos: string[] }`, ordenado
+   * case-insensitive. Não contém dados pessoais — apenas nomes de
+   * assuntos processuais (ex.: "Auxílio-Doença Previdenciário").
+   */
+  PERICIAS_ASSUNTOS_CATALOGO: 'paidegua.pericias.assuntosCatalogo',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o estado da
+   * aba-painel de Perícias, indexado por `requestId`. Carrega as tarefas
+   * detectadas e o snapshot de configuração de peritos — a aba lê da
+   * chave `${PREFIX}${requestId}` ao abrir.
+   */
+  PERICIAS_PAINEL_STATE_PREFIX: 'paidegua.pericias.painelState.',
+  /**
+   * Prefixo em `chrome.storage.session` com o roteamento
+   * `requestId → {painelTabId, pjeTabId}`. Mesma necessidade do
+   * `GESTAO_PAINEL_ROUTE_PREFIX`: o service worker pode ser suspenso
+   * entre mensagens de progresso e precisamos reidratar a rota sem
+   * depender de um Map em memória.
+   */
+  PERICIAS_PAINEL_ROUTE_PREFIX: 'paidegua.pericias.painelRoute.',
+  /**
+   * Prefixo em `chrome.storage.session` com o payload da pauta gerada,
+   * entregue para o dashboard de Perícias. Conteúdo: tarefas coletadas,
+   * processos por perito (pauta), metadados. Apagado pelo
+   * `PERICIAS_CLEAR_PAYLOAD` ao fechar o dashboard.
+   */
+  PERICIAS_DASHBOARD_PAYLOAD_PREFIX: 'paidegua.pericias.dashboardPayload.'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

@@ -8,9 +8,9 @@
  *   - Lista de etiquetas sugestionáveis ranqueadas, com checkbox para o
  *     servidor escolher quais aplicar, barra de similaridade relativa ao
  *     top-1 e os marcadores que contribuíram (explicabilidade).
- *   - Botão "Copiar selecionadas" — abordagem inicial até que a aplicação
- *     via API REST do PJe seja mapeada. Copia o `nomeTag` das etiquetas
- *     marcadas para o clipboard, separadas por quebra de linha.
+ *   - Botão "Inserir selecionadas no processo" — dispara a vinculação via
+ *     REST do PJe (`/painelUsuario/processoTags/inserir`) no processo
+ *     atualmente aberto, usando as etiquetas marcadas.
  *
  * Estado vazio:
  *   - Sem etiquetas sugestionáveis configuradas OU sem matches: mostra
@@ -22,12 +22,11 @@ import type { EtiquetaSugerida } from '../../shared/types';
 
 export interface EtiquetasSugestoesBubbleActions {
   /**
-   * Disparado quando o usuário clica em "Copiar selecionadas". Recebe a
-   * lista (pode estar vazia se nenhuma marcada). O chamador cuida do
-   * clipboard — deixamos aqui para facilitar trocar por "aplicar no PJe"
-   * no futuro sem mexer na UI.
+   * Disparado quando o usuário clica em "Inserir selecionadas no processo".
+   * Recebe a lista marcada (pode estar vazia). O chamador faz a chamada
+   * ao PJe e reporta sucesso/erro via notice.
    */
-  onCopiarSelecionadas: (etiquetas: EtiquetaSugerida[]) => void;
+  onInserirSelecionadas: (etiquetas: EtiquetaSugerida[]) => void;
 }
 
 const BUBBLE_CSS = `
@@ -380,7 +379,7 @@ export function createEtiquetasSugestoesBubble(
 
   const selectedSet = new Set<number>();
   // Pré-seleção: o top-1 começa marcado (ganho mais óbvio de ergonomia;
-  // o servidor ainda decide antes de clicar em "Copiar selecionadas").
+  // o servidor ainda decide antes de clicar em "Inserir selecionadas").
   if (matches[0]) selectedSet.add(matches[0].id);
 
   const cta = document.createElement('button');
@@ -391,8 +390,8 @@ export function createEtiquetasSugestoesBubble(
     cta.disabled = selectedSet.size === 0;
     cta.textContent =
       selectedSet.size === 0
-        ? 'Copiar selecionadas'
-        : `Copiar ${selectedSet.size} selecionada(s)`;
+        ? 'Inserir selecionadas no processo'
+        : `Inserir ${selectedSet.size} no processo`;
   }
 
   const list = document.createElement('ul');
@@ -408,12 +407,12 @@ export function createEtiquetasSugestoesBubble(
   const hint = document.createElement('div');
   hint.className = 'paidegua-etqsug__hint';
   hint.textContent =
-    'Nesta versão inicial as etiquetas selecionadas são copiadas para a área de transferência; cole-as no campo de etiquetas do processo no PJe. A aplicação automática via API será habilitada em breve.';
+    'As etiquetas marcadas serão vinculadas ao processo atual diretamente na API do PJe — sem necessidade de copiar e colar.';
 
   cta.addEventListener('click', (event) => {
     event.preventDefault();
     const chosen = matches.filter((m) => selectedSet.has(m.id));
-    actions.onCopiarSelecionadas(chosen);
+    actions.onInserirSelecionadas(chosen);
   });
 
   refreshCtaLabel();
