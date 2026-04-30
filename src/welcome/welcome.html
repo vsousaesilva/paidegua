@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bem-vindo ao pAIdegua</title>
+    <link rel="stylesheet" href="welcome.css" />
+  </head>
+  <body>
+    <main class="welcome">
+      <header class="welcome__header">
+        <span class="welcome__logo" aria-hidden="true">
+          <svg width="48" height="48" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+            <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+            <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+          </svg>
+        </span>
+        <div>
+          <h1>Bem-vindo ao pAIdegua</h1>
+          <p>Assistente com IA para o PJe &#8212; Inovajus / JFCE</p>
+        </div>
+      </header>
+
+      <!-- Estado: nao autenticado (login) -->
+      <section class="welcome__card" id="welcome-login">
+        <h2>Acesse com seu e-mail institucional</h2>
+        <p class="welcome__intro">
+          Esta extens&#227;o &#233; de uso restrito durante o piloto institucional.
+          Voc&#234; precisa estar autorizado pelo Inovajus para entrar. O processo
+          tem dois passos: voc&#234; informa seu e-mail e recebe um c&#243;digo de
+          verifica&#231;&#227;o por e-mail.
+        </p>
+
+        <div id="welcome-stage-email">
+          <label class="welcome__label" for="welcome-email-input">
+            E-mail institucional
+          </label>
+          <input
+            type="email"
+            id="welcome-email-input"
+            class="welcome__input"
+            placeholder="seu.nome@trf5.jus.br"
+            autocomplete="email"
+            spellcheck="false"
+          />
+          <p class="welcome__hint">
+            Dom&#237;nios aceitos: trf5, jfce, jfrn, jfpb, jfpe, jfal, jfse (.jus.br).
+          </p>
+          <button type="button" id="welcome-request-btn" class="welcome__btn welcome__btn--primary">
+            Receber c&#243;digo por e-mail
+          </button>
+          <p id="welcome-status-email" class="welcome__status" aria-live="polite"></p>
+        </div>
+
+        <div id="welcome-stage-code" hidden>
+          <p class="welcome__intro">
+            Enviamos um c&#243;digo de 6 d&#237;gitos para
+            <span class="welcome__email-display" id="welcome-email-display"></span>.
+            Verifique sua caixa institucional (e o spam) e cole abaixo.
+          </p>
+          <label class="welcome__label" for="welcome-code-input">
+            C&#243;digo recebido
+          </label>
+          <input
+            type="text"
+            id="welcome-code-input"
+            class="welcome__input welcome__input--code"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="one-time-code"
+          />
+          <div class="welcome__row">
+            <button type="button" id="welcome-verify-btn" class="welcome__btn welcome__btn--primary">
+              Validar e entrar
+            </button>
+            <button type="button" id="welcome-back-btn" class="welcome__btn welcome__btn--secondary">
+              Voltar
+            </button>
+          </div>
+          <p id="welcome-status-code" class="welcome__status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <!-- Estado: autenticado (sucesso) -->
+      <section class="welcome__card welcome__card--success" id="welcome-success" hidden>
+        <div class="welcome__check" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h2>Tudo pronto!</h2>
+        <p>
+          Voc&#234; est&#225; logado como
+          <strong id="welcome-success-email"></strong>.
+        </p>
+        <p class="welcome__intro">
+          Pr&#243;ximos passos:
+        </p>
+        <ol class="welcome__steps">
+          <li>
+            Clique no &#237;cone do <strong>pAIdegua</strong> na barra do navegador
+            (ao lado da barra de endere&#231;o) para abrir as configura&#231;&#245;es.
+          </li>
+          <li>
+            Cadastre sua chave de API do provedor de IA preferido (Anthropic,
+            OpenAI ou Google Gemini).
+          </li>
+          <li>
+            Abra um processo no PJe &#8212; a sidebar do pAIdegua aparece
+            automaticamente.
+          </li>
+        </ol>
+        <p id="welcome-postlogin-warning" class="welcome__hint" hidden>
+          <strong>Aten&#231;&#227;o:</strong> atualize a p&#225;gina do PJe que j&#225;
+          estava aberta para que a sidebar reconhe&#231;a sua sess&#227;o.
+        </p>
+        <div class="welcome__row">
+          <button type="button" id="welcome-close-tab" class="welcome__btn welcome__btn--primary">
+            Fechar esta aba
+          </button>
+        </div>
+      </section>
+
+      <section class="welcome__features">
+        <h3>O que voc&#234; pode fazer com o pAIdegua</h3>
+        <ul>
+          <li>
+            <strong>Triagem Inteligente</strong> &#8212; an&#225;lise autom&#225;tica de
+            peti&#231;&#245;es iniciais com base na NT 1/2025 do CLI-JFCE
+          </li>
+          <li>
+            <strong>Gera&#231;&#227;o de Minutas</strong> &#8212; reda&#231;&#227;o assistida de
+            senten&#231;as, decis&#245;es e despachos com seus pr&#243;prios modelos
+          </li>
+          <li>
+            <strong>Painel de Per&#237;cias</strong> &#8212; organiza&#231;&#227;o da pauta por
+            perito com aplica&#231;&#227;o autom&#225;tica de etiquetas
+          </li>
+          <li>
+            <strong>Prazos na Fita</strong> &#8212; coleta e encerramento autom&#225;tico
+            de expedientes vencidos
+          </li>
+          <li>
+            <strong>Painel Gerencial</strong> &#8212; vis&#227;o consolidada da carga
+            de trabalho da unidade
+          </li>
+          <li>
+            <strong>Etiquetas Inteligentes</strong> &#8212; sugest&#227;o sem&#226;ntica de
+            etiquetas a partir do cat&#225;logo do PJe
+          </li>
+        </ul>
+      </section>
+
+      <footer class="welcome__footer">
+        <p>
+          Conformidade com LGPD e Resolu&#231;&#227;o CNJ 615/2025 &#183;
+          <a href="https://vsousaesilva.github.io/paidegua/" target="_blank" rel="noopener">Pol&#237;tica de Privacidade</a>
+        </p>
+        <p class="welcome__contact">
+          D&#250;vidas? <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a>
+        </p>
+      </footer>
+    </main>
+
+    <script src="welcome.js"></script>
+  </body>
+</html>

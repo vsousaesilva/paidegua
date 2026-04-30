@@ -1,6 +1,6 @@
 {
   "name": "pjeia",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Extensão Chrome pAIdegua — assistente com IA integrado ao PJe (Processo Judicial Eletrônico).",
   "private": true,
   "scripts": {

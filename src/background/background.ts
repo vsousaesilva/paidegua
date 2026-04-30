@@ -152,6 +152,13 @@ function abrirStorageSessionParaContentScripts(): void {
 chrome.runtime.onInstalled.addListener((details) => {
   console.log(`${LOG_PREFIX} instalada/atualizada:`, details.reason);
   abrirStorageSessionParaContentScripts();
+  // Boas-vindas: na primeira instalacao, abre uma aba com a tela de
+  // login + apresentacao da extensao. Em updates ou reload local nao
+  // dispara — evita atrapalhar quem ja conhece o sistema.
+  if (details.reason === 'install') {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('welcome/welcome.html') })
+      .catch((err) => console.warn(`${LOG_PREFIX} falha abrindo welcome:`, err));
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {

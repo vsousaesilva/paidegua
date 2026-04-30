@@ -223,16 +223,17 @@ async function loadAll(): Promise<void> {
 /**
  * Consulta a aba ativa e restringe as opções do popup por grau do PJe.
  *
- * Regras (a seção "Perfil de trabalho" fica sempre visível — Gabinete e
- * Gestão são válidos em qualquer grau):
- *   - Secretaria: disponível apenas em 1º grau (pje1g). Em 2g/TR a
- *     opção é removida do seletor, a aba "Triagem Inteligente" do popup
- *     (que é específica da Secretaria) é ocultada e, se o perfil padrão
- *     persistido for "secretaria", forçamos volta para "gabinete".
- *   - Gestão: disponível em todos os graus (regra atual). Pode ser
- *     restringida no futuro em `isGestaoProfileAvailable`.
+ * Regras:
+ *   - Seletor de perfil: gatea por grau porque o perfil determina o
+ *     comportamento da sidebar NAQUELE PJe especifico. Secretaria so em
+ *     1g; Gestao em todos os graus (por enquanto).
+ *   - Abas de configuracao (Triagem, Etiquetas, Pericias): SEMPRE
+ *     visiveis. Sao telas onde o usuario configura peritos, criterios e
+ *     catalogo de etiquetas — configuracao persistente, nao depende de
+ *     onde a aba ativa esta navegando.
  *
- * Em abas que não são PJe, nada muda (o seletor mantém todos os perfis).
+ * Em abas que nao sao PJe, nada muda (o seletor mantem todos os perfis
+ * e as abas continuam visiveis).
  */
 async function applyGrauRestrictions(): Promise<void> {
   if (!currentSettings) return;
@@ -264,29 +265,17 @@ async function applyGrauRestrictions(): Promise<void> {
     : 'gabinete';
   $<HTMLSelectElement>('default-profile-select').value = valorInicial;
 
-  if (!secretariaOk) {
-    // Abas "Triagem Inteligente", "Etiquetas Inteligentes" e "Perícias" são específicas da Secretaria.
-    const tabTriagem = document.getElementById('tab-triagem');
-    if (tabTriagem) tabTriagem.setAttribute('hidden', '');
-    const tabEtiquetas = document.getElementById('tab-etiquetas');
-    if (tabEtiquetas) tabEtiquetas.setAttribute('hidden', '');
-    const tabPericias = document.getElementById('tab-pericias');
-    if (tabPericias) tabPericias.setAttribute('hidden', '');
-    const secretariaTabSelected =
-      tabTriagem?.getAttribute('aria-selected') === 'true' ||
-      tabEtiquetas?.getAttribute('aria-selected') === 'true' ||
-      tabPericias?.getAttribute('aria-selected') === 'true';
-    if (secretariaTabSelected) setActiveTab('tab-geral');
-    // Persistir perfil padrão como Gabinete se estiver em Secretaria.
-    if (stored === 'secretaria') {
-      const response = (await chrome.runtime.sendMessage({
-        channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
-        payload: { defaultProfile: 'gabinete' as ProfileId }
-      })) as { ok: boolean; settings?: PAIdeguaSettings };
-      if (response?.ok && response.settings) {
-        currentSettings = response.settings;
-        $<HTMLSelectElement>('default-profile-select').value = 'gabinete';
-      }
+  // Persistir perfil padrao como Gabinete se estiver em Secretaria mas
+  // nao for permitido no grau atual (evita o sidebar abrir num perfil
+  // invalido na proxima navegacao).
+  if (!secretariaOk && stored === 'secretaria') {
+    const response = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
+      payload: { defaultProfile: 'gabinete' as ProfileId }
+    })) as { ok: boolean; settings?: PAIdeguaSettings };
+    if (response?.ok && response.settings) {
+      currentSettings = response.settings;
+      $<HTMLSelectElement>('default-profile-select').value = 'gabinete';
     }
   }
 }

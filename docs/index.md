@@ -5,7 +5,7 @@ title: Política de Privacidade — pAIdegua
 # Política de Privacidade — pAIdegua
 
 **Última atualização:** 29 de abril de 2026
-**Versão da extensão:** 1.2.0
+**Versão da extensão:** 1.2.1
 
 A extensão **pAIdegua** é desenvolvida pelo **Laboratório de Inovação da Justiça Federal do Ceará (Inovajus / JFCE)** e destina-se ao uso institucional por magistrados e servidores da Justiça Federal da 5ª Região. Este documento descreve, com transparência, quais dados a extensão coleta, processa e transmite, em conformidade com a **Lei nº 13.709/2018 (LGPD)** e com a **Resolução CNJ nº 615/2025**, que regulamenta o uso de Inteligência Artificial no Poder Judiciário.
 
