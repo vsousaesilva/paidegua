@@ -1758,12 +1758,17 @@ code {
 }
 .list__table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--bg-card);
   border-radius: var(--radius);
-  overflow: hidden;
   box-shadow: var(--shadow);
+  /* sem overflow:hidden — quebraria position:sticky do thead */
 }
+.list__table thead th:first-child { border-top-left-radius: var(--radius); }
+.list__table thead th:last-child { border-top-right-radius: var(--radius); }
+.list__table tbody tr:last-child td:first-child { border-bottom-left-radius: var(--radius); }
+.list__table tbody tr:last-child td:last-child { border-bottom-right-radius: var(--radius); }
 .list__table thead {
   background: var(--table-th-bg);
 }
@@ -1792,7 +1797,6 @@ code {
   content: " ▴";
 }
 .list__table tbody tr {
-  border-top: 1px solid var(--border);
   cursor: pointer;
   transition: background 120ms ease;
 }
@@ -1804,6 +1808,7 @@ code {
   font-size: 13px;
   color: var(--fg);
   vertical-align: middle;
+  border-top: 1px solid var(--border);
 }
 .list__id {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
