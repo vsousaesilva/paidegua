@@ -17,6 +17,9 @@
   const STORAGE_KEY_TOKEN = 'paidegua_kanban_token';
   const STORAGE_KEY_USER = 'paidegua_kanban_user';
   const STORAGE_KEY_OFFLINE = 'paidegua_kanban_offline_state';
+  const STORAGE_KEY_VIEW = 'paidegua_kanban_view';     // 'board' | 'list'
+  const STORAGE_KEY_THEME = 'paidegua_kanban_theme';    // 'light' | 'dark'
+  const STORAGE_KEY_SORT = 'paidegua_kanban_list_sort'; // {by, dir}
 
   // ===== State =====
   const state = {
@@ -28,7 +31,36 @@
     prioridades: [],
     filters: { search: '', categoria: '', prioridade: '', fase: '' },
     editingId: null,
+    view: localStorage.getItem(STORAGE_KEY_VIEW) || 'board',
+    theme: localStorage.getItem(STORAGE_KEY_THEME) || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+    listSort: (() => {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY_SORT)) || { by: 'prioridade', dir: 'asc' }; }
+      catch (_) { return { by: 'prioridade', dir: 'asc' }; }
+    })(),
   };
+
+  applyTheme(state.theme);
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(STORAGE_KEY_THEME, theme);
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = theme === 'dark' ? '☀' : '🌙';
+  }
+
+  function toggleTheme() {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(state.theme);
+  }
+
+  function setView(view) {
+    state.view = view;
+    localStorage.setItem(STORAGE_KEY_VIEW, view);
+    document.querySelectorAll('.toolbar__view-btn').forEach((el) => {
+      el.classList.toggle('is-active', el.dataset.view === view);
+    });
+    render();
+  }
 
   // ===== Utils =====
   const $ = (sel) => document.querySelector(sel);
@@ -115,6 +147,96 @@
       data: evento.data || nowIso(),
       ...evento.extras,
     });
+  }
+
+  function buildCardPrompt(card) {
+    if (!card) return '';
+    const cat = state.categorias.find((c) => c.id === card.categoria);
+    const col = state.columns.find((c) => c.id === card.coluna);
+    const lines = [];
+    lines.push(`[Card ${card.id} — ${card.titulo}]`);
+    const head = [
+      `Coluna: ${col?.titulo || card.coluna}`,
+      `Prioridade: ${card.prioridade}`,
+      `Categoria: ${cat?.nome || card.categoria}`,
+    ];
+    if (card.fase) head.push(`Fase: ${card.fase}`);
+    if (card.esforco) head.push(`Esforço: ${card.esforco}`);
+    lines.push(head.join(' · '));
+
+    const meta = [];
+    if (card.owner) meta.push(`Owner: ${card.owner}`);
+    if (card.assignees && card.assignees.length) meta.push(`Assignees: ${card.assignees.join(', ')}`);
+    if (card.dataPrevista) meta.push(`DataPrevista: ${shortDate(card.dataPrevista)}`);
+    if (card.dataInicio) meta.push(`DataInicio: ${shortDate(card.dataInicio)}`);
+    if (meta.length) lines.push(meta.join(' · '));
+
+    if (card.depende && card.depende.length) {
+      lines.push(`Depende de: ${card.depende.join(', ')}`);
+    }
+    if (card.tags && card.tags.length) {
+      lines.push(`Tags: ${card.tags.join(', ')}`);
+    }
+    if (card.bloqueadoPor) {
+      lines.push(`⚠ Bloqueado por: ${card.bloqueadoPor}`);
+    }
+    if (card.issueGithub) {
+      lines.push(`Issue GitHub: ${card.issueGithub.repo}#${card.issueGithub.number} → ${card.issueGithub.url}`);
+    }
+
+    if (card.descricao) {
+      lines.push('');
+      lines.push('Descrição:');
+      lines.push(card.descricao);
+    }
+
+    if (card.aceitacao && card.aceitacao.length) {
+      lines.push('');
+      lines.push('Critérios de aceitação:');
+      card.aceitacao.forEach((a) => lines.push(`- ${a}`));
+    }
+
+    const checklist = card.checklist || [];
+    if (checklist.length) {
+      const pendentes = checklist.filter((c) => !c.feito);
+      const feitos = checklist.filter((c) => c.feito);
+      lines.push('');
+      lines.push(`Checklist: ${feitos.length}/${checklist.length} concluídos`);
+      if (pendentes.length) {
+        lines.push('Pendentes:');
+        pendentes.forEach((c) => lines.push(`- [ ] ${c.texto}`));
+      }
+      if (feitos.length) {
+        lines.push('Feitos:');
+        feitos.forEach((c) => lines.push(`- [x] ${c.texto}`));
+      }
+    }
+
+    lines.push('');
+    lines.push('Comandos disponíveis (copie e cole o que quiser executar):');
+    lines.push(`- "Move ${card.id} para [triagem|discovery|spec|dev|qa|validacao|piloto|lancado|bloqueado|arquivado]"`);
+    lines.push(`- "Atribui ${card.id} a <email> e dataPrevista DD/MM/AAAA"`);
+    if (checklist.length) {
+      lines.push(`- "${card.id} item N do checklist concluído"`);
+      lines.push(`- "Adiciona checklist em ${card.id}: <texto1>; <texto2>"`);
+    }
+    lines.push(`- "Comenta em ${card.id}: <texto>"`);
+    lines.push(`- "Bloqueia ${card.id} com motivo: <texto>"`);
+    lines.push(`- "Editar descrição do ${card.id}: <novo texto>"`);
+    lines.push('');
+    lines.push(`(Sessão Claude Code — kanban.paidegua.ia.br · ${new Date().toLocaleString('pt-BR')})`);
+    return lines.join('\n');
+  }
+
+  async function copyCurrentCardAsPrompt() {
+    if (!state.editingDraft) return;
+    const text = buildCardPrompt(state.editingDraft);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(`${state.editingDraft.id} copiado como prompt (${text.length} chars).`, 'success');
+    } catch (err) {
+      toast('Falha ao copiar: ' + err.message, 'error');
+    }
   }
 
   function describeHistoryEvent(ev) {
@@ -385,9 +507,23 @@
   }
 
   function render() {
+    const filtered = state.cards.filter(passesFilter);
+    if (state.view === 'list') {
+      $('#board').hidden = true;
+      $('#list').hidden = false;
+      renderList(filtered);
+      updateStats(filtered);
+      return;
+    }
+    $('#list').hidden = true;
+    $('#board').hidden = false;
+    renderBoard(filtered);
+    updateStats(filtered);
+  }
+
+  function renderBoard(filtered) {
     const board = $('#board');
     board.innerHTML = '';
-    const filtered = state.cards.filter(passesFilter);
 
     state.columns
       .slice()
@@ -415,8 +551,130 @@
         attachDropZone(list);
         board.appendChild(colEl);
       });
+  }
 
-    updateStats(filtered);
+  function renderList(filtered) {
+    const root = $('#list');
+    root.innerHTML = '';
+    if (!filtered.length) {
+      root.innerHTML = '<p class="list__empty">Nenhum card bate com os filtros atuais.</p>';
+      return;
+    }
+    const sortBy = state.listSort.by;
+    const dir = state.listSort.dir === 'desc' ? -1 : 1;
+    const sorted = filtered.slice().sort((a, b) => {
+      const va = listSortValue(a, sortBy);
+      const vb = listSortValue(b, sortBy);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+
+    const table = document.createElement('table');
+    table.className = 'list__table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th data-sort="id">ID</th>
+          <th data-sort="prioridade">Prio</th>
+          <th data-sort="titulo">Título</th>
+          <th data-sort="categoria">Categoria</th>
+          <th data-sort="coluna">Coluna</th>
+          <th data-sort="fase">Fase</th>
+          <th data-sort="esforco">Esforço</th>
+          <th data-sort="dataPrevista">Data prevista</th>
+          <th data-sort="checklist">Progresso</th>
+          <th>Equipe</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    table.querySelectorAll('th[data-sort]').forEach((th) => {
+      const key = th.dataset.sort;
+      if (key === sortBy) {
+        th.classList.add(state.listSort.dir === 'asc' ? 'is-sorted-asc' : 'is-sorted');
+      }
+      th.addEventListener('click', () => {
+        if (state.listSort.by === key) {
+          state.listSort.dir = state.listSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.listSort = { by: key, dir: 'asc' };
+        }
+        localStorage.setItem(STORAGE_KEY_SORT, JSON.stringify(state.listSort));
+        render();
+      });
+    });
+
+    const tbody = table.querySelector('tbody');
+    sorted.forEach((card) => {
+      const cat = state.categorias.find((c) => c.id === card.categoria);
+      const catColor = cat?.cor || 'var(--primary)';
+      const catName = cat?.nome || card.categoria || '';
+      const col = state.columns.find((c) => c.id === card.coluna);
+      const colName = col?.titulo || card.coluna;
+
+      const checklist = card.checklist || [];
+      const total = checklist.length;
+      const feitos = checklist.filter((c) => c.feito).length;
+      const pct = total ? Math.round((feitos / total) * 100) : 0;
+
+      const dueDays = diffDays(card.dataPrevista);
+      let dueClass = '';
+      let dueLabel = card.dataPrevista ? shortDate(card.dataPrevista) : '—';
+      if (dueDays !== null && card.coluna !== 'lancado' && card.coluna !== 'arquivado') {
+        if (dueDays < 0) { dueClass = 'list__date--vencido'; dueLabel = `${dueLabel} (-${-dueDays}d)`; }
+        else if (dueDays <= 7) { dueClass = 'list__date--proximo'; dueLabel = `${dueLabel} (${dueDays}d)`; }
+      }
+
+      const allAssignees = [card.owner, ...(card.assignees || [])].filter(Boolean);
+      const uniqueAssignees = Array.from(new Set(allAssignees)).slice(0, 3);
+
+      const tr = document.createElement('tr');
+      tr.dataset.id = card.id;
+      tr.innerHTML = `
+        <td><span class="list__id">${escapeHtml(card.id)}</span></td>
+        <td><span class="list__prio list__prio--${card.prioridade}">${card.prioridade}</span></td>
+        <td class="list__titulo">${escapeHtml(card.titulo)}${card.depende && card.depende.length ? `<small>↳ depende: ${card.depende.map(escapeHtml).join(', ')}</small>` : ''}</td>
+        <td><span class="list__cat" style="background:${catColor}">${escapeHtml(catName)}</span></td>
+        <td><span class="list__col-chip">${escapeHtml(colName)}</span></td>
+        <td>${card.fase ? escapeHtml(card.fase) : '—'}</td>
+        <td>${card.esforco || '—'}</td>
+        <td class="list__date ${dueClass}">${dueLabel}</td>
+        <td>${total ? `<span class="list__progress"><span style="width:${pct}%"></span></span>${feitos}/${total}` : '—'}</td>
+        <td>${uniqueAssignees.map((a) => `<span class="list__avatar" title="${escapeHtml(a)}">${escapeHtml(initials(a))}</span>`).join('')}</td>
+      `;
+      tr.addEventListener('click', () => openModal(card.id));
+      tbody.appendChild(tr);
+    });
+
+    root.appendChild(table);
+  }
+
+  function listSortValue(card, by) {
+    switch (by) {
+      case 'id': return card.id;
+      case 'prioridade': return card.prioridade;
+      case 'titulo': return (card.titulo || '').toLowerCase();
+      case 'categoria': return card.categoria;
+      case 'coluna': {
+        const col = state.columns.find((c) => c.id === card.coluna);
+        return col ? (col.ordem || 0) : 999;
+      }
+      case 'fase': return card.fase || '';
+      case 'esforco': {
+        const ord = { S: 1, M: 2, L: 3, XL: 4 };
+        return ord[card.esforco] || 0;
+      }
+      case 'dataPrevista': return card.dataPrevista || '￿';
+      case 'checklist': {
+        const t = (card.checklist || []).length;
+        return t ? (card.checklist.filter((c) => c.feito).length / t) : -1;
+      }
+      default: return null;
+    }
   }
 
   function renderCard(card) {
@@ -951,7 +1209,13 @@
     $('#btn-vault').addEventListener('click', openVault);
     $('#btn-docs').addEventListener('click', openDocs);
     $('#btn-team').addEventListener('click', openTeam);
+    $('#btn-theme').addEventListener('click', toggleTheme);
     $('#btn-novo').addEventListener('click', () => openModal(null));
+
+    document.querySelectorAll('.toolbar__view-btn').forEach((el) => {
+      el.addEventListener('click', () => setView(el.dataset.view));
+    });
+    setView(state.view);
     $('#btn-export').addEventListener('click', exportJson);
     $('#btn-import').addEventListener('click', () => $('#import-file').click());
     $('#import-file').addEventListener('change', (e) => {
@@ -969,6 +1233,7 @@
       const id = $('#m-id').value;
       if (id && confirm(`Excluir ${id}?`)) { deleteCard(id); closeModal(); }
     });
+    $('#m-copy-prompt').addEventListener('click', copyCurrentCardAsPrompt);
 
     // Novos campos do modal
     $('#m-coluna').addEventListener('change', syncBloqueioVisibility);

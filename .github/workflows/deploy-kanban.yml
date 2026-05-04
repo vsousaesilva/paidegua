@@ -1,0 +1,68 @@
+name: Deploy Kanban (Pages + Worker)
+
+# Deploy automático em cada push em main que toque docs/kanban-massificacao/.
+# Dois jobs paralelos:
+#  - deploy-pages: sobe o frontend estático para Cloudflare Pages.
+#  - deploy-worker: sobe o Worker da API. Roda só se mudou worker/.
+#
+# Secrets necessários no repo (Settings → Secrets and variables → Actions):
+#  - CLOUDFLARE_API_TOKEN: token paidegua-kanban-deploy (Pages:Edit, Workers Scripts:Edit,
+#    Workers KV Storage:Edit, Workers Routes:Edit, Account Settings:Read, Zone:Read, DNS:Edit)
+#  - CLOUDFLARE_ACCOUNT_ID: f13a21f421661dcfb1651880a2be578e
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/kanban-massificacao/**'
+      - '.github/workflows/deploy-kanban.yml'
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.filter.outputs.pages }}
+      worker: ${{ steps.filter.outputs.worker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            pages:
+              - 'docs/kanban-massificacao/**'
+              - '!docs/kanban-massificacao/worker/**'
+              - '.github/workflows/deploy-kanban.yml'
+            worker:
+              - 'docs/kanban-massificacao/worker/**'
+              - '.github/workflows/deploy-kanban.yml'
+
+  deploy-pages:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.pages == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Pages (paidegua-kanban)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy "docs/kanban-massificacao" --project-name=paidegua-kanban --branch=main --commit-dirty=true
+
+  deploy-worker:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Worker (paidegua-kanban-api)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs/kanban-massificacao/worker
+          command: deploy
