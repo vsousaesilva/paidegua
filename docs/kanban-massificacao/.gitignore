@@ -1,0 +1,17 @@
+# Não commitar segredos
+worker/.dev.vars
+worker/.env
+worker/.wrangler/
+
+# Cloudflare local cache
+.wrangler/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs e backups
+*.log
+backup-*.json

@@ -7,6 +7,3 @@ Thumbs.db
 .idea/
 .claude/
 *.zip
-
-# Kanban de acompanhamento — vive em repositório separado (vsousaesilva/paidegua-kanban)
-docs/kanban-massificacao/

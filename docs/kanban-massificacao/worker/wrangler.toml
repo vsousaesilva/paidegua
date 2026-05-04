@@ -1,0 +1,69 @@
+name = "paidegua-kanban-api"
+main = "worker.js"
+compatibility_date = "2026-05-01"
+
+# A API responde em kanban.paidegua.ia.br/api/* — o frontend (Pages) responde no resto.
+# Configure a rota no Cloudflare Dashboard (Workers > Triggers) ou descomente abaixo:
+# routes = [
+#   { pattern = "kanban.paidegua.ia.br/api/*", zone_name = "paidegua.ia.br" }
+# ]
+
+# ============================================================
+# KV namespace — crie com:
+#   wrangler kv:namespace create KANBAN_KV
+# Cole o id retornado abaixo.
+# ============================================================
+# [[kv_namespaces]]
+# binding = "KANBAN_KV"
+# id = "PASTE_KV_ID_HERE"
+
+# ============================================================
+# Variáveis públicas (não-sensíveis).
+# Para alterar em produção sem redeploy, use o Dashboard.
+# ============================================================
+[vars]
+
+# Domínios institucionais aceitos quando ALLOWED_EMAILS está vazio.
+# Se ALLOWED_EMAILS estiver preenchido, ele é o gate principal e isto vira fallback.
+ALLOWED_DOMAINS = "jfce.jus.br,trf5.jus.br,jfrn.jus.br,jfpb.jus.br,jfpe.jus.br,jfal.jus.br,jfse.jus.br,kanban.paidegua.ia.br"
+
+# Whitelist exata de e-mails autorizados (gate principal).
+# Adicione/remova membros pela lista abaixo OU via API /api/team/members (admin).
+# Ao fazer o primeiro login, o e-mail é registrado em team:members no KV automaticamente.
+ALLOWED_EMAILS = "vsousaesilva@jfce.jus.br"
+
+# Quem pode gerenciar membros e configurações do quadro (POST/DELETE em /api/team/members).
+ADMIN_EMAILS = "vsousaesilva@jfce.jus.br"
+
+# Identidade do remetente do OTP (Resend).
+MAIL_FROM = "noreply@paidegua.ia.br"
+MAIL_FROM_NAME = "pAIdegua / Inovajus"
+
+# Integração GitHub.
+# Cards com prefixo KAN-* viram issues em GH_REPO_KANBAN; demais em GH_REPO_DEFAULT.
+GH_REPO_DEFAULT = "vsousaesilva/paidegua"
+GH_REPO_KANBAN = "vsousaesilva/paidegua-kanban"
+
+# Coluna que dispara criação automática de issue no GitHub.
+# Use 'dev' (recomendado) ou 'spec' se quiser issue desde a especificação.
+GH_AUTO_COLUMN = "dev"
+
+# ============================================================
+# SECRETS (sensíveis) — NUNCA commitar.
+# Configure cada um via: wrangler secret put NOME_DO_SECRET
+# ============================================================
+#
+#   wrangler secret put RESEND_API_KEY
+#     -> chave da Resend (https://resend.com/api-keys)
+#
+#   wrangler secret put GITHUB_TOKEN
+#     -> Personal Access Token (classic) com scope `repo` para os repos acima.
+#        Gere em: https://github.com/settings/tokens
+#
+#   (futuro / modalidade B — webhook reverso GitHub -> Kanban)
+#   wrangler secret put GITHUB_WEBHOOK_SECRET
+#     -> string aleatória usada como HMAC para validar webhooks vindos do GitHub.
+#
+#   (futuro / modo B — chat com IA dentro do quadro)
+#   wrangler secret put ANTHROPIC_API_KEY
+#     -> chave Anthropic (https://console.anthropic.com/settings/keys), plano Enterprise/API.

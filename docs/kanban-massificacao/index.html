@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pAIdegua — Kanban de acompanhamento</title>
+  <meta name="description" content="Quadro Kanban de acompanhamento do roadmap institucional do pAIdegua." />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="kanban.css?v=6" />
+</head>
+<body>
+  <header class="paidegua-header">
+    <div class="paidegua-header__brand">
+      <img class="paidegua-header__logo paidegua-header__logo--img" src="logo.png" alt="pAIdegua" />
+      <div>
+        <h1>pAIdegua — Kanban de acompanhamento</h1>
+        <p class="paidegua-header__subtitle">Backlog institucional · Inovajus / JFCE · kanban.paidegua.ia.br</p>
+      </div>
+    </div>
+    <div class="paidegua-header__actions">
+      <span class="paidegua-header__user" id="header-user" hidden></span>
+      <button type="button" class="btn btn--ghost" id="btn-vault" title="Cofre — manuais, dicas, pipelines e credenciais cifradas" hidden>🔐 Cofre</button>
+      <button type="button" class="btn btn--ghost" id="btn-export" title="Exportar JSON do quadro">Exportar</button>
+      <button type="button" class="btn btn--ghost" id="btn-import" title="Importar JSON">Importar</button>
+      <input type="file" id="import-file" accept="application/json" hidden />
+      <button type="button" class="btn btn--primary" id="btn-novo">+ Novo card</button>
+      <button type="button" class="btn btn--ghost" id="btn-logout" hidden>Sair</button>
+    </div>
+  </header>
+
+  <!-- Auth Gate -->
+  <section class="auth-gate" id="auth-gate" aria-label="Autenticação">
+    <div class="auth-gate__card">
+      <img class="auth-gate__check auth-gate__check--img" src="logo.png" alt="pAIdegua" />
+      <h2>Acesso restrito</h2>
+      <p class="auth-gate__intro">
+        Este quadro é de uso institucional do <strong>Inovajus / JFCE</strong>.
+        Informe seu e-mail institucional autorizado e o código que será enviado a ele.
+      </p>
+
+      <div id="stage-email">
+        <label class="auth-gate__label" for="auth-email">E-mail institucional</label>
+        <input class="auth-gate__input" type="email" id="auth-email" placeholder="usuario@jfce.jus.br" autocomplete="email" />
+        <p class="auth-gate__hint">Domínios aceitos: <code>@jfce.jus.br</code>, <code>@trf5.jus.br</code> e demais SJs da 5ª Região.</p>
+        <button type="button" class="btn btn--primary btn--block" id="btn-request-otp">Enviar código</button>
+      </div>
+
+      <div id="stage-otp" hidden>
+        <p class="auth-gate__intro">Enviamos um código de 6 dígitos para <span id="email-display" class="auth-gate__email"></span>.</p>
+        <label class="auth-gate__label" for="auth-otp">Código</label>
+        <input class="auth-gate__input auth-gate__input--code" type="text" id="auth-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+        <div class="auth-gate__row">
+          <button type="button" class="btn btn--secondary" id="btn-back-email">Voltar</button>
+          <button type="button" class="btn btn--primary" id="btn-verify-otp">Entrar</button>
+        </div>
+      </div>
+
+      <p class="auth-gate__status" id="auth-status" role="status"></p>
+    </div>
+  </section>
+
+  <!-- Toolbar -->
+  <section class="toolbar" id="toolbar" hidden>
+    <div class="toolbar__filters">
+      <input type="search" id="filter-search" class="toolbar__search" placeholder="Buscar título, descrição, tag…" />
+      <select id="filter-categoria" class="toolbar__select">
+        <option value="">Todas as categorias</option>
+      </select>
+      <select id="filter-prioridade" class="toolbar__select">
+        <option value="">Todas as prioridades</option>
+      </select>
+      <select id="filter-fase" class="toolbar__select">
+        <option value="">Todas as fases</option>
+      </select>
+    </div>
+    <div class="toolbar__stats" id="toolbar-stats"></div>
+  </section>
+
+  <!-- Board -->
+  <main class="board" id="board" hidden></main>
+
+  <!-- Card Editor Modal -->
+  <div class="modal" id="modal" hidden role="dialog" aria-labelledby="modal-title" aria-modal="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel">
+      <header class="modal__header">
+        <h3 id="modal-title">Editar card</h3>
+        <button type="button" class="modal__close" data-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal__body">
+        <div class="modal__row">
+          <label>ID
+            <input type="text" id="m-id" readonly />
+          </label>
+          <label>Título
+            <input type="text" id="m-titulo" />
+          </label>
+        </div>
+        <div class="modal__row">
+          <label>Categoria
+            <select id="m-categoria"></select>
+          </label>
+          <label>Prioridade
+            <select id="m-prioridade"></select>
+          </label>
+          <label>Coluna
+            <select id="m-coluna"></select>
+          </label>
+        </div>
+        <div class="modal__row">
+          <label>Esforço
+            <select id="m-esforco">
+              <option value="">—</option>
+              <option value="S">S (≤1 dia)</option>
+              <option value="M">M (2–5 dias)</option>
+              <option value="L">L (1–2 semanas)</option>
+              <option value="XL">XL (≥1 mês)</option>
+            </select>
+          </label>
+          <label>Fase do roadmap
+            <input type="text" id="m-fase" placeholder="F1..F7 (manual de massificação)" />
+          </label>
+          <label>Origem
+            <input type="text" id="m-origem" />
+          </label>
+        </div>
+        <label class="modal__col">Descrição
+          <textarea id="m-descricao" rows="5"></textarea>
+        </label>
+        <label class="modal__col">Tags (separadas por vírgula)
+          <input type="text" id="m-tags" />
+        </label>
+        <label class="modal__col">Critérios de aceitação (1 por linha)
+          <textarea id="m-aceitacao" rows="4"></textarea>
+        </label>
+        <label class="modal__col">Depende de (IDs separados por vírgula)
+          <input type="text" id="m-depende" />
+        </label>
+
+        <fieldset class="modal__group">
+          <legend>Equipe e datas</legend>
+          <div class="modal__row">
+            <label>Owner (responsável)
+              <input type="text" id="m-owner" placeholder="ex.: vsousaesilva@jfce.jus.br" />
+            </label>
+            <label>Assignees (executores; vírgula entre e-mails)
+              <input type="text" id="m-assignees" placeholder="ex.: ana@jfce.jus.br, bruno@trf5.jus.br" />
+            </label>
+          </div>
+          <div class="modal__row">
+            <label>Data de criação
+              <input type="date" id="m-data-criacao" />
+            </label>
+            <label>Data de início
+              <input type="date" id="m-data-inicio" />
+            </label>
+            <label>Data prevista
+              <input type="date" id="m-data-prevista" />
+            </label>
+            <label>Data de conclusão
+              <input type="date" id="m-data-conclusao" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="modal__group">
+          <legend>Checklist <span class="modal__progress" id="m-progress"></span></legend>
+          <div class="checklist" id="m-checklist"></div>
+          <div class="checklist__add">
+            <input type="text" id="m-checklist-novo" placeholder="Adicionar item (Enter)" />
+            <button type="button" class="btn btn--secondary btn--sm" id="m-checklist-add">Adicionar</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="modal__group" id="m-bloqueio-group" hidden>
+          <legend>Bloqueio</legend>
+          <label class="modal__col">Motivo do bloqueio
+            <textarea id="m-bloqueado-por" rows="2" placeholder="ex.: aguardando convênio Dataprev"></textarea>
+          </label>
+        </fieldset>
+
+        <fieldset class="modal__group">
+          <legend>Links e anexos</legend>
+          <div class="links" id="m-links"></div>
+          <div class="links__add">
+            <input type="text" id="m-link-label" placeholder="Rótulo (ex.: PR #42)" />
+            <input type="url" id="m-link-url" placeholder="https://..." />
+            <button type="button" class="btn btn--secondary btn--sm" id="m-link-add">Adicionar</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="modal__group">
+          <legend>Comentários</legend>
+          <div class="comments" id="m-comments"></div>
+          <div class="comments__add">
+            <textarea id="m-comment-novo" rows="2" placeholder="Escrever comentário…"></textarea>
+            <button type="button" class="btn btn--secondary btn--sm" id="m-comment-add">Comentar</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="modal__group">
+          <legend>Issue GitHub</legend>
+          <p class="modal__hint" id="m-issue-info">Sem issue criada. A issue é criada automaticamente quando o card entra em <code>Desenvolvimento</code> (modo deploy).</p>
+        </fieldset>
+
+        <fieldset class="modal__group">
+          <legend>Histórico</legend>
+          <ol class="history" id="m-history"></ol>
+        </fieldset>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--danger-outline" id="m-delete">Excluir</button>
+        <div class="modal__footer-spacer"></div>
+        <button type="button" class="btn btn--secondary" data-close>Cancelar</button>
+        <button type="button" class="btn btn--primary" id="m-save">Salvar</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Cofre Modal -->
+  <div class="vault" id="vault" hidden role="dialog" aria-labelledby="vault-title" aria-modal="true">
+    <div class="vault__backdrop" data-vault-close></div>
+    <div class="vault__panel">
+      <header class="vault__header">
+        <div>
+          <h3 id="vault-title">🔐 Cofre do projeto</h3>
+          <p class="vault__subtitle" id="vault-subtitle">Manuais, dicas, pipelines e credenciais — cifrados client-side com AES-GCM 256.</p>
+        </div>
+        <div class="vault__header-actions">
+          <button type="button" class="btn btn--ghost btn--sm" id="vault-lock" hidden title="Bloquear cofre (limpa passphrase da sessão)">Bloquear</button>
+          <button type="button" class="modal__close" data-vault-close aria-label="Fechar">×</button>
+        </div>
+      </header>
+
+      <!-- Tela 1: Passphrase -->
+      <div class="vault__lock" id="vault-lock-stage">
+        <div class="vault__lock-card">
+          <div class="vault__lock-icon" aria-hidden="true">🔒</div>
+          <h4 id="vault-lock-title">Cofre bloqueado</h4>
+          <p class="vault__lock-intro" id="vault-lock-intro">
+            Informe a <strong>passphrase</strong> para descriptografar o conteúdo. A passphrase fica
+            apenas na memória da sua aba (limpa ao fechar ou bloquear). O servidor nunca a recebe.
+          </p>
+          <label class="auth-gate__label">Passphrase</label>
+          <input type="password" id="vault-pass" class="auth-gate__input" autocomplete="current-password" placeholder="Mínimo 12 caracteres" />
+          <label class="auth-gate__label" id="vault-pass2-label" hidden>Confirme a passphrase</label>
+          <input type="password" id="vault-pass2" class="auth-gate__input" autocomplete="new-password" hidden />
+          <p class="vault__lock-hint" id="vault-pass-hint"></p>
+          <div class="auth-gate__row">
+            <button type="button" class="btn btn--secondary" id="vault-pass-toggle">Mostrar</button>
+            <button type="button" class="btn btn--primary" id="vault-pass-submit">Desbloquear</button>
+          </div>
+          <p class="vault__lock-warn">
+            ⚠ Se você esquecer a passphrase, <strong>o conteúdo cifrado é irrecuperável</strong>.
+            Não há recuperação por e-mail. Guarde em gerenciador de senhas pessoal.
+          </p>
+        </div>
+      </div>
+
+      <!-- Tela 2: Lista (desbloqueado) -->
+      <div class="vault__main" id="vault-main" hidden>
+        <aside class="vault__sidebar">
+          <div class="vault__tabs" role="tablist">
+            <button type="button" class="vault__tab is-active" data-vault-tab="doc" role="tab">📚 Documentos <span id="vault-count-doc">0</span></button>
+            <button type="button" class="vault__tab" data-vault-tab="credencial" role="tab">🔑 Credenciais <span id="vault-count-credencial">0</span></button>
+          </div>
+          <input type="search" class="vault__search" id="vault-search" placeholder="Buscar título, tag…" />
+          <button type="button" class="btn btn--primary btn--block" id="vault-new" style="margin-top:10px">+ Novo</button>
+          <button type="button" class="btn btn--secondary btn--block" id="vault-seed-btn" hidden style="margin-top:6px">📦 Carregar pacote inicial (<span id="vault-seed-count">0</span> itens)</button>
+          <ul class="vault__list" id="vault-list" role="tablist"></ul>
+          <p class="vault__empty" id="vault-empty" hidden>Nenhum item nesta seção.</p>
+        </aside>
+
+        <section class="vault__editor" id="vault-editor">
+          <p class="vault__placeholder" id="vault-placeholder">
+            Selecione um item ao lado ou clique em <strong>+ Novo</strong> para criar.
+          </p>
+
+          <div class="vault__form" id="vault-form" hidden>
+            <div class="vault__form-row">
+              <label>Título / rótulo
+                <input type="text" id="v-label" placeholder="ex.: Senha PJe (vsousaesilva)" />
+              </label>
+              <label class="vault__form-tipo">Tipo
+                <select id="v-tipo">
+                  <option value="doc-md">📄 Documento (markdown)</option>
+                  <option value="senha">🔑 Senha</option>
+                  <option value="api-key">🗝 API key</option>
+                  <option value="cert">📜 Certificado</option>
+                  <option value="conexao">🔌 Conexão (host/porta/user)</option>
+                  <option value="outro">📦 Outro</option>
+                </select>
+              </label>
+            </div>
+            <div class="vault__form-row" id="v-credfields">
+              <label>Usuário (opcional)
+                <input type="text" id="v-usuario" />
+              </label>
+              <label>URL (opcional)
+                <input type="url" id="v-url" placeholder="https://..." />
+              </label>
+            </div>
+            <label class="vault__form-col">Tags (separadas por vírgula)
+              <input type="text" id="v-tags" placeholder="ex.: pje, gabinete, pipeline" />
+            </label>
+            <label class="vault__form-col" id="v-conteudo-label">Conteúdo
+              <textarea id="v-conteudo" rows="12" placeholder="Conteúdo (cifrado client-side antes de sair daqui)"></textarea>
+            </label>
+            <div class="vault__form-actions">
+              <button type="button" class="btn btn--ghost btn--sm" id="v-mostrar-toggle">👁 Mostrar/ocultar</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="v-copiar">📋 Copiar (limpa em 30s)</button>
+              <span class="vault__form-meta" id="v-meta"></span>
+              <span class="vault__form-spacer"></span>
+              <button type="button" class="btn btn--danger-outline btn--sm" id="v-excluir" hidden>Excluir</button>
+              <button type="button" class="btn btn--secondary btn--sm" id="v-cancelar">Cancelar</button>
+              <button type="button" class="btn btn--primary btn--sm" id="v-salvar">Salvar</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="seed.js?v=4" defer></script>
+  <script src="vault-seed.js?v=1" defer></script>
+  <script src="vault.js?v=2" defer></script>
+  <script src="kanban.js?v=7" defer></script>
+</body>
+</html>
