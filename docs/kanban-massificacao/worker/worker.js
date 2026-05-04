@@ -55,7 +55,16 @@ export default {
 
       // Sessão atual
       if (url.pathname === '/api/auth/me' && request.method === 'GET') {
-        return json({ ok: true, email: auth.email, isAdmin: isAdmin(auth.email, env) });
+        const admin = await isAdmin(auth.email, env);
+        const m = await findMember(env, auth.email);
+        return json({
+          ok: true,
+          email: auth.email,
+          isAdmin: admin,
+          equipes: m?.equipes || ['kanban'],
+          nome: m?.nome || null,
+          papel: m?.papel || 'membro',
+        });
       }
       if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
         return await handleLogout(request, env);
@@ -85,6 +94,17 @@ export default {
         const id = decodeURIComponent(vaultMatch[1]);
         if (request.method === 'PUT') return await handleUpsertVaultItem(request, env, id, auth);
         if (request.method === 'DELETE') return await handleDeleteVaultItem(env, id, auth);
+      }
+
+      // Documentos compartilhados — texto plano (manuais, pipelines, runbooks).
+      if (url.pathname === '/api/docs' && request.method === 'GET') {
+        return await handleListDocs(env);
+      }
+      const docsMatch = url.pathname.match(/^\/api\/docs\/([^/]+)$/);
+      if (docsMatch) {
+        const id = decodeURIComponent(docsMatch[1]);
+        if (request.method === 'PUT') return await handleUpsertDoc(request, env, id, auth);
+        if (request.method === 'DELETE') return await handleDeleteDoc(env, id, auth);
       }
 
       // Time
@@ -119,19 +139,66 @@ function csvVar(value) {
   return (value || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
-function isEmailAllowed(email, env) {
-  const lc = email.toLowerCase();
-  const exact = csvVar(env.ALLOWED_EMAILS);
-  if (exact.length && exact.includes(lc)) return true;
-  if (exact.length && !exact.includes(lc)) {
-    // Quando whitelist exata existe, ela é gate principal — domínio só vale se vazia
-    return false;
+/**
+ * Lista de membros ao vivo (KV é a fonte de verdade).
+ * Bootstrap: na primeira chamada, se o KV estiver vazio, popula com ALLOWED_EMAILS
+ * e ADMIN_EMAILS das vars (ambos na equipe 'kanban').
+ */
+async function loadMembers(env) {
+  const raw = await env.KANBAN_KV.get('team:members');
+  if (raw) {
+    try { return JSON.parse(raw); } catch (_) { /* fallthrough */ }
   }
-  const domains = csvVar(env.ALLOWED_DOMAINS);
-  return domains.includes(lc.split('@')[1] || '');
+  // Bootstrap a partir das vars
+  const bootstrap = csvVar(env.ALLOWED_EMAILS).map((email) => ({
+    email,
+    nome: email.split('@')[0],
+    papel: csvVar(env.ADMIN_EMAILS).includes(email) ? 'admin' : 'membro',
+    equipes: ['kanban'],
+    ativo: true,
+    adicionadoEm: new Date().toISOString(),
+    adicionadoPor: 'bootstrap',
+  }));
+  if (bootstrap.length) {
+    await env.KANBAN_KV.put('team:members', JSON.stringify(bootstrap));
+  }
+  return bootstrap;
 }
 
-function isAdmin(email, env) {
+async function saveMembers(env, members) {
+  await env.KANBAN_KV.put('team:members', JSON.stringify(members));
+}
+
+async function findMember(env, email) {
+  const list = await loadMembers(env);
+  return list.find((m) => m.email.toLowerCase() === email.toLowerCase());
+}
+
+/**
+ * Autoriza login. `equipe` é o sistema que está autenticando: 'kanban' (default)
+ * ou 'extensao' (futuro). O membro precisa estar ativo E pertencer à equipe.
+ *
+ * Fallback ALLOWED_DOMAINS: aceita qualquer e-mail dos domínios listados se NÃO
+ * houver nenhum membro registrado e nenhuma whitelist explícita. Cobre o caso
+ * de zero-config inicial. Após o primeiro membro registrado, fica desativado.
+ */
+async function isEmailAllowed(email, env, equipe = 'kanban') {
+  const list = await loadMembers(env);
+  if (list.length) {
+    const m = list.find((x) => x.email.toLowerCase() === email.toLowerCase());
+    if (!m || !m.ativo) return false;
+    const equipes = Array.isArray(m.equipes) ? m.equipes : ['kanban'];
+    return equipes.includes(equipe);
+  }
+  // Lista vazia → fallback domínios (boot inicial extremo)
+  const domains = csvVar(env.ALLOWED_DOMAINS);
+  return domains.includes((email.toLowerCase().split('@')[1]) || '');
+}
+
+async function isAdmin(email, env) {
+  const m = await findMember(env, email);
+  if (m) return m.papel === 'admin';
+  // Fallback à var ADMIN_EMAILS (bootstrap)
   return csvVar(env.ADMIN_EMAILS).includes(email.toLowerCase());
 }
 
@@ -169,13 +236,17 @@ async function requireAuth(request, env) {
 
 // ============== Auth handlers ==============
 async function handleRequestOtp(request, env) {
-  const { email } = await request.json().catch(() => ({}));
+  const { email, equipe } = await request.json().catch(() => ({}));
   const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanEquipe = (equipe || 'kanban').trim().toLowerCase();
+  if (!['kanban', 'extensao'].includes(cleanEquipe)) {
+    return json({ error: 'Equipe inválida' }, 400);
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     return json({ error: 'E-mail inválido' }, 400);
   }
-  if (!isEmailAllowed(cleanEmail, env)) {
-    return json({ error: 'E-mail não autorizado para este quadro' }, 403);
+  if (!(await isEmailAllowed(cleanEmail, env, cleanEquipe))) {
+    return json({ error: `E-mail não autorizado para a equipe '${cleanEquipe}'` }, 403);
   }
 
   const code = generateOtp();
@@ -210,10 +281,9 @@ async function handleVerifyOtp(request, env) {
   );
   await env.KANBAN_KV.delete(`otp:${cleanEmail}`);
 
-  // Garante membro ativo no team:members ao primeiro login válido
-  await ensureMember(env, cleanEmail);
-
-  return json({ ok: true, token, email: cleanEmail, isAdmin: isAdmin(cleanEmail, env) });
+  // Membro já garantido pelo gate (loadMembers + isEmailAllowed); nada a fazer aqui.
+  const admin = await isAdmin(cleanEmail, env);
+  return json({ ok: true, token, email: cleanEmail, isAdmin: admin });
 }
 
 async function handleLogout(request, env) {
@@ -262,51 +332,41 @@ async function sendOtpEmailResend(to, code, env) {
 }
 
 // ============== Team handlers ==============
-async function loadMembers(env) {
-  const raw = await env.KANBAN_KV.get('team:members');
-  return raw ? JSON.parse(raw) : [];
-}
-
-async function saveMembers(env, members) {
-  await env.KANBAN_KV.put('team:members', JSON.stringify(members));
-}
-
-async function ensureMember(env, email) {
-  const list = await loadMembers(env);
-  if (list.some((m) => m.email === email)) return;
-  list.push({
-    email,
-    nome: email.split('@')[0],
-    papel: 'membro',
-    ativo: true,
-    adicionadoEm: new Date().toISOString(),
-  });
-  await saveMembers(env, list);
-}
-
 async function handleListMembers(env) {
   return json({ ok: true, members: await loadMembers(env) });
 }
 
+function normalizeEquipes(input) {
+  if (!Array.isArray(input)) return ['kanban'];
+  const valid = input.map((s) => String(s).trim().toLowerCase()).filter((s) => ['kanban', 'extensao'].includes(s));
+  return valid.length ? Array.from(new Set(valid)) : ['kanban'];
+}
+
 async function handleAddMember(request, env, auth) {
-  if (!isAdmin(auth.email, env)) return json({ error: 'Apenas admin' }, 403);
+  if (!(await isAdmin(auth.email, env))) return json({ error: 'Apenas admin' }, 403);
   const body = await request.json().catch(() => ({}));
   const email = (body.email || '').trim().toLowerCase();
-  if (!email) return json({ error: 'E-mail obrigatório' }, 400);
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ error: 'E-mail inválido' }, 400);
+  }
   const list = await loadMembers(env);
   const existing = list.find((m) => m.email === email);
   if (existing) {
     Object.assign(existing, {
-      nome: body.nome || existing.nome,
+      nome: body.nome != null ? body.nome : existing.nome,
       papel: body.papel || existing.papel,
+      equipes: normalizeEquipes(body.equipes ?? existing.equipes),
       ativo: body.ativo !== false,
+      atualizadoEm: new Date().toISOString(),
+      atualizadoPor: auth.email,
     });
   } else {
     list.push({
       email,
       nome: body.nome || email.split('@')[0],
       papel: body.papel || 'membro',
-      ativo: true,
+      equipes: normalizeEquipes(body.equipes),
+      ativo: body.ativo !== false,
       adicionadoEm: new Date().toISOString(),
       adicionadoPor: auth.email,
     });
@@ -316,7 +376,7 @@ async function handleAddMember(request, env, auth) {
 }
 
 async function handleRemoveMember(env, email, auth) {
-  if (!isAdmin(auth.email, env)) return json({ error: 'Apenas admin' }, 403);
+  if (!(await isAdmin(auth.email, env))) return json({ error: 'Apenas admin' }, 403);
   const list = await loadMembers(env);
   const next = list.filter((m) => m.email !== email.toLowerCase());
   await saveMembers(env, next);
@@ -492,6 +552,57 @@ async function handleDeleteVaultItem(env, id, auth) {
   const v = await loadVault(env);
   v.items = (v.items || []).filter((x) => x.id !== id);
   await saveVault(env, v, auth);
+  return json({ ok: true });
+}
+
+// ============== Docs handlers ==============
+async function loadDocs(env) {
+  const raw = await env.KANBAN_KV.get('docs:state');
+  return raw ? JSON.parse(raw) : { items: [] };
+}
+async function saveDocs(env, docs, auth) {
+  docs.atualizadoEm = new Date().toISOString();
+  if (auth) docs.atualizadoPor = auth.email;
+  await env.KANBAN_KV.put('docs:state', JSON.stringify(docs));
+}
+
+async function handleListDocs(env) {
+  const d = await loadDocs(env);
+  return json({ ok: true, items: d.items || [] });
+}
+
+function isValidDoc(item) {
+  return item
+    && typeof item.id === 'string' && item.id.length > 0
+    && typeof item.titulo === 'string' && item.titulo.length > 0
+    && typeof item.conteudo === 'string';
+}
+
+async function handleUpsertDoc(request, env, id, auth) {
+  const item = await request.json().catch(() => null);
+  if (!item || !isValidDoc(item) || item.id !== id) {
+    return json({ error: 'Documento inválido' }, 400);
+  }
+  const d = await loadDocs(env);
+  d.items = d.items || [];
+  const idx = d.items.findIndex((x) => x.id === id);
+  item.atualizadoPor = auth.email;
+  item.atualizadoEm = new Date().toISOString();
+  if (idx >= 0) {
+    d.items[idx] = { ...d.items[idx], ...item };
+  } else {
+    item.criadoPor = auth.email;
+    item.criadoEm = item.criadoEm || item.atualizadoEm;
+    d.items.push(item);
+  }
+  await saveDocs(env, d, auth);
+  return json({ ok: true });
+}
+
+async function handleDeleteDoc(env, id, auth) {
+  const d = await loadDocs(env);
+  d.items = (d.items || []).filter((x) => x.id !== id);
+  await saveDocs(env, d, auth);
   return json({ ok: true });
 }
 

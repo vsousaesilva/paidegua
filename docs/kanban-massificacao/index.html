@@ -9,25 +9,29 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="kanban.css?v=6" />
+  <link rel="stylesheet" href="kanban.css?v=8" />
 </head>
 <body>
   <header class="paidegua-header">
-    <div class="paidegua-header__brand">
-      <img class="paidegua-header__logo paidegua-header__logo--img" src="logo.png" alt="pAIdegua" />
-      <div>
-        <h1>pAIdegua — Kanban de acompanhamento</h1>
-        <p class="paidegua-header__subtitle">Backlog institucional · Inovajus / JFCE · kanban.paidegua.ia.br</p>
+    <div class="paidegua-header__inner">
+      <div class="paidegua-header__brand">
+        <img class="paidegua-header__logo paidegua-header__logo--img" src="logo.png" alt="pAIdegua" />
+        <div>
+          <h1>pAIdegua — Kanban de acompanhamento</h1>
+          <p class="paidegua-header__subtitle">Backlog institucional · Inovajus / JFCE · kanban.paidegua.ia.br</p>
+        </div>
       </div>
-    </div>
-    <div class="paidegua-header__actions">
-      <span class="paidegua-header__user" id="header-user" hidden></span>
-      <button type="button" class="btn btn--ghost" id="btn-vault" title="Cofre — manuais, dicas, pipelines e credenciais cifradas" hidden>🔐 Cofre</button>
-      <button type="button" class="btn btn--ghost" id="btn-export" title="Exportar JSON do quadro">Exportar</button>
-      <button type="button" class="btn btn--ghost" id="btn-import" title="Importar JSON">Importar</button>
-      <input type="file" id="import-file" accept="application/json" hidden />
-      <button type="button" class="btn btn--primary" id="btn-novo">+ Novo card</button>
-      <button type="button" class="btn btn--ghost" id="btn-logout" hidden>Sair</button>
+      <div class="paidegua-header__actions">
+        <span class="paidegua-header__user" id="header-user" hidden></span>
+        <button type="button" class="btn btn--ghost" id="btn-docs" title="Documentos — manuais, dicas, pipelines (compartilhados na equipe)" hidden>📚 Documentos</button>
+        <button type="button" class="btn btn--ghost" id="btn-vault" title="Cofre — credenciais cifradas (privado)" hidden>🔐 Cofre</button>
+        <button type="button" class="btn btn--ghost" id="btn-team" title="Gerenciar equipes (Kanban e Testes da extensão) — apenas admin" hidden>👥 Equipe</button>
+        <button type="button" class="btn btn--ghost" id="btn-export" title="Exportar JSON do quadro">Exportar</button>
+        <button type="button" class="btn btn--ghost" id="btn-import" title="Importar JSON">Importar</button>
+        <input type="file" id="import-file" accept="application/json" hidden />
+        <button type="button" class="btn btn--primary" id="btn-novo">+ Novo card</button>
+        <button type="button" class="btn btn--ghost" id="btn-logout" hidden>Sair</button>
+      </div>
     </div>
   </header>
 
@@ -64,19 +68,21 @@
 
   <!-- Toolbar -->
   <section class="toolbar" id="toolbar" hidden>
-    <div class="toolbar__filters">
-      <input type="search" id="filter-search" class="toolbar__search" placeholder="Buscar título, descrição, tag…" />
-      <select id="filter-categoria" class="toolbar__select">
-        <option value="">Todas as categorias</option>
-      </select>
-      <select id="filter-prioridade" class="toolbar__select">
-        <option value="">Todas as prioridades</option>
-      </select>
-      <select id="filter-fase" class="toolbar__select">
-        <option value="">Todas as fases</option>
-      </select>
+    <div class="toolbar__inner">
+      <div class="toolbar__filters">
+        <input type="search" id="filter-search" class="toolbar__search" placeholder="Buscar título, descrição, tag…" />
+        <select id="filter-categoria" class="toolbar__select">
+          <option value="">Todas as categorias</option>
+        </select>
+        <select id="filter-prioridade" class="toolbar__select">
+          <option value="">Todas as prioridades</option>
+        </select>
+        <select id="filter-fase" class="toolbar__select">
+          <option value="">Todas as fases</option>
+        </select>
+      </div>
+      <div class="toolbar__stats" id="toolbar-stats"></div>
     </div>
-    <div class="toolbar__stats" id="toolbar-stats"></div>
   </section>
 
   <!-- Board -->
@@ -263,15 +269,12 @@
       <!-- Tela 2: Lista (desbloqueado) -->
       <div class="vault__main" id="vault-main" hidden>
         <aside class="vault__sidebar">
-          <div class="vault__tabs" role="tablist">
-            <button type="button" class="vault__tab is-active" data-vault-tab="doc" role="tab">📚 Documentos <span id="vault-count-doc">0</span></button>
-            <button type="button" class="vault__tab" data-vault-tab="credencial" role="tab">🔑 Credenciais <span id="vault-count-credencial">0</span></button>
-          </div>
+          <div class="vault__heading">🔑 Credenciais</div>
           <input type="search" class="vault__search" id="vault-search" placeholder="Buscar título, tag…" />
-          <button type="button" class="btn btn--primary btn--block" id="vault-new" style="margin-top:10px">+ Novo</button>
+          <button type="button" class="btn btn--primary btn--block" id="vault-new" style="margin-top:10px">+ Nova credencial</button>
           <button type="button" class="btn btn--secondary btn--block" id="vault-seed-btn" hidden style="margin-top:6px">📦 Carregar pacote inicial (<span id="vault-seed-count">0</span> itens)</button>
           <ul class="vault__list" id="vault-list" role="tablist"></ul>
-          <p class="vault__empty" id="vault-empty" hidden>Nenhum item nesta seção.</p>
+          <p class="vault__empty" id="vault-empty" hidden>Nenhuma credencial. Clique em "+ Nova credencial".</p>
         </aside>
 
         <section class="vault__editor" id="vault-editor">
@@ -286,7 +289,6 @@
               </label>
               <label class="vault__form-tipo">Tipo
                 <select id="v-tipo">
-                  <option value="doc-md">📄 Documento (markdown)</option>
                   <option value="senha">🔑 Senha</option>
                   <option value="api-key">🗝 API key</option>
                   <option value="cert">📜 Certificado</option>
@@ -324,12 +326,131 @@
     </div>
   </div>
 
+  <!-- Documentos Modal -->
+  <div class="docs" id="docs" hidden role="dialog" aria-labelledby="docs-title" aria-modal="true">
+    <div class="docs__backdrop" data-docs-close></div>
+    <div class="docs__panel">
+      <header class="docs__header">
+        <div>
+          <h3 id="docs-title">📚 Documentos do projeto</h3>
+          <p class="docs__subtitle">Manuais, dicas, pipelines e runbooks compartilhados na equipe Inovajus.</p>
+        </div>
+        <div class="docs__header-actions">
+          <button type="button" class="modal__close" data-docs-close aria-label="Fechar">×</button>
+        </div>
+      </header>
+
+      <div class="docs__main">
+        <aside class="docs__sidebar">
+          <div class="docs__heading">📚 Documentos</div>
+          <input type="search" class="docs__search" id="docs-search" placeholder="Buscar título, tag…" />
+          <button type="button" class="btn btn--primary btn--block" id="docs-new" style="margin-top:10px">+ Novo documento</button>
+          <button type="button" class="btn btn--secondary btn--block" id="docs-seed-btn" hidden style="margin-top:6px">📦 Carregar pacote inicial (<span id="docs-seed-count">0</span> itens)</button>
+          <ul class="docs__list" id="docs-list"></ul>
+          <p class="docs__empty" id="docs-empty" hidden>Nenhum documento. Clique em "+ Novo documento".</p>
+        </aside>
+
+        <section class="docs__editor" id="docs-editor">
+          <p class="docs__placeholder" id="docs-placeholder">
+            Selecione um documento ao lado ou clique em <strong>+ Novo documento</strong>.
+          </p>
+
+          <div class="docs__form" id="docs-form" hidden>
+            <div class="docs__form-row">
+              <label>Título
+                <input type="text" id="d-titulo" placeholder="ex.: Pipeline de release da extensão" />
+              </label>
+              <label>Tags (vírgula)
+                <input type="text" id="d-tags" placeholder="ex.: pipeline, release, build" />
+              </label>
+            </div>
+            <div class="docs__form-tabs">
+              <button type="button" class="docs__form-tab is-active" data-d-tab="edit">Editar</button>
+              <button type="button" class="docs__form-tab" data-d-tab="preview">Pré-visualização</button>
+            </div>
+            <div class="docs__form-pane" id="d-pane-edit">
+              <textarea id="d-conteudo" rows="20" placeholder="# Título&#10;&#10;Conteúdo em markdown..."></textarea>
+            </div>
+            <div class="docs__form-pane docs__form-pane--preview" id="d-pane-preview" hidden></div>
+            <div class="docs__form-actions">
+              <span class="docs__form-meta" id="d-meta"></span>
+              <span class="docs__form-spacer"></span>
+              <button type="button" class="btn btn--danger-outline btn--sm" id="d-excluir" hidden>Excluir</button>
+              <button type="button" class="btn btn--secondary btn--sm" id="d-cancelar">Cancelar</button>
+              <button type="button" class="btn btn--primary btn--sm" id="d-salvar">Salvar</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Equipe Modal (admin) -->
+  <div class="team" id="team" hidden role="dialog" aria-labelledby="team-title" aria-modal="true">
+    <div class="team__backdrop" data-team-close></div>
+    <div class="team__panel">
+      <header class="team__header">
+        <div>
+          <h3 id="team-title">👥 Gestão de equipes</h3>
+          <p class="team__subtitle">Quem pode acessar o Kanban (gestão+dev) e quem testa a extensão pAIdegua (Chrome/Edge).</p>
+        </div>
+        <button type="button" class="modal__close" data-team-close aria-label="Fechar">×</button>
+      </header>
+
+      <div class="team__main">
+        <div class="team__filter">
+          <label><input type="checkbox" id="team-filter-kanban" checked /> Kanban</label>
+          <label><input type="checkbox" id="team-filter-extensao" checked /> Testes da extensão</label>
+          <label><input type="checkbox" id="team-filter-inativos" /> Mostrar inativos</label>
+          <input type="search" id="team-search" placeholder="Buscar e-mail/nome…" />
+        </div>
+
+        <table class="team__table">
+          <thead>
+            <tr>
+              <th>E-mail</th>
+              <th>Nome</th>
+              <th>Papel</th>
+              <th>Kanban</th>
+              <th>Extensão</th>
+              <th>Ativo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="team-tbody"></tbody>
+        </table>
+
+        <details class="team__add">
+          <summary>+ Adicionar membro</summary>
+          <div class="team__add-form">
+            <input type="email" id="team-new-email" placeholder="email@jfce.jus.br" />
+            <input type="text" id="team-new-nome" placeholder="Nome (opcional)" />
+            <select id="team-new-papel">
+              <option value="membro">membro</option>
+              <option value="admin">admin</option>
+            </select>
+            <label><input type="checkbox" id="team-new-kanban" checked /> Kanban</label>
+            <label><input type="checkbox" id="team-new-extensao" /> Extensão</label>
+            <button type="button" class="btn btn--primary btn--sm" id="team-new-add">Adicionar</button>
+          </div>
+        </details>
+
+        <p class="team__hint">
+          ⚠ Mudanças aqui são <strong>imediatas</strong>. Inativar ou remover invalida logins futuros (tokens em curso continuam valendo até expirar — para revogar imediatamente, peça ao admin do Worker para limpar <code>token:*</code> no KV).
+        </p>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="seed.js?v=4" defer></script>
-  <script src="vault-seed.js?v=1" defer></script>
-  <script src="vault.js?v=2" defer></script>
-  <script src="kanban.js?v=7" defer></script>
+  <script src="vault-seed.js?v=3" defer></script>
+  <script src="vault.js?v=4" defer></script>
+  <script src="docs-seed.js?v=1" defer></script>
+  <script src="docs.js?v=1" defer></script>
+  <script src="team-admin.js?v=1" defer></script>
+  <script src="kanban.js?v=9" defer></script>
 </body>
 </html>

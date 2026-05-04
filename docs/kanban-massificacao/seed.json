@@ -1782,6 +1782,38 @@
       "depende": ["KAN-01"]
     },
     {
+      "id": "INFRA-EXT-AUTH",
+      "titulo": "Migrar auth da extensão pAIdegua para o Worker (substitui Apps Script)",
+      "descricao": "Hoje a extensão usa backend em Google Apps Script com whitelist em planilha Google Sheets. Migrar para o Worker Cloudflare (kanban.paidegua.ia.br/api/auth/extension/*) usando a mesma lista team:members do KV (somente membros com 'extensao' em equipes podem logar). Alinha gestão de acessos do Kanban e da extensão, elimina dependência de Apps Script, reduz custo de operação, simplifica revogação.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "triagem",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "origem": "decisão sessão 04/05/2026 (gestão centralizada de membros)",
+      "tags": ["auth", "extensao", "migracao", "cloudflare", "team-members"],
+      "esforco": "L",
+      "depende": [],
+      "aceitacao": [
+        "Endpoint POST /api/auth/extension/request-otp criado (Worker), valida que e-mail tem 'extensao' em equipes",
+        "Endpoint POST /api/auth/extension/verify-otp emite JWT compatível com a extensão (HS256, 90 dias) ou bearer próprio",
+        "Extensão pAIdegua atualizada para chamar paidegua.ia.br/api/auth/extension/* no lugar do Google Apps Script",
+        "Migração da whitelist atual (Google Sheets) para team:members no KV (script único de import)",
+        "Política de privacidade atualizada para refletir o novo backend (docs/index.md)",
+        "Plano de fallback: durante 30 dias o Apps Script continua respondendo para sessões em andamento, depois é desligado"
+      ],
+      "checklist": [
+        { "id": "ext1", "texto": "Definir endpoints /api/auth/extension/* no worker.js", "feito": false },
+        { "id": "ext2", "texto": "Decidir formato do bearer (token simples como o Kanban OU JWT igual ao GAS atual)", "feito": false },
+        { "id": "ext3", "texto": "Adicionar campo 'jwt' no membro (se manter compatibilidade GAS)", "feito": false },
+        { "id": "ext4", "texto": "Implementar import de planilha → team:members (script utilitário)", "feito": false },
+        { "id": "ext5", "texto": "Atualizar src/popup/popup.ts da extensão (URL de auth)", "feito": false },
+        { "id": "ext6", "texto": "Comunicar pilotos atuais sobre a migração + período de fallback", "feito": false },
+        { "id": "ext7", "texto": "Atualizar docs/index.md (política de privacidade)", "feito": false },
+        { "id": "ext8", "texto": "Desligar Apps Script após 30 dias de validação", "feito": false }
+      ],
+      "historico": []
+    },
+    {
       "id": "KAN-03",
       "titulo": "Pipeline GitHub→Cloudflare Pages auto-deploy",
       "descricao": "Cada push em main faz deploy do Pages e do Worker via wrangler. Secrets em GitHub Actions.",

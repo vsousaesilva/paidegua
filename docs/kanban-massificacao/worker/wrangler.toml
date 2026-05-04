@@ -2,20 +2,17 @@ name = "paidegua-kanban-api"
 main = "worker.js"
 compatibility_date = "2026-05-01"
 
-# A API responde em kanban.paidegua.ia.br/api/* — o frontend (Pages) responde no resto.
-# Configure a rota no Cloudflare Dashboard (Workers > Triggers) ou descomente abaixo:
-# routes = [
-#   { pattern = "kanban.paidegua.ia.br/api/*", zone_name = "paidegua.ia.br" }
-# ]
+# Rota: kanban.paidegua.ia.br/api/* vai pro Worker; resto vai pro Pages (paidegua-kanban).
+routes = [
+  { pattern = "kanban.paidegua.ia.br/api/*", zone_name = "paidegua.ia.br" }
+]
 
 # ============================================================
-# KV namespace — crie com:
-#   wrangler kv:namespace create KANBAN_KV
-# Cole o id retornado abaixo.
+# KV namespace
 # ============================================================
-# [[kv_namespaces]]
-# binding = "KANBAN_KV"
-# id = "PASTE_KV_ID_HERE"
+[[kv_namespaces]]
+binding = "KANBAN_KV"
+id = "9002dc0915f84842bf98ea894257d0a9"
 
 # ============================================================
 # Variáveis públicas (não-sensíveis).

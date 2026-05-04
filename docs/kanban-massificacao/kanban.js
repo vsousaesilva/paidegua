@@ -231,9 +231,29 @@
     $('#board').hidden = false;
     $('#btn-logout').hidden = false;
     $('#btn-vault').hidden = false;
+    $('#btn-docs').hidden = false;
     $('#header-user').hidden = false;
     $('#header-user').textContent = state.user;
     bootstrap();
+    detectAdmin();
+  }
+
+  async function detectAdmin() {
+    if (API_BASE === null) {
+      // Modo offline: assume admin pra permitir explorar
+      $('#btn-team').hidden = false;
+      state.isAdmin = true;
+      return;
+    }
+    try {
+      const me = await api('/api/auth/me');
+      state.isAdmin = !!me.isAdmin;
+      state.equipes = me.equipes || ['kanban'];
+      state.papel = me.papel || 'membro';
+      $('#btn-team').hidden = !me.isAdmin;
+    } catch (err) {
+      // mantém botão escondido em caso de falha
+    }
   }
 
   function openVault() {
@@ -244,6 +264,35 @@
     window.PaideguaVault.open({
       apiBase: API_BASE,
       isOnline: API_BASE !== null,
+      bearer: state.token,
+      user: state.user,
+    });
+  }
+
+  function openDocs() {
+    if (!window.PaideguaDocs) {
+      toast('Módulo de documentos não carregou.', 'error');
+      return;
+    }
+    window.PaideguaDocs.open({
+      apiBase: API_BASE,
+      isOnline: API_BASE !== null,
+      bearer: state.token,
+      user: state.user,
+    });
+  }
+
+  function openTeam() {
+    if (!window.PaideguaTeam) {
+      toast('Módulo de equipe não carregou.', 'error');
+      return;
+    }
+    if (API_BASE === null) {
+      toast('Gestão de equipes só funciona em modo deploy (paidegua.ia.br).', '');
+      return;
+    }
+    window.PaideguaTeam.open({
+      apiBase: API_BASE,
       bearer: state.token,
       user: state.user,
     });
@@ -900,6 +949,8 @@
 
     $('#btn-logout').addEventListener('click', logout);
     $('#btn-vault').addEventListener('click', openVault);
+    $('#btn-docs').addEventListener('click', openDocs);
+    $('#btn-team').addEventListener('click', openTeam);
     $('#btn-novo').addEventListener('click', () => openModal(null));
     $('#btn-export').addEventListener('click', exportJson);
     $('#btn-import').addEventListener('click', () => $('#import-file').click());

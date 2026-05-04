@@ -42,7 +42,6 @@
     passphrase: null,    // mantido na memória da aba
     autolockTid: null,
     selectedId: null,
-    activeTab: 'doc',
     searchTerm: '',
     apiBase: '',         // setado por kanban.js
     isOnline: false,
@@ -209,19 +208,18 @@
     return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
   }
 
-  function tipoToKind(tipo) {
-    return tipo === 'doc-md' ? 'doc' : 'credencial';
+  function tipoToKind(_tipo) {
+    return 'credencial';
   }
 
   function tipoIcone(tipo) {
     return ({
-      'doc-md': '📄',
       'senha': '🔑',
       'api-key': '🗝',
       'cert': '📜',
       'conexao': '🔌',
       'outro': '📦',
-    })[tipo] || '📦';
+    })[tipo] || '🔑';
   }
 
   // ============== Tela 1: Lock ==============
@@ -370,7 +368,6 @@
   function renderList() {
     const ul = $('#vault-list');
     const filtered = Vault.items
-      .filter((it) => (it.kind || tipoToKind(it.tipo)) === Vault.activeTab)
       .filter((it) => {
         if (!Vault.searchTerm) return true;
         const blob = (it.label + ' ' + (it.tags || []).join(' ') + ' ' + (it.usuario || '') + ' ' + (it.url || '')).toLowerCase();
@@ -379,12 +376,10 @@
       .sort((a, b) => (a.label || '').localeCompare(b.label || '', 'pt-BR'));
 
     ul.innerHTML = '';
-    $('#vault-count-doc').textContent = Vault.items.filter((i) => (i.kind || tipoToKind(i.tipo)) === 'doc').length;
-    $('#vault-count-credencial').textContent = Vault.items.filter((i) => (i.kind || tipoToKind(i.tipo)) === 'credencial').length;
 
     if (!filtered.length) {
       $('#vault-empty').hidden = false;
-      $('#vault-empty').textContent = Vault.searchTerm ? 'Nenhum item bate com a busca.' : 'Nenhum item nesta seção. Clique em "+ Novo".';
+      $('#vault-empty').textContent = Vault.searchTerm ? 'Nenhuma credencial bate com a busca.' : 'Nenhuma credencial. Clique em "+ Nova credencial".';
       return;
     }
     $('#vault-empty').hidden = true;
@@ -445,7 +440,7 @@
     Vault.selectedId = null;
     showForm({
       id: '',
-      tipo: Vault.activeTab === 'doc' ? 'doc-md' : 'senha',
+      tipo: 'senha',
       label: '',
       tags: [],
       usuario: '',
@@ -477,14 +472,11 @@
   }
 
   function syncFormByTipo() {
-    const tipo = $('#v-tipo').value;
-    const isDoc = tipo === 'doc-md';
-    $('#v-credfields').style.display = isDoc ? 'none' : '';
-    $('#v-conteudo-label').firstChild.nodeValue = isDoc ? 'Conteúdo (markdown)' : 'Conteúdo (cifrado)';
-    $('#v-conteudo').type = 'textarea';
-    $('#v-conteudo').rows = isDoc ? 18 : 8;
-    $('#v-conteudo').classList.toggle('vault__textarea--secret', !isDoc);
-    if (!isDoc && !$('#v-conteudo').dataset.revelado) {
+    $('#v-credfields').style.display = '';
+    $('#v-conteudo-label').firstChild.nodeValue = 'Conteúdo (cifrado)';
+    $('#v-conteudo').rows = 8;
+    $('#v-conteudo').classList.add('vault__textarea--secret');
+    if (!$('#v-conteudo').dataset.revelado) {
       $('#v-conteudo').classList.add('is-mask');
     } else {
       $('#v-conteudo').classList.remove('is-mask');
