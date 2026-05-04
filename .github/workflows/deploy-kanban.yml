@@ -1,19 +1,22 @@
-name: Deploy Kanban (Pages + Worker)
+name: Deploy Kanban (Pages + Worker + Docs)
 
-# Deploy automático em cada push em main que toque docs/kanban-massificacao/.
-# Dois jobs paralelos:
-#  - deploy-pages: sobe o frontend estático para Cloudflare Pages.
-#  - deploy-worker: sobe o Worker da API. Roda só se mudou worker/.
+# Deploy automático em cada push em main que toque arquivos relevantes:
+#  - deploy-pages: HTML/CSS/JS/seed do front (Cloudflare Pages)
+#  - deploy-worker: worker.js / wrangler.toml (Cloudflare Worker)
+#  - sync-docs: reimporta docs/*.md → KV docs:state (espelho dos manuais
+#    do projeto dentro da seção 📚 Documentos do Kanban)
 #
 # Secrets necessários no repo (Settings → Secrets and variables → Actions):
-#  - CLOUDFLARE_API_TOKEN: token paidegua-kanban-deploy (Pages:Edit, Workers Scripts:Edit,
-#    Workers KV Storage:Edit, Workers Routes:Edit, Account Settings:Read, Zone:Read, DNS:Edit)
+#  - CLOUDFLARE_API_TOKEN: token paidegua-kanban-deploy
+#    (Pages:Edit, Workers Scripts:Edit, Workers KV Storage:Edit,
+#     Workers Routes:Edit, Account Settings:Read, Zone:Read, DNS:Edit)
 #  - CLOUDFLARE_ACCOUNT_ID: f13a21f421661dcfb1651880a2be578e
 
 on:
   push:
     branches: [main]
     paths:
+      - 'docs/**/*.md'
       - 'docs/kanban-massificacao/**'
       - '.github/workflows/deploy-kanban.yml'
   workflow_dispatch:
@@ -24,6 +27,7 @@ jobs:
     outputs:
       pages: ${{ steps.filter.outputs.pages }}
       worker: ${{ steps.filter.outputs.worker }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,9 +39,15 @@ jobs:
             pages:
               - 'docs/kanban-massificacao/**'
               - '!docs/kanban-massificacao/worker/**'
+              - '!docs/kanban-massificacao/scripts/**'
               - '.github/workflows/deploy-kanban.yml'
             worker:
               - 'docs/kanban-massificacao/worker/**'
+              - '.github/workflows/deploy-kanban.yml'
+            docs:
+              - 'docs/**/*.md'
+              - '!docs/kanban-massificacao/**'
+              - 'docs/kanban-massificacao/scripts/import-docs.mjs'
               - '.github/workflows/deploy-kanban.yml'
 
   deploy-pages:
@@ -66,3 +76,23 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: docs/kanban-massificacao/worker
           command: deploy
+
+  sync-docs:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Gerar import-docs-state.json
+        working-directory: docs/kanban-massificacao
+        run: node scripts/import-docs.mjs
+      - name: Subir para KV docs:state
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs/kanban-massificacao
+          command: kv key put "docs:state" --path=scripts/import-docs-state.json --namespace-id=9002dc0915f84842bf98ea894257d0a9 --remote
