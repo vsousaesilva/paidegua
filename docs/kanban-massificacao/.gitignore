@@ -15,3 +15,6 @@ Thumbs.db
 # Logs e backups
 *.log
 backup-*.json
+
+# Gerado por scripts/import-docs.mjs (sobrescritivel a qualquer momento)
+scripts/import-docs-state.json
