@@ -1,0 +1,467 @@
+/*
+ * Painel da varredura criminal (Sigcrim) — paleta institucional
+ * gov.br / PJe-CNJ, mesma identidade visual do criminal-config.
+ */
+:root {
+  --primary: #1351B4;
+  --primary-dark: #0C326F;
+  --primary-light: #5992ED;
+  --yellow: #FFCD07;
+  --bg: #F6F8FC;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --fg: #16243A;
+  --muted: #5B6B82;
+  --border: rgba(19, 81, 180, 0.14);
+  --border-strong: rgba(19, 81, 180, 0.26);
+  --danger: #c0392b;
+  --ok: #1e7e34;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 14px 40px rgba(12, 50, 111, 0.12);
+  --gradient: linear-gradient(135deg, #1351B4 0%, #0C326F 100%);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(900px 420px at 100% 0%, rgba(89, 146, 237, 0.18), transparent 60%),
+    radial-gradient(700px 320px at 0% 100%, rgba(255, 205, 7, 0.08), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--fg);
+  font-family: "Inter", "Rawline", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { border: 0; cursor: pointer; font-family: inherit; }
+
+.paidegua-criminal-painel__header {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 40px 28px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.paidegua-criminal-painel__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--gradient);
+  box-shadow: 0 14px 32px rgba(19, 81, 180, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.paidegua-criminal-painel__header > div { min-width: 0; flex: 1; }
+
+.paidegua-criminal-painel__header h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.4px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.paidegua-criminal-painel__subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  max-width: 720px;
+}
+
+.paidegua-criminal-painel__main {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 8px 28px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.paidegua-criminal-painel__card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+  backdrop-filter: saturate(180%) blur(10px);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
+}
+
+.paidegua-criminal-painel__card h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--primary-dark);
+  letter-spacing: -0.2px;
+}
+
+.paidegua-criminal-painel__card h3 {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.paidegua-criminal-painel__card--error {
+  border-color: rgba(192, 57, 43, 0.4);
+  background: rgba(192, 57, 43, 0.04);
+}
+
+.paidegua-criminal-painel__card--ok {
+  border-color: rgba(30, 126, 52, 0.35);
+  background: rgba(30, 126, 52, 0.04);
+}
+
+.paidegua-criminal-painel__card--atalho {
+  border-color: rgba(19, 81, 180, 0.32);
+  background:
+    linear-gradient(135deg, rgba(89, 146, 237, 0.06), rgba(255, 205, 7, 0.04));
+}
+
+.paidegua-criminal-painel__hint {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.paidegua-criminal-painel__loading {
+  text-align: center;
+  color: var(--muted);
+  padding: 18px 0;
+}
+
+.paidegua-criminal-painel__erro-msg {
+  color: var(--danger);
+  font-size: 13.5px;
+  background: rgba(192, 57, 43, 0.06);
+  border-left: 3px solid var(--danger);
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 12px 0 16px;
+}
+
+/* Toolbar de seleção em massa */
+.paidegua-criminal-painel__toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.paidegua-criminal-painel__resumo {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* Lista de tarefas */
+.paidegua-criminal-painel__lista {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  max-height: 340px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.paidegua-criminal-painel__tarefa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.paidegua-criminal-painel__tarefa:last-child { border-bottom: 0; }
+.paidegua-criminal-painel__tarefa:hover { background: rgba(19, 81, 180, 0.04); }
+.paidegua-criminal-painel__tarefa input[type="checkbox"] { margin: 0; }
+
+.paidegua-criminal-painel__tarefa-nome {
+  flex: 1;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.paidegua-criminal-painel__tarefa-qtd {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Modo selector */
+.paidegua-criminal-painel__modo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.paidegua-criminal-painel__modo-opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.paidegua-criminal-painel__modo-opcao:hover { border-color: var(--border-strong); }
+.paidegua-criminal-painel__modo-opcao:has(input:checked) {
+  border-color: var(--primary);
+  background: rgba(19, 81, 180, 0.06);
+}
+.paidegua-criminal-painel__modo-opcao input { margin: 4px 0 0; }
+.paidegua-criminal-painel__modo-label { font-size: 13px; line-height: 1.5; color: var(--fg); }
+.paidegua-criminal-painel__modo-label strong { color: var(--primary-dark); }
+
+/* Filtros e limites */
+.paidegua-criminal-painel__filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.paidegua-criminal-painel__filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 12.5px;
+}
+
+.paidegua-criminal-painel__filtro > span {
+  font-weight: 600;
+  color: var(--primary-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+}
+
+.paidegua-criminal-painel__filtro input[type="number"] {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.paidegua-criminal-painel__filtro small {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.paidegua-criminal-painel__filtro--check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.paidegua-criminal-painel__filtro--check input[type="checkbox"] {
+  margin: 2px 0 0;
+}
+
+.paidegua-criminal-painel__filtro--check > span {
+  flex: 1;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.paidegua-criminal-painel__filtro--check small {
+  flex-basis: 100%;
+}
+
+/* Botões */
+.paidegua-criminal-painel__row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.paidegua-criminal-painel__btn {
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--primary-dark);
+  border: 1px solid var(--border-strong);
+  transition: background 0.12s, transform 0.05s;
+}
+
+.paidegua-criminal-painel__btn:hover:not(:disabled) {
+  background: rgba(19, 81, 180, 0.08);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.paidegua-criminal-painel__btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.paidegua-criminal-painel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.paidegua-criminal-painel__btn--primary {
+  background: var(--gradient);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 6px 18px rgba(19, 81, 180, 0.28);
+}
+
+.paidegua-criminal-painel__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--gradient);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 18px rgba(19, 81, 180, 0.38);
+}
+
+.paidegua-criminal-painel__btn--ghost {
+  background: transparent;
+  border-style: dashed;
+}
+
+.paidegua-criminal-painel__btn--ghost:hover:not(:disabled) {
+  background: rgba(19, 81, 180, 0.08);
+  border-style: solid;
+  border-color: var(--primary);
+}
+
+/* Progresso */
+.paidegua-criminal-painel__progresso-bar {
+  height: 8px;
+  background: rgba(19, 81, 180, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 14px 0 8px;
+}
+
+.paidegua-criminal-painel__progresso-fill {
+  height: 100%;
+  background: var(--gradient);
+  width: 0%;
+  transition: width 0.25s ease-out;
+}
+
+.paidegua-criminal-painel__progresso-texto {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.paidegua-criminal-painel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 8px 0 18px;
+}
+
+.paidegua-criminal-painel__stats div {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.paidegua-criminal-painel__stats dt {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.paidegua-criminal-painel__stats dd {
+  margin: 6px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lista de capturados em streaming */
+.paidegua-criminal-painel__lista-capturados {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.paidegua-criminal-painel__capturado {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.paidegua-criminal-painel__capturado:last-child { border-bottom: 0; }
+
+.paidegua-criminal-painel__capturado-numero {
+  color: var(--primary-dark);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-criminal-painel__capturado-info {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paidegua-criminal-painel__resumo-final {
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 12px 0;
+  color: var(--fg);
+}
+
+@media (max-width: 720px) {
+  .paidegua-criminal-painel__stats { grid-template-columns: 1fr; }
+  .paidegua-criminal-painel__main { padding: 8px 18px 48px; }
+  .paidegua-criminal-painel__header { padding: 24px 18px 12px; }
+}

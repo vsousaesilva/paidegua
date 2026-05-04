@@ -160,6 +160,44 @@ export interface PAIdeguaSettings {
    * no prompt do extrator de marcadores.
    */
   etiquetasPromptCriterios: string;
+  /**
+   * Configurações da "Central de Comunicação" (perfil Secretaria). Usadas
+   * para gerar mensagens de cobrança de peritos (WhatsApp) e da Ceab
+   * (e-mail). Os campos opcionais ficam em branco quando nunca foram
+   * preenchidos pelo usuário; o painel valida antes de cada disparo.
+   */
+  comunicacao: ComunicacaoSettings;
+}
+
+/**
+ * Configurações da "Central de Comunicação" — perfil Secretaria.
+ *
+ * `etiquetaCobrancaPerito` e `etiquetaCobrancaCeab` são opcionais: quando
+ * preenchidas, o painel oferece o "modo etiqueta" (varre TODOS os processos
+ * com a etiqueta, ignorando filtro por tarefa). Em modo padrão, o coletor
+ * filtra por tarefa fixa (regex em `comunicacao-store.ts`).
+ *
+ * Os contatos da Ceab (e-mail e telefone) também são opcionais — o painel
+ * habilita o canal correspondente conforme o que estiver preenchido.
+ */
+export interface ComunicacaoSettings {
+  /**
+   * Nome da unidade que assina as mensagens — composto como
+   * "Secretaria da [nomeVara]" (ex.: "Secretaria da 12ª Vara Federal").
+   * Quando vazio, o template cai para "Secretaria" sozinho.
+   */
+  nomeVara: string;
+  /** E-mail da Ceab — usado no `mailto:` quando o canal escolhido é e-mail. */
+  emailCeab: string;
+  /**
+   * Telefone (WhatsApp) da Ceab — usado no `wa.me` quando o canal escolhido
+   * é WhatsApp. Aceita formato livre; o painel normaliza para dígitos.
+   */
+  telefoneCeab: string;
+  /** Nome da etiqueta opcional para filtro alternativo da cobrança de perito. */
+  etiquetaCobrancaPerito: string;
+  /** Nome da etiqueta opcional para filtro alternativo da cobrança da Ceab. */
+  etiquetaCobrancaCeab: string;
 }
 
 /** Critério livre criado pelo magistrado, fora do conjunto da NT 1/2025. */
@@ -824,6 +862,13 @@ export interface PJeApiListarRequest {
   pageSize?: number;
   /** Limite total de processos a coletar (corta paginacao). */
   maxProcessos?: number;
+  /**
+   * Sigla da classe judicial para filtrar a listagem. Quando informada,
+   * vai no body como `classe: "<sigla>"` (ex.: "PJEC", "APN") e o
+   * servidor restringe os resultados. Quando ausente, traz todas as
+   * classes da tarefa.
+   */
+  classe?: string | null;
 }
 
 /** Resposta consolidada da listagem. */
@@ -1089,6 +1134,18 @@ export interface PericiaPerito {
   assuntos: string[];
   /** Quantidade-padrão de processos na pauta para este perito. */
   quantidadePadrao: number;
+  /**
+   * Telefone (WhatsApp) do perito, em formato livre — o módulo "Central
+   * de Comunicação" normaliza para `wa.me/<digits>` antes de abrir a
+   * sessão. Vazio ou ausente indica que o perito ainda não tem WhatsApp
+   * cadastrado e é desabilitado no fluxo de cobrança por WhatsApp.
+   */
+  telefone?: string;
+  /**
+   * E-mail do perito — usado pela Central de Comunicação no canal e-mail.
+   * Vazio ou ausente desabilita o atalho "Abrir e-mail" para esse perito.
+   */
+  email?: string;
   /** Toggle — quando false, fica fora do seletor do painel. */
   ativo: boolean;
   /** ISO do cadastro e da última edição. */
@@ -1231,4 +1288,185 @@ export interface PericiasDashboardPayload {
     legacyOrigin: string;
     excluirIds: number[];
   };
+}
+
+// =====================================================================
+// Central de Comunicação — perfil Secretaria
+// =====================================================================
+
+/**
+ * Destinatário da cobrança gerada pelo painel Central de Comunicação.
+ * O canal (WhatsApp ou e-mail) é escolhido independentemente em
+ * `ComunicacaoCanal` — qualquer destinatário pode ir por qualquer canal,
+ * desde que tenha o contato correspondente cadastrado.
+ */
+export type ComunicacaoModo = 'cobrar-perito' | 'cobrar-ceab';
+
+/** Canal de envio da mensagem gerada. */
+export type ComunicacaoCanal = 'whatsapp' | 'email';
+
+/**
+ * Filtro usado pelo coletor para escolher os processos da cobrança.
+ *  - `tarefa`: usa a tarefa-padrão definida em `comunicacao-store.ts`
+ *    (regex "Cobrar laudo" ou "obrigação de fazer - Sem manifestação").
+ *  - `etiqueta`: substitui o filtro por tarefa — varre TODOS os processos
+ *    com a etiqueta configurada, em qualquer tarefa em que estejam.
+ */
+export type ComunicacaoFiltro = 'tarefa' | 'etiqueta';
+
+/**
+ * Estado da aba-painel da Central de Comunicação. A aba lê este snapshot
+ * ao carregar (por `requestId`) e usa-o para renderizar o seletor de modo
+ * + os peritos cadastrados (no caso WhatsApp) ou os dados da Ceab.
+ */
+export interface ComunicacaoPainelState {
+  requestId: string;
+  hostnamePJe: string;
+  legacyOrigin: string;
+  abertoEm: string;
+  /** Snapshot dos peritos ativos (com telefone, quando houver). */
+  peritos: PericiaPerito[];
+  /** Snapshot da seção `comunicacao` das settings no momento da abertura. */
+  settings: ComunicacaoSettings;
+}
+
+/**
+ * Item enxuto de processo carregado pela coleta da Central de Comunicação.
+ * Espelha o subset de `PJeApiProcesso` que a UI precisa para listar e
+ * compor a mensagem de cobrança.
+ */
+export interface ComunicacaoProcesso {
+  idProcesso: number;
+  numeroProcesso: string | null;
+  idTaskInstance: number | null;
+  classeJudicial: string | null;
+  poloAtivo: string | null;
+  /** Tarefa atual onde o processo está (informativa no painel). */
+  tarefaNome: string | null;
+  /** URL dos autos resolvida (`ca` resolvida) — pode ficar `null`. */
+  url: string | null;
+  /** Etiquetas presentes no processo (texto cru). */
+  etiquetas: string[];
+  /**
+   * Nome do perito a quem o processo deve ser cobrado, quando o coletor
+   * conseguiu inferir pela etiqueta-pauta ("DR FULANO DD.MM.AA"). Para
+   * cobrança da Ceab, fica `null`.
+   */
+  peritoNomeInferido: string | null;
+  /**
+   * `peritoId` do cadastro local quando o nome inferido casa com algum
+   * cadastro. `null` quando o perito não está cadastrado (ou no fluxo Ceab).
+   */
+  peritoId: string | null;
+}
+
+/** Resultado consolidado da coleta da Central de Comunicação. */
+export interface ComunicacaoColetaResult {
+  ok: boolean;
+  modo: ComunicacaoModo;
+  filtro: ComunicacaoFiltro;
+  /** Total de processos retornados pelo PJe (após filtros). */
+  total: number;
+  processos: ComunicacaoProcesso[];
+  /** Mensagem de erro humana — preenchida apenas quando ok=false. */
+  error?: string;
+  /** Avisos não-fatais (ex.: peritos cadastrados sem telefone). */
+  avisos: string[];
+}
+
+/**
+ * Histórico persistente das cobranças disparadas pela Central de
+ * Comunicação. Cada registro guarda quem foi cobrado, quando e a lista
+ * de CNJs que entraram naquela mensagem — permite ao usuário consultar
+ * depois "perito X já foi cobrado este mês? por quais processos?".
+ *
+ * Persistido em `chrome.storage.local` sob `STORAGE_KEYS.COMUNICACAO_REGISTROS`.
+ */
+export interface RegistroCobranca {
+  id: string;
+  modo: ComunicacaoModo;
+  /** Canal usado (WhatsApp ou e-mail). */
+  canal: ComunicacaoCanal;
+  /** ISO 8601 do momento da geração da mensagem. */
+  geradoEm: string;
+  /** Identificação do destinatário (perito ou "Ceab"). */
+  destinatario: string;
+  /** Telefone ou e-mail efetivamente usado. */
+  contato: string;
+  /** CNJs (formatados) incluídos na cobrança. */
+  numerosProcesso: string[];
+}
+
+export interface RegistroCobrancaStore {
+  version: 1;
+  registros: RegistroCobranca[];
+}
+
+// =====================================================================
+// Audiência pAIdegua — perfil Secretaria
+// =====================================================================
+
+/** Espelha PericiaTarefaInfo, restrito às tarefas de "designar audiência". */
+export interface AudienciaTarefaInfo {
+  nome: string;
+  quantidade: number | null;
+}
+
+/** Item de pauta de audiência: um processo agrupado por advogado. */
+export interface AudienciaPautaItem {
+  idProcesso: number;
+  numeroProcesso: string | null;
+  idTaskInstance: number | null;
+  classeJudicial: string | null;
+  assuntoPrincipal: string | null;
+  poloAtivo: string | null;
+  dataChegadaTarefa: string | null;
+  url: string | null;
+  tarefaNome: string;
+  etiquetasProcesso: string[];
+}
+
+/** Pauta de audiência agrupada por advogado. */
+export interface AudienciaPauta {
+  /** Nome do advogado normalizado (uppercase, trim). */
+  advogadoNome: string;
+  /**
+   * Documento OAB extraído do `poloAtivo` quando presente
+   * (ex.: "OAB CE 12345"). `null` quando não foi possível inferir.
+   */
+  advogadoOab: string | null;
+  /** Etiqueta-pauta sugerida no formato "Audiência de Instrução DD.MM.AA". */
+  etiquetaPauta: string;
+  /** Quantidade pedida pelo usuário (cap por pauta). */
+  quantidadePedida: number;
+  /** Quantos itens efetivamente caberam (≤ quantidadePedida). */
+  quantidadeAtingida: number;
+  itens: AudienciaPautaItem[];
+}
+
+/** Estado da aba-painel da Audiência pAIdegua. */
+export interface AudienciaPainelState {
+  requestId: string;
+  hostnamePJe: string;
+  legacyOrigin: string;
+  abertoEm: string;
+  tarefas: AudienciaTarefaInfo[];
+}
+
+/** Resultado consolidado da coleta da Audiência pAIdegua. */
+export interface AudienciaColetaResult {
+  ok: boolean;
+  /** Tarefas efetivamente varridas (após filtros). */
+  tarefasVarridas: string[];
+  /** Total de processos varridos (antes de agrupar). */
+  totalVarridos: number;
+  /** Pautas agrupadas por advogado (já caps na quantidade). */
+  pautas: AudienciaPauta[];
+  /** Processos que ficaram fora — sem advogado identificável ou cap atingido. */
+  naoAgrupados: AudienciaPautaItem[];
+  /** Data da audiência (ISO `YYYY-MM-DD`) escolhida pelo usuário. */
+  dataAudienciaISO: string;
+  /** Avisos não-fatais (ex.: N processos sem advogado identificável). */
+  avisos: string[];
+  error?: string;
 }

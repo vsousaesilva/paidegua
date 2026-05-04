@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sigcrim — Painel Criminal</title>
+    <link rel="stylesheet" href="painel.css" />
+  </head>
+  <body>
+    <header class="paidegua-criminal-painel__header">
+      <span class="paidegua-criminal-painel__logo" aria-hidden="true">
+        <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Sigcrim — Painel Criminal</h1>
+        <p class="paidegua-criminal-painel__subtitle">
+          Acesse o acervo a qualquer momento ou inicie uma nova varredura
+          a partir do painel-usuário do PJe aberto nesta sessão.
+        </p>
+      </div>
+    </header>
+
+    <main class="paidegua-criminal-painel__main">
+      <!-- Atalho fixo para o acervo (sempre visível) ─────────────── -->
+      <section class="paidegua-criminal-painel__card paidegua-criminal-painel__card--atalho">
+        <h2>Acervo criminal</h2>
+        <p class="paidegua-criminal-painel__hint">
+          O acervo fica salvo localmente (IndexedDB) e pode ser
+          consultado a qualquer momento — não é necessário rodar uma
+          nova varredura para abrir.
+        </p>
+        <div class="paidegua-criminal-painel__row">
+          <button id="btn-abrir-acervo" type="button" class="paidegua-criminal-painel__btn paidegua-criminal-painel__btn--primary">
+            Abrir acervo (Dashboard)
+          </button>
+          <button id="btn-abrir-config" type="button" class="paidegua-criminal-painel__btn">
+            Configurações
+          </button>
+        </div>
+      </section>
+
+      <!-- Estado: carregando estado inicial ─────────────────────── -->
+      <section id="estado-carregando" class="paidegua-criminal-painel__card">
+        <p class="paidegua-criminal-painel__loading">Carregando tarefas do painel…</p>
+      </section>
+
+      <!-- Estado: erro ───────────────────────────────────────────── -->
+      <section id="estado-erro" class="paidegua-criminal-painel__card paidegua-criminal-painel__card--error" hidden>
+        <h2>Não foi possível iniciar</h2>
+        <p id="erro-msg" class="paidegua-criminal-painel__erro-msg"></p>
+        <div class="paidegua-criminal-painel__row">
+          <button id="btn-fechar" type="button" class="paidegua-criminal-painel__btn">Fechar aba</button>
+        </div>
+      </section>
+
+      <!-- Estado: seletor ────────────────────────────────────────── -->
+      <section id="estado-seletor" class="paidegua-criminal-painel__card" hidden>
+        <h2>Tarefas a varrer</h2>
+        <p class="paidegua-criminal-painel__hint">
+          Selecione as tarefas que devem ser varridas. Para cada processo
+          encontrado, o Sigcrim coleta partes, capa, movimentos e — no
+          modo completo — extrai dados dos PDFs principais (denúncia,
+          sentença, ANPP) via IA.
+        </p>
+
+        <div class="paidegua-criminal-painel__toolbar">
+          <button id="btn-todas" type="button" class="paidegua-criminal-painel__btn paidegua-criminal-painel__btn--ghost">
+            Selecionar todas
+          </button>
+          <button id="btn-nenhuma" type="button" class="paidegua-criminal-painel__btn paidegua-criminal-painel__btn--ghost">
+            Limpar seleção
+          </button>
+          <span id="resumo-selecao" class="paidegua-criminal-painel__resumo"></span>
+        </div>
+
+        <div id="lista-tarefas" class="paidegua-criminal-painel__lista"></div>
+
+        <h3>Modo de coleta</h3>
+        <div class="paidegua-criminal-painel__modo">
+          <label class="paidegua-criminal-painel__modo-opcao">
+            <input type="radio" name="modo" value="completo" checked />
+            <span class="paidegua-criminal-painel__modo-label">
+              <strong>Completo</strong> &nbsp;—&nbsp; busca no PJe + IA dos PDFs principais (denúncia, sentença, ANPP).
+              Mais lento (~30-60s por processo) mas captura datas-chave do histórico migrado.
+            </span>
+          </label>
+          <label class="paidegua-criminal-painel__modo-opcao">
+            <input type="radio" name="modo" value="rapido" />
+            <span class="paidegua-criminal-painel__modo-label">
+              <strong>Rápido</strong> &nbsp;—&nbsp; só busca no PJe (capa + partes + movimentos). ~5-10s por processo.
+              Sem IA — campos de prescrição/ANPP/SERP devem ser preenchidos manualmente depois.
+            </span>
+          </label>
+        </div>
+
+        <h3>Filtros e limites</h3>
+        <div class="paidegua-criminal-painel__filtros">
+          <label class="paidegua-criminal-painel__filtro">
+            <span>Janela de dias na tarefa</span>
+            <input id="input-dias" type="number" min="0" max="3650" step="1" value="0" />
+            <small>0 = sem limite. Filtra pela data de chegada do processo na tarefa.</small>
+          </label>
+          <label class="paidegua-criminal-painel__filtro">
+            <span>Teto de processos</span>
+            <input id="input-teto" type="number" min="0" max="10000" step="50" value="1000" />
+            <small>Coloque 0 para não limitar. Depois de remover duplicatas e aplicar os filtros, a varredura para ao atingir esse número.</small>
+          </label>
+          <label class="paidegua-criminal-painel__filtro">
+            <span>Concorrência (1–30)</span>
+            <input id="input-concorrencia" type="number" min="1" max="30" step="1" value="25" />
+            <small>Quantos processos buscar ao mesmo tempo. 25 costuma ser o ideal — acima disso o PJe começa a engasgar.</small>
+          </label>
+          <label class="paidegua-criminal-painel__filtro paidegua-criminal-painel__filtro--check">
+            <input id="input-filtro-sigla" type="checkbox" checked />
+            <span>Capturar apenas classes criminais</span>
+            <small>
+              Descarta processos não-criminais (PJEC, PROCADM, etc.) antes da
+              coleta, comparando contra o catálogo de classes criminais.
+              Desligue apenas para diagnóstico.
+            </small>
+          </label>
+        </div>
+
+        <div class="paidegua-criminal-painel__row">
+          <button id="btn-iniciar" type="button" class="paidegua-criminal-painel__btn paidegua-criminal-painel__btn--primary">
+            Iniciar varredura
+          </button>
+          <button id="btn-cancelar" type="button" class="paidegua-criminal-painel__btn">Cancelar</button>
+        </div>
+      </section>
+
+      <!-- Estado: progresso ──────────────────────────────────────── -->
+      <section id="estado-progresso" class="paidegua-criminal-painel__card" hidden>
+        <h2>Varredura em andamento</h2>
+
+        <div class="paidegua-criminal-painel__progresso-bar">
+          <div id="progresso-fill" class="paidegua-criminal-painel__progresso-fill"></div>
+        </div>
+        <p id="progresso-texto" class="paidegua-criminal-painel__progresso-texto">Iniciando…</p>
+
+        <dl class="paidegua-criminal-painel__stats">
+          <div>
+            <dt>Capturados</dt>
+            <dd id="stat-capturados">0</dd>
+          </div>
+          <div>
+            <dt>Erros</dt>
+            <dd id="stat-erros">0</dd>
+          </div>
+          <div>
+            <dt>Tarefas processadas</dt>
+            <dd id="stat-tarefas">0</dd>
+          </div>
+        </dl>
+
+        <h3>Últimos processos capturados</h3>
+        <ul id="lista-capturados" class="paidegua-criminal-painel__lista-capturados"></ul>
+      </section>
+
+      <!-- Estado: concluído ──────────────────────────────────────── -->
+      <section id="estado-concluido" class="paidegua-criminal-painel__card paidegua-criminal-painel__card--ok" hidden>
+        <h2>Varredura concluída</h2>
+        <p id="resumo-final" class="paidegua-criminal-painel__resumo-final"></p>
+
+        <div class="paidegua-criminal-painel__row">
+          <button id="btn-dashboard" type="button" class="paidegua-criminal-painel__btn paidegua-criminal-painel__btn--primary">
+            Abrir acervo (Dashboard)
+          </button>
+          <button id="btn-config" type="button" class="paidegua-criminal-painel__btn">
+            Configurações
+          </button>
+          <button id="btn-fechar-final" type="button" class="paidegua-criminal-painel__btn">Fechar aba</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="painel.js"></script>
+  </body>
+</html>

@@ -59,7 +59,14 @@ export function defaultSettings(): PAIdeguaSettings {
     defaultProfile: DEFAULT_PROFILE,
     triagemCriterios: defaultTriagemCriterios(),
     triagemCriteriosCustom: [],
-    etiquetasPromptCriterios: ''
+    etiquetasPromptCriterios: '',
+    comunicacao: {
+      nomeVara: '',
+      emailCeab: '',
+      telefoneCeab: '',
+      etiquetaCobrancaPerito: '',
+      etiquetaCobrancaCeab: ''
+    }
   };
 }
 
@@ -145,6 +152,34 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
   const storedEnabled =
     typeof stored.extensionEnabled === 'boolean' ? stored.extensionEnabled : true;
 
+  // Merge defensivo: instalações antigas não têm `comunicacao` — garante
+  // o objeto completo para o popup não quebrar ao hidratar os campos.
+  const storedComunicacao =
+    stored.comunicacao && typeof stored.comunicacao === 'object'
+      ? {
+          nomeVara:
+            typeof stored.comunicacao.nomeVara === 'string'
+              ? stored.comunicacao.nomeVara
+              : '',
+          emailCeab:
+            typeof stored.comunicacao.emailCeab === 'string'
+              ? stored.comunicacao.emailCeab
+              : '',
+          telefoneCeab:
+            typeof stored.comunicacao.telefoneCeab === 'string'
+              ? stored.comunicacao.telefoneCeab
+              : '',
+          etiquetaCobrancaPerito:
+            typeof stored.comunicacao.etiquetaCobrancaPerito === 'string'
+              ? stored.comunicacao.etiquetaCobrancaPerito
+              : '',
+          etiquetaCobrancaCeab:
+            typeof stored.comunicacao.etiquetaCobrancaCeab === 'string'
+              ? stored.comunicacao.etiquetaCobrancaCeab
+              : ''
+        }
+      : base.comunicacao;
+
   return {
     ...base,
     ...stored,
@@ -154,7 +189,8 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
     defaultProfile: storedProfile,
     triagemCriterios: mergedCriterios,
     triagemCriteriosCustom: storedCustom,
-    etiquetasPromptCriterios: storedEtiqCrit
+    etiquetasPromptCriterios: storedEtiqCrit,
+    comunicacao: storedComunicacao
   };
 }
 

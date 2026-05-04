@@ -212,11 +212,86 @@ async function loadAll(): Promise<void> {
 
     renderForProvider(currentSettings.activeProvider);
     renderTriagemCriterios();
+    hydrateComunicacaoSettings();
     await applyGrauRestrictions();
     setStatus('');
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} popup loadAll falhou:`, error);
     setStatus('Erro ao comunicar com o service worker.', 'error');
+  }
+}
+
+function hydrateComunicacaoSettings(): void {
+  if (!currentSettings) return;
+  const c = currentSettings.comunicacao ?? {
+    nomeVara: '',
+    emailCeab: '',
+    telefoneCeab: '',
+    etiquetaCobrancaPerito: '',
+    etiquetaCobrancaCeab: ''
+  };
+  const inNomeVara = document.getElementById('comm-nome-vara') as HTMLInputElement | null;
+  const inEmail = document.getElementById('comm-email-ceab') as HTMLInputElement | null;
+  const inTelefone = document.getElementById('comm-telefone-ceab') as HTMLInputElement | null;
+  const inEtqPer = document.getElementById('comm-etiqueta-perito') as HTMLInputElement | null;
+  const inEtqCeab = document.getElementById('comm-etiqueta-ceab') as HTMLInputElement | null;
+  if (inNomeVara) inNomeVara.value = c.nomeVara ?? '';
+  if (inEmail) inEmail.value = c.emailCeab ?? '';
+  if (inTelefone) inTelefone.value = c.telefoneCeab ?? '';
+  if (inEtqPer) inEtqPer.value = c.etiquetaCobrancaPerito ?? '';
+  if (inEtqCeab) inEtqCeab.value = c.etiquetaCobrancaCeab ?? '';
+}
+
+let comunicacaoSaveTimer: number | null = null;
+function scheduleSaveComunicacao(): void {
+  if (comunicacaoSaveTimer !== null) {
+    window.clearTimeout(comunicacaoSaveTimer);
+  }
+  comunicacaoSaveTimer = window.setTimeout(() => {
+    void saveComunicacao();
+  }, 500);
+}
+
+async function saveComunicacao(): Promise<void> {
+  const inNomeVara = document.getElementById('comm-nome-vara') as HTMLInputElement | null;
+  const inEmail = document.getElementById('comm-email-ceab') as HTMLInputElement | null;
+  const inTelefone = document.getElementById('comm-telefone-ceab') as HTMLInputElement | null;
+  const inEtqPer = document.getElementById('comm-etiqueta-perito') as HTMLInputElement | null;
+  const inEtqCeab = document.getElementById('comm-etiqueta-ceab') as HTMLInputElement | null;
+  const status = document.getElementById('comm-status') as HTMLElement | null;
+  const comunicacao = {
+    nomeVara: (inNomeVara?.value ?? '').trim(),
+    emailCeab: (inEmail?.value ?? '').trim(),
+    telefoneCeab: (inTelefone?.value ?? '').trim(),
+    etiquetaCobrancaPerito: (inEtqPer?.value ?? '').trim(),
+    etiquetaCobrancaCeab: (inEtqCeab?.value ?? '').trim()
+  };
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.SAVE_SETTINGS,
+      payload: { comunicacao }
+    })) as { ok: boolean; settings?: PAIdeguaSettings; error?: string };
+    if (response?.ok && response.settings) {
+      currentSettings = response.settings;
+      if (status) {
+        status.textContent = 'Configurações salvas.';
+        status.className = 'paidegua-popup__status is-ok';
+        window.setTimeout(() => {
+          if (status.textContent === 'Configurações salvas.') {
+            status.textContent = '';
+            status.className = 'paidegua-popup__status';
+          }
+        }, 2000);
+      }
+    } else if (status) {
+      status.textContent = response?.error ?? 'Falha ao salvar.';
+      status.className = 'paidegua-popup__status is-error';
+    }
+  } catch (err) {
+    if (status) {
+      status.textContent = err instanceof Error ? err.message : String(err);
+      status.className = 'paidegua-popup__status is-error';
+    }
   }
 }
 
@@ -248,6 +323,12 @@ async function applyGrauRestrictions(): Promise<void> {
   }
   if (!hostname) return;
   const grau = detectGrauFromHostname(hostname);
+  // Em abas que NÃO são PJe (`unknown`), o popup é só configuração global —
+  // não faz sentido restringir os perfis pelo conteúdo da aba aleatória que
+  // o usuário está vendo, nem sobrescrever o `defaultProfile` salvo. Só
+  // entra na trava de grau quando a aba ativa é comprovadamente PJe.
+  if (grau === 'unknown') return;
+
   const secretariaOk = isSecretariaProfileAvailable(grau);
   const gestaoOk = isGestaoProfileAvailable(grau);
 
@@ -411,7 +492,7 @@ async function removeApiKey(): Promise<void> {
 // Abas (Geral / Triagem Inteligente)
 // =====================================================================
 
-type TabId = 'tab-geral' | 'tab-triagem' | 'tab-etiquetas' | 'tab-pericias';
+type TabId = 'tab-geral' | 'tab-triagem' | 'tab-etiquetas' | 'tab-pericias' | 'tab-comunicacao';
 
 function setActiveTab(tabId: TabId): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>('.paidegua-popup__tab');
@@ -735,6 +816,25 @@ function bindEvents(): void {
       window.open(chrome.runtime.getURL('options/options.html'), '_blank');
     }
   });
+
+  // Atalhos para o módulo Sigcrim (acervo criminal local-first).
+  // O dashboard lê do IDB e funciona offline — não precisa de aba PJe
+  // aberta. Já a varredura, sim — esta continua sendo disparada
+  // dentro do PJe via sidebar paidegua.
+  const abrirEmAba = (path: string): void => {
+    const url = chrome.runtime.getURL(path);
+    if (chrome.tabs?.create) {
+      void chrome.tabs.create({ url });
+    } else {
+      window.open(url, '_blank');
+    }
+  };
+  $<HTMLButtonElement>('btn-open-sigcrim-dash').addEventListener('click', () => {
+    abrirEmAba('criminal-dashboard/dashboard.html');
+  });
+  $<HTMLButtonElement>('btn-open-sigcrim-config').addEventListener('click', () => {
+    abrirEmAba('criminal-config/criminal-config.html');
+  });
   // Abre a página de diagnóstico (histórico local de varreduras). Usa
   // `chrome.tabs.create` em aba nova para não substituir a página atual
   // do usuário. Fallback `window.open` cobre contextos sem `chrome.tabs`.
@@ -980,8 +1080,23 @@ async function enterAuthenticatedUI(email: string): Promise<void> {
   bindTriagemExtras();
   bindEtiquetasEvents();
   bindPericiasEvents();
+  bindComunicacaoEvents();
   bindBackupEvents();
   await loadAll();
+}
+
+function bindComunicacaoEvents(): void {
+  for (const id of [
+    'comm-nome-vara',
+    'comm-email-ceab',
+    'comm-telefone-ceab',
+    'comm-etiqueta-perito',
+    'comm-etiqueta-ceab'
+  ]) {
+    document
+      .getElementById(id)
+      ?.addEventListener('input', () => scheduleSaveComunicacao());
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1673,6 +1788,8 @@ function abrirFormularioPericia(id: string | null): void {
   ($<HTMLInputElement>('per-quantidade')).value = String(
     alvo?.quantidadePadrao ?? 20
   );
+  ($<HTMLInputElement>('per-telefone')).value = alvo?.telefone ?? '';
+  ($<HTMLInputElement>('per-email')).value = alvo?.email ?? '';
   ($<HTMLInputElement>('per-ativo')).checked = alvo ? alvo.ativo : true;
   periciasState.form.etiquetas = alvo
     ? alvo.etiquetas.map((e) => ({ ...e }))
@@ -2169,6 +2286,10 @@ async function salvarPericia(): Promise<void> {
       ? Math.min(quantidadeRaw, 500)
       : 20;
   const ativo = $<HTMLInputElement>('per-ativo').checked;
+  const telefoneRaw = $<HTMLInputElement>('per-telefone').value.trim();
+  const telefone = telefoneRaw ? telefoneRaw : undefined;
+  const emailRaw = $<HTMLInputElement>('per-email').value.trim();
+  const email = emailRaw ? emailRaw : undefined;
   const etiquetas = [...periciasState.form.etiquetas];
   const assuntos = [...periciasState.form.assuntos];
 
@@ -2201,6 +2322,8 @@ async function salvarPericia(): Promise<void> {
     etiquetas,
     assuntos,
     quantidadePadrao,
+    telefone,
+    email,
     ativo
   };
 

@@ -66,7 +66,12 @@ export async function ocrPdf(
   const loadingTask = pdfjsLib.getDocument({
     data: new Uint8Array(buffer),
     disableFontFace: true,
-    useSystemFonts: false
+    useSystemFonts: false,
+    // Em MV3 a CSP da extension page bloqueia eval/Function — sem
+    // este flag o pdf.js cai num path interno que tenta `Function(...)`
+    // e quebra a abertura do PDF antes mesmo do OCR começar.
+    isEvalSupported: false,
+    verbosity: 0
   });
   const doc = await loadingTask.promise;
   const totalPages = doc.numPages;

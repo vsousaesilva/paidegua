@@ -174,7 +174,7 @@ function fetchViaMainWorld(
 // Ativação de documentos no PJe (sob demanda, último recurso)
 // ============================================================================
 
-async function activateDocumentInPje(docId: string): Promise<boolean> {
+export async function activateDocumentInPje(docId: string): Promise<boolean> {
   const findAndClick = (root: Document): boolean => {
     const candidates = root.querySelectorAll<HTMLElement>(
       'a, span[onclick], div[onclick], td[onclick], .rich-tree-node, .rf-trn'

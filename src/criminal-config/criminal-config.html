@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pAIdegua — Gestão Criminal</title>
+    <link rel="stylesheet" href="criminal-config.css" />
+  </head>
+  <body>
+    <header class="paidegua-criminal__header">
+      <span class="paidegua-criminal__logo" aria-hidden="true">
+        <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>pAIdegua — Gestão Criminal</h1>
+        <p class="paidegua-criminal__subtitle">
+          Configurações do perfil de gestão criminal: identificação do servidor,
+          pasta de auto-export e acervo local de processos. Os dados ficam
+          armazenados no IndexedDB do Chrome e nunca saem da sua estação,
+          exceto quando você gerar um arquivo de export.
+        </p>
+      </div>
+    </header>
+
+    <main class="paidegua-criminal__main">
+      <!-- ── Identificação do servidor ─────────────────────────── -->
+      <section class="paidegua-criminal__card">
+        <h2>Identificação do servidor</h2>
+        <p class="paidegua-criminal__hint">
+          Esses campos são gravados como audit em cada processo cadastrado
+          no acervo, indicando quem fez ou atualizou o registro. Não são
+          enviados a nenhum servidor — ficam apenas localmente.
+        </p>
+
+        <label class="paidegua-criminal__field">
+          <span>Matrícula ou e-mail funcional</span>
+          <input id="input-matricula" type="text" autocomplete="off" placeholder="Ex.: CE1894 ou servidor@jfce.jus.br" />
+        </label>
+
+        <label class="paidegua-criminal__field">
+          <span>Vara responsável</span>
+          <input id="input-vara" type="text" autocomplete="off" placeholder="Ex.: 27ª Vara Federal — Itapipoca/CE" />
+        </label>
+
+        <div class="paidegua-criminal__row">
+          <button id="btn-salvar-config" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--primary">
+            Salvar configuração
+          </button>
+          <span id="config-status" class="paidegua-criminal__status"></span>
+        </div>
+      </section>
+
+      <!-- ── Pasta de auto-export ──────────────────────────────── -->
+      <section class="paidegua-criminal__card">
+        <h2>Pasta de auto-export</h2>
+        <p class="paidegua-criminal__hint">
+          Selecione a pasta onde a extensão deverá gravar
+          automaticamente o arquivo
+          <code>paidegua-backup-AAAA-MM-DD.json</code>. Recomenda-se uma
+          pasta da rede da vara, com backup institucional.
+        </p>
+
+        <div id="export-status" class="paidegua-criminal__status">
+          Nenhuma pasta configurada.
+        </div>
+
+        <div class="paidegua-criminal__row">
+          <button id="btn-pasta-pick" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--primary">
+            Configurar pasta…
+          </button>
+          <button id="btn-pasta-clear" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--danger" disabled>
+            Remover configuração
+          </button>
+        </div>
+      </section>
+
+      <!-- ── Agendamento do auto-export ────────────────────────── -->
+      <section class="paidegua-criminal__card">
+        <h2>Agendamento do auto-export</h2>
+        <p class="paidegua-criminal__hint">
+          Defina quando o paIdegua deve gravar automaticamente o
+          backup do acervo na pasta acima. O agendamento usa o
+          <code>chrome.alarms</code> e roda mesmo com a aba do PJe
+          fechada — desde que o navegador esteja aberto. Para que a
+          gravação aconteça sem interação, mantenha a permissão de
+          escrita na pasta concedida (clique em <em>Exportar agora</em>
+          de tempos em tempos para reautorizar quando o navegador
+          revogar).
+        </p>
+
+        <div class="paidegua-criminal__row">
+          <label class="paidegua-criminal__field">
+            <span>Periodicidade</span>
+            <select id="select-periodicidade">
+              <option value="desligado">Desligado</option>
+              <option value="diario">Diário</option>
+              <option value="semanal">Semanal</option>
+            </select>
+          </label>
+          <label class="paidegua-criminal__field">
+            <span>Horário (24h)</span>
+            <input id="input-horario" type="time" value="19:00" />
+          </label>
+        </div>
+
+        <div class="paidegua-criminal__row">
+          <button id="btn-agendar-salvar" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--primary">
+            Salvar agendamento
+          </button>
+          <button id="btn-export-now" type="button" class="paidegua-criminal__btn">
+            Exportar agora
+          </button>
+          <span id="agendar-status" class="paidegua-criminal__status"></span>
+        </div>
+
+        <div id="ultimo-export-info" class="paidegua-criminal__hint paidegua-criminal__hint--small" style="margin-top: 12px;"></div>
+      </section>
+
+      <!-- ── Acervo local ──────────────────────────────────────── -->
+      <section class="paidegua-criminal__card">
+        <h2>Acervo local</h2>
+        <p class="paidegua-criminal__hint">
+          O acervo é populado pelas próximas fases (varredura PJe + edição
+          manual). As estatísticas abaixo refletem o estado atual.
+        </p>
+
+        <dl class="paidegua-criminal__stats">
+          <div>
+            <dt>Processos primários</dt>
+            <dd id="stat-primarios">—</dd>
+          </div>
+          <div>
+            <dt>Processos auxiliares</dt>
+            <dd id="stat-auxiliares">—</dd>
+          </div>
+          <div>
+            <dt>Réus cadastrados</dt>
+            <dd id="stat-reus">—</dd>
+          </div>
+        </dl>
+
+        <div class="paidegua-criminal__row">
+          <button id="btn-abrir-dashboard" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--primary">
+            Abrir acervo (Dashboard)
+          </button>
+          <button id="btn-revisar-poluidos" type="button" class="paidegua-criminal__btn">
+            Revisar dados inválidos…
+          </button>
+          <button id="btn-acervo-apagar" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--danger">
+            Apagar todo o acervo…
+          </button>
+          <span id="acervo-status" class="paidegua-criminal__status"></span>
+        </div>
+      </section>
+
+      <!-- ── Como funciona ────────────────────────────────────── -->
+      <section class="paidegua-criminal__card paidegua-criminal__card--note">
+        <h2>Como funciona</h2>
+        <ul class="paidegua-criminal__doc">
+          <li>
+            <strong>Local-first:</strong> os dados ficam armazenados no
+            IndexedDB do Chrome (banco <code>paidegua.criminal</code>) e
+            só saem da máquina quando você gerar um export manual.
+          </li>
+          <li>
+            <strong>Sem cifragem em repouso:</strong> mesma postura das
+            demais features do paidegua. A estação institucional já gateia
+            o acesso via login do servidor. Cifragem opcional será oferecida
+            no momento do export, quando o arquivo sair da máquina.
+          </li>
+          <li>
+            <strong>Trilha primária / auxiliar:</strong> processos das
+            classes de Procedimento Comum e Processo Especial entram no
+            dashboard principal com farol de prescrição. Cartas, recursos,
+            exceções e medidas cautelares isoladas ficam em trilha auxiliar
+            (disponível em fase posterior).
+          </li>
+          <li>
+            <strong>Audit por campo:</strong> cada campo de processo/réu
+            registra se veio do PJe (auto), de edição manual ou de IA —
+            exibido na sidebar de edição em forma de badge.
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <!-- ── Modal: revisão de dados inválidos ────────────────────── -->
+    <div id="modal-poluidos" class="paidegua-criminal__modal" hidden>
+      <div class="paidegua-criminal__modal-overlay" id="modal-poluidos-overlay"></div>
+      <div class="paidegua-criminal__modal-painel" role="dialog" aria-modal="true" aria-labelledby="modal-poluidos-titulo">
+        <header class="paidegua-criminal__modal-header">
+          <h2 id="modal-poluidos-titulo">Revisar dados inválidos</h2>
+          <button id="btn-modal-fechar" type="button" class="paidegua-criminal__btn-fechar" aria-label="Fechar">×</button>
+        </header>
+        <div class="paidegua-criminal__modal-body">
+          <p class="paidegua-criminal__hint">
+            Abaixo, os campos que o sistema detectou como inválidos
+            (gravados por bugs antigos da captura/IA). Cada item mostra
+            o valor atual e o motivo da detecção. Ao confirmar, esses
+            campos viram <code>—</code> (vazio) — disponíveis para
+            preenchimento correto via nova varredura, IA ou edição
+            manual.
+            <strong>Nenhum outro campo é alterado.</strong>
+          </p>
+
+          <div id="modal-poluidos-status" class="paidegua-criminal__status">
+            Carregando…
+          </div>
+
+          <div id="modal-poluidos-lista" class="paidegua-criminal__poluidos-lista" hidden></div>
+        </div>
+        <footer class="paidegua-criminal__modal-footer">
+          <button id="btn-modal-cancelar" type="button" class="paidegua-criminal__btn">
+            Cancelar
+          </button>
+          <button id="btn-modal-aplicar" type="button" class="paidegua-criminal__btn paidegua-criminal__btn--danger" disabled>
+            Limpar campos…
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <script src="criminal-config.js"></script>
+  </body>
+</html>

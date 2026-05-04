@@ -20,6 +20,10 @@
  */
 
 import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
+import {
+  lerNomeVaraDasSettings,
+  renderHeaderMeta
+} from '../shared/header-meta';
 import type {
   PericiaPerito,
   PericiaTarefaInfo,
@@ -90,7 +94,7 @@ async function main(): Promise<void> {
       return;
     }
     stateAtual = state;
-    montarMeta(state);
+    void montarMeta(state);
     registrarListenerBackground();
     renderizarSeletor(state);
   } catch (err) {
@@ -116,15 +120,23 @@ async function carregarEstado(rid: string): Promise<PericiasPainelState | null> 
   };
 }
 
-function montarMeta(state: PericiasPainelState): void {
-  const dt = new Date(state.abertoEm);
-  const dataFmt = dt.toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
+async function montarMeta(state: PericiasPainelState): Promise<void> {
+  const nomeVara = await lerNomeVaraDasSettings();
+  const unidade = nomeVara || state.hostnamePJe;
+  const peritosAtivos = state.peritos.filter((p) => p.ativo).length;
+  const contadores: string[] = [];
+  if (unidade !== state.hostnamePJe && state.hostnamePJe) {
+    contadores.push(state.hostnamePJe);
+  }
+  contadores.push(
+    `${state.tarefas.length} tarefa(s) detectada(s)`,
+    `${peritosAtivos} perito(s) ativo(s) cadastrado(s)`
+  );
+  renderHeaderMeta(elMeta, {
+    unidade,
+    geradoEm: state.abertoEm,
+    contadores
   });
-  elMeta.innerHTML =
-    `<div><strong>${escapeHtml(state.hostnamePJe)}</strong></div>` +
-    `<div>${escapeHtml(dataFmt)}</div>`;
 }
 
 function isoDataLocal(d: Date): string {
@@ -636,13 +648,5 @@ function exibirErro(msg: string): void {
   mostrarEstado('erro');
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 void stateAtual;

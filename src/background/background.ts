@@ -75,6 +75,7 @@ import {
   rankEtiquetasSugestionaveis
 } from '../shared/etiquetas-matcher';
 import type { SaveTemplatePayload } from '../shared/templates-save';
+import { addRegistro as addComunicacaoRegistro } from '../shared/comunicacao-store';
 import type {
   AnaliseProcessoResult,
   ChatMessage,
@@ -87,9 +88,12 @@ import type {
   GestaoSugestao,
   GestaoTarefaInfo,
   PAIdeguaSettings,
+  AudienciaTarefaInfo,
+  ComunicacaoSettings,
   PericiaPerito,
   PericiaTarefaInfo,
   PericiasDashboardPayload,
+  RegistroCobranca,
   PJeAuthSnapshot,
   PrazosFitaDashboardPayload,
   SugerirEtiquetasRequest,
@@ -116,6 +120,35 @@ import {
 } from '../shared/prazos-fita-indexed-storage';
 import { gravarAuthSnapshot } from './pje-api-client';
 import { getProvider } from './providers';
+import {
+  PROMPT_SISTEMA_DADOS_PDF,
+  MAX_CHARS_PARA_IA,
+  type DadosPdfExtraidos
+} from '../shared/criminal-ai-prompts';
+import {
+  atualizarProcesso,
+  atualizarReu,
+  CRIMINAL_DB_NAME,
+  CRIMINAL_DB_VERSION,
+  CRIMINAL_STORES,
+  getProcessoById,
+  limparDadosPoluidos,
+  loadCriminalConfig,
+  previewLimpezaPoluidos,
+  upsertProcessoFromPje
+} from '../shared/criminal-store';
+import {
+  executarAutoExport,
+  minutosAteProximoExport
+} from '../shared/criminal-export';
+import type {
+  PjeOrigemMap,
+  Processo,
+  ProcessoPayload,
+  Reu,
+  ReuPayload,
+  TraceEntry
+} from '../shared/criminal-types';
 import {
   defaultSettings,
   getApiKey,
@@ -159,6 +192,12 @@ chrome.runtime.onInstalled.addListener((details) => {
     void chrome.tabs.create({ url: chrome.runtime.getURL('welcome/welcome.html') })
       .catch((err) => console.warn(`${LOG_PREFIX} falha abrindo welcome:`, err));
   }
+  // Sincroniza o alarm de auto-export com a config persistida.
+  // Importante em updates da extensão (o navegador limpa alarms
+  // quando a versão do SW muda).
+  void agendarAutoExportFromConfig().catch((err) =>
+    console.warn(`${LOG_PREFIX} reagendar auto-export pós-install falhou:`, err)
+  );
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -177,6 +216,279 @@ chrome.runtime.onStartup.addListener(() => {
       err
     )
   );
+  // Reagenda o auto-export — o SW pode ter sido reciclado e os alarms
+  // sobrevivem, mas reagendar é idempotente e cobre edge cases.
+  void agendarAutoExportFromConfig().catch((err) =>
+    console.warn(`${LOG_PREFIX} reagendar auto-export no startup falhou:`, err)
+  );
+});
+
+// =====================================================================
+// Auto-export agendado do acervo criminal
+// =====================================================================
+
+const ALARM_AUTO_EXPORT = 'paidegua/criminal/auto-export';
+
+/**
+ * Lê a config do acervo criminal e (re)cria o `chrome.alarms` que
+ * dispara o auto-export. `'desligado'` ou faltando horário ⇒ alarm é
+ * removido. Idempotente: pode ser chamado várias vezes sem efeito
+ * colateral.
+ */
+/**
+ * Abre os autos digitais de um processo no PJe em uma nova aba.
+ *
+ * Estratégia:
+ *   1. Se temos `idProcesso` + `hostnamePje`: tenta achar uma aba
+ *      PJe ativa (mesmo hostname preferencialmente, qualquer
+ *      `*.jus.br` como segunda opção) e pedir a `ca` via
+ *      `CRIMINAL_FETCH_CA` ao content script. Com `ca`, monta a URL
+ *      completa `Detalhe/listAutosDigitais.seam?idProcesso=X&ca=Y` —
+ *      essa rota abre direto os autos. Sem `ca`, o PJe redireciona
+ *      para `error.seam` (foi exatamente o sintoma reportado).
+ *   2. Fallback: abre a Consulta Pública por número CNJ
+ *      (`pjeconsulta/ConsultaPublica/listView.seam?numeroProcesso=X`),
+ *      que dispensa `ca` mas exige um clique adicional do usuário.
+ *      Usado quando não há aba PJe ativa ou a geração da `ca` falha.
+ *
+ * Devolve `{ ok, modo, url, error? }` para a UI exibir feedback
+ * (toast) sobre qual rota foi usada.
+ */
+async function handleCriminalAbrirProcesso(
+  payload: {
+    idProcesso?: number | null;
+    hostnamePje?: string | null;
+    idTaskInstance?: number | null;
+    numeroProcesso?: string | null;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const { idProcesso, hostnamePje, numeroProcesso } = payload;
+  if (!hostnamePje) {
+    sendResponse({
+      ok: false,
+      error: 'Hostname do PJe não capturado neste processo.'
+    });
+    return;
+  }
+
+  // 1. Tenta abrir os autos diretos (precisa de ca).
+  if (idProcesso) {
+    try {
+      const tabs = await chrome.tabs.query({});
+      // Prioridade 1: aba do MESMO hostname (sessão já válida).
+      // Prioridade 2: qualquer aba *.jus.br (a sessão pode estar lá
+      // se for o mesmo TRF — content responde ou erra rápido).
+      const candidatos = tabs
+        .filter((t) => {
+          if (!t.id || !t.url) return false;
+          try {
+            const u = new URL(t.url);
+            return /\.jus\.br$/i.test(u.hostname) && /^https?:$/.test(u.protocol);
+          } catch {
+            return false;
+          }
+        })
+        .sort((a, b) => {
+          const aPrio = a.url?.includes(hostnamePje) ? 0 : 1;
+          const bPrio = b.url?.includes(hostnamePje) ? 0 : 1;
+          if (aPrio !== bPrio) return aPrio - bPrio;
+          return (
+            ((b as { lastAccessed?: number }).lastAccessed ?? 0) -
+            ((a as { lastAccessed?: number }).lastAccessed ?? 0)
+          );
+        });
+
+      const tabPje = candidatos[0];
+      if (tabPje?.id) {
+        const respCa = (await chrome.tabs.sendMessage(tabPje.id, {
+          channel: MESSAGE_CHANNELS.CRIMINAL_FETCH_CA,
+          payload: { idProcesso }
+        })) as { ok: boolean; ca?: string; error?: string };
+
+        if (respCa?.ok && respCa.ca) {
+          // Só `idProcesso + ca` — propositalmente NÃO incluímos
+          // `idTaskInstance` porque ele foi capturado na varredura
+          // anterior e pode estar defasado (o processo costuma
+          // mudar de tarefa entre varreduras). PJe rejeita combinações
+          // `idProcesso + idTaskInstance` inválidas com a mensagem
+          // "Usuário sem visibilidade", mesmo com `ca` correta.
+          // Para abrir os autos basta `ca`. Para ir direto numa
+          // tarefa específica, há o botão "abrir tarefa" separado.
+          const url =
+            `https://${hostnamePje}/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam` +
+            `?idProcesso=${idProcesso}&ca=${encodeURIComponent(respCa.ca)}`;
+          await chrome.tabs.create({ url });
+          sendResponse({ ok: true, modo: 'autos', url });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `${LOG_PREFIX} abrir-processo: falha gerando ca, caindo em ConsultaPublica:`,
+        err
+      );
+    }
+  }
+
+  // 2. Fallback: Consulta Pública por número CNJ.
+  if (!numeroProcesso) {
+    sendResponse({
+      ok: false,
+      error:
+        'Não foi possível gerar chave de acesso do PJe (sem aba PJe ativa) e o número CNJ não está disponível para o fallback.'
+    });
+    return;
+  }
+  const m = numeroProcesso.match(/[\d.\-]+/);
+  const num = m ? m[0] : numeroProcesso;
+  const url =
+    `https://${hostnamePje}/pjeconsulta/ConsultaPublica/listView.seam` +
+    `?numeroProcesso=${encodeURIComponent(num)}`;
+  await chrome.tabs.create({ url });
+  sendResponse({ ok: true, modo: 'consulta-publica', url });
+}
+
+/**
+ * Abre a tela de movimentação da tarefa corrente no PJe — mesma
+ * estratégia do `handleCriminalAbrirProcesso`, mas a URL é
+ * `movimentar.seam?idProcesso=X&newTaskId=Y&ca=Z`.
+ *
+ * O `idTaskInstance` é o capturado na última varredura. Se o
+ * processo já saiu da tarefa (foi movimentado), o PJe rejeita com
+ * "Usuário sem visibilidade" mesmo com `ca` correta — a UI deve
+ * orientar o usuário a clicar em "Atualizar com PJe + IA" para
+ * recapturar a tarefa atual.
+ */
+async function handleCriminalAbrirTarefa(
+  payload: {
+    idProcesso?: number | null;
+    idTaskInstance?: number | null;
+    hostnamePje?: string | null;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const { idProcesso, idTaskInstance, hostnamePje } = payload;
+  if (!hostnamePje || !idProcesso || !idTaskInstance) {
+    sendResponse({
+      ok: false,
+      error: 'Dados insuficientes (hostname, idProcesso ou idTaskInstance ausentes).'
+    });
+    return;
+  }
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    const candidatos = tabs
+      .filter((t) => {
+        if (!t.id || !t.url) return false;
+        try {
+          const u = new URL(t.url);
+          return /\.jus\.br$/i.test(u.hostname) && /^https?:$/.test(u.protocol);
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => {
+        const aPrio = a.url?.includes(hostnamePje) ? 0 : 1;
+        const bPrio = b.url?.includes(hostnamePje) ? 0 : 1;
+        if (aPrio !== bPrio) return aPrio - bPrio;
+        return (
+          ((b as { lastAccessed?: number }).lastAccessed ?? 0) -
+          ((a as { lastAccessed?: number }).lastAccessed ?? 0)
+        );
+      });
+
+    const tabPje = candidatos[0];
+    if (!tabPje?.id) {
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhuma aba do PJe aberta. Abra qualquer processo no PJe e tente novamente.'
+      });
+      return;
+    }
+
+    const respCa = (await chrome.tabs.sendMessage(tabPje.id, {
+      channel: MESSAGE_CHANNELS.CRIMINAL_FETCH_CA,
+      payload: { idProcesso }
+    })) as { ok: boolean; ca?: string; error?: string };
+
+    if (!respCa?.ok || !respCa.ca) {
+      sendResponse({
+        ok: false,
+        error: `Não foi possível gerar chave de acesso: ${respCa?.error ?? 'sem detalhes'}.`
+      });
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('idProcesso', String(idProcesso));
+    params.set('newTaskId', String(idTaskInstance));
+    params.set('ca', respCa.ca);
+    const url =
+      `https://${hostnamePje}/pje/Processo/movimentar.seam?${params.toString()}`;
+    await chrome.tabs.create({ url });
+    sendResponse({ ok: true, url });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} abrir-tarefa:`, err);
+    sendResponse({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
+
+async function agendarAutoExportFromConfig(): Promise<void> {
+  try {
+    const config = await loadCriminalConfig();
+    const periodicidade = config.auto_export_periodicidade ?? 'desligado';
+    const horario = config.auto_export_horario ?? '';
+    if (periodicidade === 'desligado' || !horario) {
+      await chrome.alarms.clear(ALARM_AUTO_EXPORT);
+      console.log(`${LOG_PREFIX} auto-export: agendamento desligado.`);
+      return;
+    }
+    const minutosAteProx = minutosAteProximoExport(periodicidade, horario);
+    const periodoMinutos = periodicidade === 'diario' ? 24 * 60 : 7 * 24 * 60;
+    await chrome.alarms.create(ALARM_AUTO_EXPORT, {
+      delayInMinutes: minutosAteProx,
+      periodInMinutes: periodoMinutos
+    });
+    console.log(
+      `${LOG_PREFIX} auto-export agendado: ${periodicidade} às ${horario} ` +
+        `(próxima execução em ${minutosAteProx}min).`
+    );
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} agendarAutoExportFromConfig falhou:`, err);
+    throw err;
+  }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== ALARM_AUTO_EXPORT) return;
+  console.log(`${LOG_PREFIX} auto-export disparado pelo alarm.`);
+  // Disparo do SW: NÃO podemos pedir permissão (não há gesto). Se a
+  // permissão foi revogada, executarAutoExport registra falha em
+  // `ultimo_export_status` e a UI da config exibe um aviso.
+  void executarAutoExport({
+    permitirRequestPermission: false,
+    origem: 'agendamento'
+  })
+    .then((r) => {
+      if (r.ok) {
+        console.log(
+          `${LOG_PREFIX} auto-export concluído: ${r.arquivo} (${r.bytes} bytes).`
+        );
+      } else {
+        console.warn(
+          `${LOG_PREFIX} auto-export falhou (${r.motivoCurto}): ${r.error}`
+        );
+      }
+    })
+    .catch((err) => {
+      console.error(`${LOG_PREFIX} auto-export exception:`, err);
+    });
 });
 
 // Se este modulo for reexecutado em uma reinicializacao do service worker
@@ -684,6 +996,74 @@ function dispatchMessage(
         })();
         return true;
 
+      case MESSAGE_CHANNELS.COMUNICACAO_OPEN_PAINEL:
+        void handleOpenComunicacaoPainel(
+          message.payload as {
+            peritos: PericiaPerito[];
+            settings: ComunicacaoSettings;
+            hostnamePJe: string;
+            legacyOrigin: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.COMUNICACAO_RUN_COLETA:
+        void handleComunicacaoRunColeta(
+          message.payload as {
+            requestId: string;
+            modo: 'cobrar-perito-whatsapp' | 'cobrar-ceab-email';
+            filtro: 'tarefa' | 'etiqueta';
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.COMUNICACAO_REGISTRAR_COBRANCA:
+        void handleComunicacaoRegistrarCobranca(
+          message.payload as Omit<RegistroCobranca, 'id' | 'geradoEm'>,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUDIENCIA_OPEN_PAINEL:
+        void handleOpenAudienciaPainel(
+          message.payload as {
+            tarefas: AudienciaTarefaInfo[];
+            hostnamePJe: string;
+            legacyOrigin: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUDIENCIA_RUN_COLETA:
+        void handleAudienciaRunColeta(
+          message.payload as {
+            requestId: string;
+            nomesTarefas: string[];
+            quantidadePorPauta: number;
+            dataAudienciaISO: string;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUDIENCIA_APLICAR_ETIQUETAS:
+        void handleAudienciaAplicarEtiquetas(
+          message.payload as {
+            etiquetaPauta: string;
+            idsProcesso: number[];
+            favoritarAposCriar?: boolean;
+          },
+          sendResponse
+        );
+        return true;
+
       case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
         void handleAnalisarProcesso(
           message.payload as AnalisarProcessoRequest,
@@ -711,6 +1091,196 @@ function dispatchMessage(
           sendResponse
         );
         return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_COLETAR_PROCESSO:
+        void handleCriminalColetarProcesso(
+          message.payload as {
+            url: string;
+            idProcesso?: number;
+            timeoutMs?: number;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_AI_EXTRAIR_PDF:
+        void handleCriminalAiExtrairPdf(
+          message.payload as {
+            texto: string;
+            tipoDocumento?: string;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_OPEN_PAINEL:
+        void handleOpenCriminalPainel(
+          message.payload as {
+            tarefas: Array<{ nome: string; quantidade: number | null }>;
+            config: unknown;
+            hostnamePJe: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_START_COLETA:
+        void handleCriminalStartColeta(
+          message.payload as {
+            requestId: string;
+            nomesTarefas: string[];
+            modo: 'rapido' | 'completo';
+            config: unknown;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_ENRIQUECER_REU:
+        void handleCriminalEnriquecerReu(
+          message.payload as { reuId: string; cpf: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_REPROCESSAR_PROCESSO:
+        void handleCriminalReprocessarProcesso(
+          message.payload as { processoId: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_PROCESSAR_PDF_MANUAL:
+        void handleCriminalProcessarPdfManual(
+          message.payload as {
+            processoId: string;
+            texto: string;
+            tipoDocumento?: string;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_REAGENDAR_AUTO_EXPORT:
+        void agendarAutoExportFromConfig()
+          .then(() => sendResponse({ ok: true }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_ABRIR_PROCESSO:
+        void handleCriminalAbrirProcesso(
+          message.payload as {
+            idProcesso?: number | null;
+            hostnamePje?: string | null;
+            idTaskInstance?: number | null;
+            numeroProcesso?: string | null;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_ABRIR_TAREFA:
+        void handleCriminalAbrirTarefa(
+          message.payload as {
+            idProcesso?: number | null;
+            idTaskInstance?: number | null;
+            hostnamePje?: string | null;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_AUTO_EXPORT_NOW:
+        // Disparado pelo botão "Exportar agora" da página de config.
+        // A própria página tem gesto do usuário e poderia chamar a
+        // função local — usar este canal centraliza o registro do
+        // status e permite reusar a mesma rotina do alarm.
+        void executarAutoExport({
+          permitirRequestPermission: false,
+          origem: 'manual'
+        })
+          .then((r) => sendResponse(r))
+          .catch((err) =>
+            sendResponse({
+              ok: false,
+              error: errorMessage(err),
+              motivoCurto: 'falha-escrita'
+            })
+          );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_PREVIEW_LIMPEZA:
+        void (async () => {
+          try {
+            const itens = await previewLimpezaPoluidos();
+            sendResponse({ ok: true, itens });
+          } catch (err) {
+            sendResponse({ ok: false, error: errorMessage(err) });
+          }
+        })();
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_APLICAR_LIMPEZA:
+        void (async () => {
+          try {
+            const stats = await limparDadosPoluidos();
+            sendResponse({ ok: true, ...stats });
+          } catch (err) {
+            sendResponse({ ok: false, error: errorMessage(err) });
+          }
+        })();
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_ATUALIZAR_PROCESSO:
+        void handleCriminalAtualizarProcesso(
+          message.payload as {
+            processoId: string;
+            patch: Partial<ProcessoPayload>;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_ATUALIZAR_REU:
+        void handleCriminalAtualizarReu(
+          message.payload as {
+            reuId: string;
+            patch: Partial<Reu>;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.CRIMINAL_COLETA_SLOT:
+        // Upsert no IndexedDB do origin da extensão (background) +
+        // roteamento de versão slim pro painel.
+        void handleCriminalColetaSlot(
+          message.payload as {
+            requestId: string;
+            capturado: {
+              payload: ProcessoPayload;
+              reus: ReuPayload[];
+              pje_origem: PjeOrigemMap;
+              reusOrigem: PjeOrigemMap[];
+              ultima_sincronizacao_pje: string;
+              warnings: string[];
+            };
+          }
+        );
+        sendResponse({ ok: true });
+        return false;
+
+      case MESSAGE_CHANNELS.CRIMINAL_COLETA_PROG:
+      case MESSAGE_CHANNELS.CRIMINAL_COLETA_DONE:
+      case MESSAGE_CHANNELS.CRIMINAL_COLETA_FAIL:
+        void rotearEventoCriminal(
+          message.channel,
+          message.payload as { requestId?: string; [k: string]: unknown }
+        );
+        sendResponse({ ok: true });
+        return false;
 
       case MESSAGE_CHANNELS.PRAZOS_ENCERRAR_RUN:
         void handlePrazosEncerrarRun(
@@ -741,6 +1311,67 @@ function dispatchMessage(
       case MESSAGE_CHANNELS.ETIQUETAS_SUGERIR:
         void handleEtiquetasSugerir(
           message.payload as SugerirEtiquetasRequest,
+          sendResponse
+        );
+        return true;
+
+      // ── Controle Metas CNJ (perfil Gestão) ────────────────────
+      case MESSAGE_CHANNELS.METAS_OPEN_PAINEL:
+        void handleOpenMetasPainel(
+          message.payload as {
+            tarefas: Array<{ nome: string; quantidade: number | null }>;
+            hostnamePJe: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.METAS_START_COLETA:
+        void handleMetasStartColeta(
+          message.payload as {
+            requestId: string;
+            nomes: string[];
+          },
+          sendResponse
+        );
+        return true;
+
+      case 'paidegua/metas/precisa-fetch':
+        void handleMetasPrecisaFetch(
+          message.payload as {
+            numero_processo: string;
+            ultimo_movimento_visto: string | null;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.METAS_UPSERT_PROCESSO:
+        void handleMetasUpsertProcesso(
+          message.payload as MetasPatchEnvelopeBg,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.METAS_COLETA_PROG:
+      case MESSAGE_CHANNELS.METAS_COLETA_DONE:
+      case MESSAGE_CHANNELS.METAS_COLETA_FAIL:
+        void rotearEventoMetas(
+          message.channel,
+          message.payload as { requestId?: string; [k: string]: unknown }
+        );
+        sendResponse({ ok: true });
+        return false;
+
+      case MESSAGE_CHANNELS.METAS_APLICAR_ETIQUETAS:
+        void handleMetasAplicarEtiquetas(
+          message.payload as {
+            etiquetaPauta: string;
+            idsProcesso: number[];
+            favoritarAposCriar?: boolean;
+          },
           sendResponse
         );
         return true;
@@ -3155,6 +3786,952 @@ function gerarPericiasRequestId(): string {
   return `pericias-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function gerarCriminalRequestId(): string {
+  return `criminal-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Handler de abertura da aba do Sigcrim. Espelha
+ * `handleOpenPericiasPainel`: grava `{ tarefas, config }` em
+ * `chrome.storage.session` indexado por `requestId` e cria a aba
+ * `criminal-painel/painel.html?rid=<requestId>`. Usa o mesmo `setRota`
+ * do Painel Gerencial — o prefixo "criminal-" no requestId evita
+ * colisão com outras features.
+ */
+async function handleOpenCriminalPainel(
+  payload: {
+    tarefas: Array<{ nome: string; quantidade: number | null }>;
+    config: unknown;
+    hostnamePJe: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou Sigcrim.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({
+        ok: false,
+        error: 'Payload de abertura do Sigcrim inválido.'
+      });
+      return;
+    }
+
+    const requestId = gerarCriminalRequestId();
+    const stateKey =
+      `${STORAGE_KEYS.CRIMINAL_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        config: payload.config ?? null,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('criminal-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba do Sigcrim.'
+      });
+      return;
+    }
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenCriminalPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Painel → background: usuário confirmou seleção e clicou "Iniciar".
+ * Background olha a rota gravada (qual aba PJe disparou o painel) e
+ * dispatcha `CRIMINAL_RUN_COLETA` para o content script daquela aba.
+ * Não bloqueia esperando a varredura terminar — eventos de progresso
+ * vêm via canais separados (rotearEventoCriminal).
+ */
+async function handleCriminalStartColeta(
+  payload: {
+    requestId: string;
+    nomesTarefas: string[];
+    modo: 'rapido' | 'completo';
+    config: unknown;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload.requestId);
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error: 'Rota não encontrada — recarregue o painel a partir do Sigcrim.'
+      });
+      return;
+    }
+    // Fire-and-forget. O content responde via eventos próprios.
+    chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.CRIMINAL_RUN_COLETA,
+      payload
+    }).catch((err) => {
+      console.warn(`${LOG_PREFIX} criminal: dispatch RUN_COLETA falhou:`, err);
+      void rotearEventoCriminal(MESSAGE_CHANNELS.CRIMINAL_COLETA_FAIL, {
+        requestId: payload.requestId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalStartColeta falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Dashboard → background: enriquece UM réu via tela JSF de Pessoa
+ * Física do PJe. O background:
+ *
+ *   1. Encontra uma aba PJe ativa (qualquer hostname `*.jus.br`).
+ *   2. Dispatcha `CRIMINAL_FETCH_PESSOA_FISICA` para o content
+ *      daquela aba — só ele tem cookies de sessão pra navegar a
+ *      tela administrativa.
+ *   3. Quando o content responde com os campos extraídos, persiste
+ *      no IDB via `atualizarReu` (sem mexer nos demais réus do
+ *      processo) e devolve o resultado para o dashboard.
+ *
+ * Se nenhuma aba PJe estiver aberta, devolve erro acionável para o
+ * dashboard avisar o usuário ("abra uma aba do PJe e tente de novo").
+ */
+async function handleCriminalEnriquecerReu(
+  payload: { reuId: string; cpf: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  // Trace passo-a-passo enviado de volta ao dashboard. Cada mudança
+  // de estado é registrada para que o usuário veja exatamente o que
+  // aconteceu no fluxo JSF (inclusive sucesso "vazio" — quando o
+  // cadastro PJe existe mas não tem RG/mãe/endereço preenchidos).
+  const trace: TraceEntry[] = [];
+  const t0 = Date.now();
+  const log = (
+    etapa: string,
+    status: TraceEntry['status'],
+    info?: string
+  ): void => {
+    trace.push({ etapa, status, info, ts: Date.now() - t0 });
+  };
+  try {
+    const reuId = payload.reuId;
+    const cpf = payload.cpf;
+    if (!reuId || !cpf) {
+      log('validar-payload', 'falha', 'reuId ou cpf ausentes');
+      sendResponse({ ok: false, error: 'Pedido inválido (reuId/cpf ausentes).', trace });
+      return;
+    }
+    log('validar-payload', 'ok', `cpf=${cpf}`);
+
+    // Procura uma aba PJe ativa.
+    const tabs = await chrome.tabs.query({});
+    const candidatas = tabs
+      .filter((t) => {
+        if (!t.id || !t.url) return false;
+        try {
+          const u = new URL(t.url);
+          return /\.jus\.br$/i.test(u.hostname) && /^https?:$/.test(u.protocol);
+        } catch {
+          return false;
+        }
+      })
+      .sort(
+        (a, b) =>
+          ((b as { lastAccessed?: number }).lastAccessed ?? 0) -
+          ((a as { lastAccessed?: number }).lastAccessed ?? 0)
+      );
+
+    const tabPJe = candidatas[0];
+    if (!tabPJe?.id) {
+      log('encontrar-aba-pje', 'falha', 'nenhuma aba *.jus.br aberta');
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhuma aba do PJe aberta. Abra qualquer processo no PJe e tente novamente.',
+        trace
+      });
+      return;
+    }
+    log('encontrar-aba-pje', 'ok', `tab #${tabPJe.id}`);
+
+    let resp: unknown;
+    try {
+      resp = await chrome.tabs.sendMessage(tabPJe.id, {
+        channel: MESSAGE_CHANNELS.CRIMINAL_FETCH_PESSOA_FISICA,
+        payload: { cpf }
+      });
+    } catch (err) {
+      log(
+        'fetch-pessoa-fisica',
+        'falha',
+        err instanceof Error ? err.message : String(err)
+      );
+      sendResponse({
+        ok: false,
+        error:
+          'Não foi possível falar com a aba do PJe (' +
+          (err instanceof Error ? err.message : String(err)) +
+          '). Recarregue a aba do PJe e tente novamente.',
+        trace
+      });
+      return;
+    }
+
+    const r = resp as
+      | {
+          ok: true;
+          dados: {
+            idPessoa: number;
+            nome: string | null;
+            cpf: string | null;
+            rg: string | null;
+            dataNascimento: string | null;
+            nomeMae: string | null;
+            endereco: string | null;
+          };
+        }
+      | { ok: false; error: string };
+
+    if (!r || r.ok !== true) {
+      const err = r && r.ok === false ? r.error : 'Erro desconhecido no enriquecimento.';
+      log('fetch-pessoa-fisica', 'falha', err);
+      sendResponse({ ok: false, error: err, trace });
+      return;
+    }
+    log(
+      'fetch-pessoa-fisica',
+      'ok',
+      `idPessoa=${r.dados.idPessoa}, nome=${r.dados.nome ?? 'null'}, ` +
+        `nasc=${r.dados.dataNascimento ?? 'null'}, rg=${r.dados.rg ?? 'null'}, ` +
+        `mãe=${r.dados.nomeMae ? 'sim' : 'null'}, endereço=${r.dados.endereco ? 'sim' : 'null'}`
+    );
+
+    // Monta patch + carimba origem 'pje' para os campos preenchidos.
+    const patch: Partial<Reu> = {
+      id_pessoa_pje: r.dados.idPessoa
+    };
+    const origem: PjeOrigemMap = { id_pessoa_pje: 'pje' };
+    const camposPreenchidos: string[] = ['id_pessoa_pje'];
+    if (r.dados.dataNascimento) {
+      patch.data_nascimento = r.dados.dataNascimento;
+      origem.data_nascimento = 'pje';
+      camposPreenchidos.push('data_nascimento');
+    }
+    if (r.dados.rg) {
+      patch.rg = r.dados.rg;
+      origem.rg = 'pje';
+      camposPreenchidos.push('rg');
+    }
+    if (r.dados.nomeMae) {
+      patch.nome_mae = r.dados.nomeMae;
+      origem.nome_mae = 'pje';
+      camposPreenchidos.push('nome_mae');
+    }
+    if (r.dados.endereco) {
+      patch.endereco = r.dados.endereco;
+      origem.endereco = 'pje';
+      camposPreenchidos.push('endereco');
+    }
+
+    if (camposPreenchidos.length === 1) {
+      // Só o id_pessoa_pje veio — os demais estão vazios no cadastro.
+      log(
+        'gravar-idb',
+        'aviso',
+        'cadastro PJe encontrado mas sem dados preenchidos (apenas idPessoa)'
+      );
+    }
+
+    const atualizado = await atualizarReu(reuId, patch, origem);
+    if (!atualizado) {
+      log('gravar-idb', 'falha', `réu ${reuId} sumiu do IDB`);
+      sendResponse({
+        ok: false,
+        error: `Réu ${reuId} não encontrado no IDB.`,
+        trace
+      });
+      return;
+    }
+    if (camposPreenchidos.length > 1) {
+      log('gravar-idb', 'ok', `${camposPreenchidos.join(', ')}`);
+    }
+
+    sendResponse({ ok: true, reu: atualizado, trace });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalEnriquecerReu falhou:`, error);
+    log('exception', 'falha', errorMessage(error));
+    sendResponse({ ok: false, error: errorMessage(error), trace });
+  }
+}
+
+/**
+ * Reprocessamento sob demanda de um processo já capturado. O dashboard
+ * dispara um clique e o background:
+ *
+ *   1. Lê `id_processo_pje` + `hostname_pje` do IDB.
+ *   2. Pede `chaveAcesso` (`ca`) à aba PJe ativa via `CRIMINAL_FETCH_CA`.
+ *   3. Abre uma aba **inativa** (background) com a URL dos autos digitais
+ *      e a `ca` fresca. A aba carrega o DOM vivo, o que permite ao
+ *      content ativar links de documentos via clique — passo crítico
+ *      para o PJe legacy entregar os bytes do PDF (fetch direto retorna
+ *      0 bytes até que alguém clique).
+ *   4. Aguarda `tabs.onUpdated` com `status === 'complete'`.
+ *   5. Manda `CRIMINAL_EXTRAIR_NA_ABA` para essa aba — o handler já
+ *      existente extrai partes/movimentos/detalhes/documentos, ativa
+ *      cada PDF principal, lê o conteúdo e chama IA.
+ *   6. Fecha a aba.
+ *   7. Aplica os campos extraídos pela IA com origem `'ia'`,
+ *      preservando edições manuais e dados do PJe que não estão na IA.
+ *   8. Devolve o processo atualizado.
+ *
+ * Em paralelo a este reprocessamento (orquestrado pelo dashboard),
+ * o JSF Pessoa Física continua sendo chamado por réu via
+ * `CRIMINAL_ENRIQUECER_REU` — fluxos independentes, marcam origens
+ * diferentes (`pje` para JSF, `ia` para PDF→IA).
+ */
+/**
+ * Aplica `dadosIA` extraídos por IA num processo já carregado do IDB,
+ * gravando com origem `'ia'` apenas nos campos que não tenham sido
+ * marcados como `'manual'` pelo usuário. Compartilhado entre o
+ * reprocessamento automático (`handleCriminalReprocessarProcesso`) e
+ * o upload manual de PDF (`handleCriminalProcessarPdfManual`).
+ *
+ * Para réus em processos multi-réu, o mesmo dado vai para todos —
+ * a IA não individualiza réus a partir do texto. Caso especial:
+ * `cpf_reu` / `data_nascimento` / `numero_seeu` só preenchem se o réu
+ * estiver vazio no campo (evita sobrescrever dados específicos por
+ * réu já capturados pelo PJe).
+ */
+async function aplicarDadosIaNoProcesso(
+  proc: Processo,
+  dadosIA: DadosPdfExtraidos,
+  log: (etapa: string, status: TraceEntry['status'], info?: string) => void
+): Promise<void> {
+  // PROCESSO
+  const patchProc: Partial<ProcessoPayload> = {};
+  const origemProc: PjeOrigemMap = {};
+  const origAtual = proc.pje_origem ?? {};
+
+  if (dadosIA.tipo_crime && origAtual.tipo_crime !== 'manual') {
+    patchProc.tipo_crime = dadosIA.tipo_crime;
+    origemProc.tipo_crime = 'ia';
+  }
+  if (dadosIA.data_fato && origAtual.data_fato !== 'manual') {
+    patchProc.data_fato = dadosIA.data_fato;
+    origemProc.data_fato = 'ia';
+  }
+  if (
+    dadosIA.data_recebimento_denuncia &&
+    origAtual.data_recebimento_denuncia !== 'manual'
+  ) {
+    patchProc.data_recebimento_denuncia = dadosIA.data_recebimento_denuncia;
+    origemProc.data_recebimento_denuncia = 'ia';
+  }
+  if (Object.keys(patchProc).length > 0) {
+    await atualizarProcesso(proc.id, patchProc);
+    const novaOrigem: PjeOrigemMap = { ...origAtual, ...origemProc };
+    await aplicarOrigemProcesso(proc.id, novaOrigem);
+    log(
+      'gravar-processo',
+      'ok',
+      `${Object.keys(patchProc).length} campo(s): ${Object.keys(patchProc).join(', ')}`
+    );
+  } else {
+    log(
+      'gravar-processo',
+      'aviso',
+      'nenhum campo da IA passou pelos filtros (todos null ou já manuais)'
+    );
+  }
+
+  // RÉUS
+  for (const reu of proc.reus) {
+    const patchReu: Partial<Reu> = {};
+    const origemReu: PjeOrigemMap = {};
+    const origAtualReu = reu.pje_origem ?? {};
+
+    if (
+      dadosIA.cpf_reu &&
+      !reu.cpf_reu &&
+      origAtualReu.cpf_reu !== 'manual'
+    ) {
+      patchReu.cpf_reu = dadosIA.cpf_reu;
+      origemReu.cpf_reu = 'ia';
+    }
+    if (
+      dadosIA.data_nascimento &&
+      !reu.data_nascimento &&
+      origAtualReu.data_nascimento !== 'manual'
+    ) {
+      patchReu.data_nascimento = dadosIA.data_nascimento;
+      origemReu.data_nascimento = 'ia';
+    }
+    if (
+      dadosIA.data_sentenca &&
+      origAtualReu.data_sentenca !== 'manual'
+    ) {
+      patchReu.data_sentenca = dadosIA.data_sentenca;
+      origemReu.data_sentenca = 'ia';
+    }
+    if (
+      dadosIA.pena_aplicada_concreto != null &&
+      origAtualReu.pena_aplicada_concreto !== 'manual'
+    ) {
+      patchReu.pena_aplicada_concreto = dadosIA.pena_aplicada_concreto;
+      origemReu.pena_aplicada_concreto = 'ia';
+    }
+    if (
+      dadosIA.suspenso_366 === true &&
+      origAtualReu.suspenso_366 !== 'manual'
+    ) {
+      patchReu.suspenso_366 = true;
+      origemReu.suspenso_366 = 'ia';
+      if (dadosIA.data_inicio_suspensao) {
+        patchReu.data_inicio_suspensao = dadosIA.data_inicio_suspensao;
+        origemReu.data_inicio_suspensao = 'ia';
+      }
+      if (dadosIA.data_fim_suspensao) {
+        patchReu.data_fim_suspensao = dadosIA.data_fim_suspensao;
+        origemReu.data_fim_suspensao = 'ia';
+      }
+    }
+    if (
+      dadosIA.status_anpp &&
+      dadosIA.status_anpp !== 'Nao Aplicavel' &&
+      origAtualReu.status_anpp !== 'manual'
+    ) {
+      patchReu.status_anpp = dadosIA.status_anpp;
+      origemReu.status_anpp = 'ia';
+    }
+    if (
+      dadosIA.data_homologacao_anpp &&
+      origAtualReu.data_homologacao_anpp !== 'manual'
+    ) {
+      patchReu.data_homologacao_anpp = dadosIA.data_homologacao_anpp;
+      origemReu.data_homologacao_anpp = 'ia';
+    }
+    if (
+      dadosIA.data_remessa_mpf &&
+      origAtualReu.data_remessa_mpf !== 'manual'
+    ) {
+      patchReu.data_remessa_mpf = dadosIA.data_remessa_mpf;
+      origemReu.data_remessa_mpf = 'ia';
+    }
+    if (
+      dadosIA.data_protocolo_seeu &&
+      origAtualReu.data_protocolo_seeu !== 'manual'
+    ) {
+      patchReu.data_protocolo_seeu = dadosIA.data_protocolo_seeu;
+      origemReu.data_protocolo_seeu = 'ia';
+    }
+    if (
+      dadosIA.numero_seeu &&
+      !reu.numero_seeu &&
+      origAtualReu.numero_seeu !== 'manual'
+    ) {
+      patchReu.numero_seeu = dadosIA.numero_seeu;
+      origemReu.numero_seeu = 'ia';
+    }
+    if (Object.keys(patchReu).length > 0) {
+      await atualizarReu(reu.id, patchReu, origemReu);
+      log(
+        `gravar-reu-${reu.id.slice(0, 8)}`,
+        'ok',
+        `${Object.keys(patchReu).length} campo(s): ${Object.keys(patchReu).join(', ')}`
+      );
+    }
+  }
+}
+
+async function handleCriminalReprocessarProcesso(
+  payload: { processoId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  let abaCriada: number | null = null;
+  let janelaCriada: number | null = null;
+  const trace: TraceEntry[] = [];
+  const t0 = Date.now();
+  const log = (
+    etapa: string,
+    status: TraceEntry['status'],
+    info?: string
+  ): void => {
+    trace.push({ etapa, status, info, ts: Date.now() - t0 });
+    // Mantém o log no console do SW pra debug, mas a fonte de verdade
+    // visível ao usuário é o `trace[]` retornado.
+    console.log(`${LOG_PREFIX} reprocessar [${etapa}] ${status}${info ? ': ' + info : ''}`);
+  };
+  try {
+    log('inicio', 'info', `processoId=${payload.processoId}`);
+    const proc = await getProcessoById(payload.processoId);
+    if (!proc) {
+      sendResponse({ ok: false, error: 'Processo não encontrado no acervo.' });
+      return;
+    }
+    if (!proc.id_processo_pje) {
+      sendResponse({
+        ok: false,
+        error:
+          'Processo sem `id_processo_pje` no acervo — refaça a varredura ' +
+          'para capturar o ID do PJe e tente novamente.'
+      });
+      return;
+    }
+    if (!proc.hostname_pje) {
+      sendResponse({
+        ok: false,
+        error:
+          'Hostname do PJe não conhecido para este processo. Refaça a ' +
+          'varredura para capturar.'
+      });
+      return;
+    }
+
+    // 1. Encontra uma aba PJe ativa para gerar `ca`.
+    const tabs = await chrome.tabs.query({});
+    const tabPJe = tabs
+      .filter((t) => {
+        if (!t.id || !t.url) return false;
+        try {
+          const u = new URL(t.url);
+          return /\.jus\.br$/i.test(u.hostname) && /^https?:$/.test(u.protocol);
+        } catch {
+          return false;
+        }
+      })
+      .sort(
+        (a, b) =>
+          ((b as { lastAccessed?: number }).lastAccessed ?? 0) -
+          ((a as { lastAccessed?: number }).lastAccessed ?? 0)
+      )[0];
+
+    if (!tabPJe?.id) {
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhuma aba do PJe aberta. Abra qualquer processo no PJe e ' +
+          'tente novamente.'
+      });
+      return;
+    }
+
+    // 2. Pede `ca` para o content da aba PJe.
+    const respCa = (await chrome.tabs.sendMessage(tabPJe.id, {
+      channel: MESSAGE_CHANNELS.CRIMINAL_FETCH_CA,
+      payload: { idProcesso: proc.id_processo_pje }
+    })) as { ok: boolean; ca?: string; error?: string };
+
+    if (!respCa?.ok || !respCa.ca) {
+      log('gerar-ca', 'falha', respCa?.error ?? 'sem ca');
+      sendResponse({
+        ok: false,
+        error: `Falha ao gerar chave de acesso: ${respCa?.error ?? 'sem detalhes'}.`,
+        trace
+      });
+      return;
+    }
+    log('gerar-ca', 'ok', `len=${respCa.ca.length}`);
+
+    // 3. Abre janela popup SEM FOCO. Histórico de tentativas:
+    //    - `state: 'minimized'`: Chrome rejeita ('Invalid value for state')
+    //      quando combinado com width/height; sem dimensões pausa o JS
+    //      do Angular do PJe (árvore de documentos não monta).
+    //    - `top: -2000` (offscreen): Chrome rejeita com "Bounds must be
+    //      at least 50% within visible screen space".
+    //    Solução: deixar o Chrome decidir a posição (sem top/left),
+    //    `focused: false` para não roubar foco. A janela aparece
+    //    visivelmente por ~30s, mas não interrompe o trabalho do
+    //    usuário. Custo aceitável em troca da garantia de execução.
+    const url =
+      `https://${proc.hostname_pje}` +
+      `/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam` +
+      `?idProcesso=${proc.id_processo_pje}&ca=${encodeURIComponent(respCa.ca)}`;
+
+    log('abrir-janela', 'info', `popup sem foco, url=${url.slice(0, 80)}…`);
+    const novaJanela = await chrome.windows.create({
+      url,
+      focused: false,
+      type: 'popup',
+      width: 1024,
+      height: 768
+    });
+    janelaCriada = novaJanela.id ?? null;
+    abaCriada = novaJanela.tabs?.[0]?.id ?? null;
+    if (!abaCriada) {
+      log('abrir-janela', 'falha', 'Chrome não atribuiu ID');
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba da janela auxiliar.',
+        trace
+      });
+      return;
+    }
+    log('abrir-janela', 'ok', `janela=${janelaCriada}, aba=${abaCriada}`);
+
+    // 4. Aguarda load completo da aba.
+    await aguardarTabComplete(abaCriada, 30_000);
+    log('aguardar-load', 'ok', 'tab.status=complete + 1.5s espera');
+
+    // 5. Manda CRIMINAL_EXTRAIR_NA_ABA — handler existente extrai,
+    //    ativa PDFs e chama IA. Trace dele é mesclado no nosso.
+    // Capturado ANTES do await: ms desde o início do handler quando
+    // a mensagem foi emitida. Usado para deslocar os timestamps
+    // relativos do trace do content na timeline final.
+    const offsetAba = Date.now() - t0;
+    const respExt = (await chrome.tabs.sendMessage(abaCriada, {
+      channel: MESSAGE_CHANNELS.CRIMINAL_EXTRAIR_NA_ABA,
+      payload: { runIA: true }
+    })) as {
+      ok: boolean;
+      dadosIA?: DadosPdfExtraidos | null;
+      dadosIAFontes?: unknown[];
+      documentosPrincipais?: unknown[];
+      detalhes?: { classeCnj?: number | null; assunto?: string | null } | null;
+      trace?: TraceEntry[];
+      error?: string;
+    };
+    // Mescla trace do content preservando timestamps relativos.
+    if (respExt?.trace && Array.isArray(respExt.trace)) {
+      // O `respExt.trace[0].ts` ≈ 0 (início do handler do content).
+      // Subtrai esse base pra normalizar antes de somar o offset.
+      const baseAba = respExt.trace[0]?.ts ?? 0;
+      for (const t of respExt.trace) {
+        trace.push({
+          ...t,
+          etapa: `aba.${t.etapa}`,
+          ts: offsetAba + ((t.ts ?? 0) - baseAba)
+        });
+      }
+    }
+
+    if (!respExt?.ok) {
+      log('extrair-na-aba', 'falha', respExt?.error ?? 'sem detalhes');
+      sendResponse({
+        ok: false,
+        error: `Falha na extração: ${respExt?.error ?? 'sem detalhes'}.`,
+        trace
+      });
+      return;
+    }
+    log(
+      'extrair-na-aba',
+      'ok',
+      `principais=${respExt.documentosPrincipais?.length ?? 0}, ` +
+        `fontesIA=${respExt.dadosIAFontes?.length ?? 0}`
+    );
+
+    const dadosIA = respExt.dadosIA ?? null;
+    if (!dadosIA) {
+      const principais = respExt.documentosPrincipais?.length ?? 0;
+      log(
+        'analisar-ia',
+        'aviso',
+        principais === 0
+          ? 'nenhum documento principal identificado'
+          : `${principais} doc(s) principal(is) mas IA retornou vazio (stub?)`
+      );
+      sendResponse({
+        ok: false,
+        error:
+          principais === 0
+            ? 'Nenhum documento principal (denúncia/sentença/ANPP) identificado nos autos.'
+            : 'IA não retornou dados — provavelmente os PDFs principais ' +
+              'vieram vazios ou stub. Verifique se a chave de acesso ainda ' +
+              'é válida e se há aba do PJe ativa.',
+        trace
+      });
+      return;
+    }
+    log('analisar-ia', 'ok', 'dadosIA consolidado disponível');
+
+    // 6. Aplica patches no IDB com origem 'ia'.
+    if (dadosIA) {
+      await aplicarDadosIaNoProcesso(proc, dadosIA, log);
+    }
+
+    const atualizado = await getProcessoById(proc.id);
+    log('concluido', 'ok', `total=${Date.now() - t0}ms`);
+    sendResponse({ ok: true, processo: atualizado, dadosIA, trace });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalReprocessarProcesso falhou:`, error);
+    log('exception', 'falha', errorMessage(error));
+    sendResponse({ ok: false, error: errorMessage(error), trace });
+  } finally {
+    // 7. Sempre fecha a JANELA auxiliar inteira (a aba sai junto),
+    //    mesmo em caso de erro, para não deixar lixo. Se só a janela
+    //    falhou em criar mas a aba existir solta (improvável), tenta
+    //    remover a aba como fallback.
+    if (janelaCriada !== null) {
+      try {
+        await chrome.windows.remove(janelaCriada);
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} reprocessar: falha fechando janela:`, err);
+      }
+    } else if (abaCriada !== null) {
+      try {
+        await chrome.tabs.remove(abaCriada);
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} reprocessar: falha fechando aba:`, err);
+      }
+    }
+  }
+}
+
+/**
+ * Espera uma aba terminar de carregar (status === 'complete') ou um
+ * timeout. Resolve mesmo quando o timer estoura — o caller decide se
+ * tenta usar a aba mesmo assim.
+ */
+function aguardarTabComplete(tabId: number, timeoutMs: number): Promise<void> {
+  // CRÍTICO: service worker (MV3 background) não tem `window`. Usamos
+  // os globals `setTimeout`/`clearTimeout` que existem em todos os
+  // contextos JS (worker + page). Tipos vêm de `@types/chrome` /
+  // lib.dom.d.ts.
+  return new Promise((resolve) => {
+    let resolvido = false;
+    let timer: number | undefined;
+    const finish = (): void => {
+      if (resolvido) return;
+      resolvido = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      if (timer !== undefined) clearTimeout(timer);
+      resolve();
+    };
+    const listener = (
+      updatedId: number,
+      changeInfo: chrome.tabs.TabChangeInfo
+    ): void => {
+      if (updatedId === tabId && changeInfo.status === 'complete') {
+        // Pequena espera adicional para JS da página inicializar
+        // (o `complete` do Chrome dispara antes do JSF terminar de
+        // montar a árvore de documentos).
+        setTimeout(finish, 1500);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    timer = setTimeout(finish, timeoutMs) as unknown as number;
+  });
+}
+
+/**
+ * Edição manual de um processo a partir do dashboard. Aplica `patch`
+ * em `criminal-store` e carimba `manual` em `pje_origem` apenas nos
+ * campos que vêm no patch — preservando a origem dos demais.
+ */
+async function handleCriminalAtualizarProcesso(
+  payload: { processoId: string; patch: Partial<ProcessoPayload> },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const { processoId, patch } = payload;
+    if (!processoId || !patch || typeof patch !== 'object') {
+      sendResponse({ ok: false, error: 'Pedido inválido.' });
+      return;
+    }
+    const proc = await atualizarProcesso(processoId, patch);
+    // Carimba origem manual nos campos que vieram no patch.
+    const novaOrigem: PjeOrigemMap = { ...proc.pje_origem };
+    for (const k of Object.keys(patch)) {
+      novaOrigem[k] = 'manual';
+    }
+    // Persiste a origem atualizada via novo patch vazio (atualizarProcesso
+    // não toca pje_origem). Reaproveitando upsert seria custoso; em vez
+    // disso, manipulamos o registro via store já que pje_origem não é
+    // ProcessoPayload — mantemos o helper inline aqui.
+    // Como atualizarProcesso já gravou o resto, basta carregar e regravar
+    // só com origem nova.
+    if (Object.keys(patch).length > 0) {
+      await aplicarOrigemProcesso(processoId, novaOrigem);
+    }
+    const atualizado = await getProcessoById(processoId);
+    sendResponse({ ok: true, processo: atualizado });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalAtualizarProcesso falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Helper: regrava `pje_origem` de um processo sem mexer nos demais
+ * campos. Usado pelo handler de edição manual.
+ */
+async function aplicarOrigemProcesso(
+  processoId: string,
+  novaOrigem: PjeOrigemMap
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.open(CRIMINAL_DB_NAME, CRIMINAL_DB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction([CRIMINAL_STORES.PROCESSOS], 'readwrite');
+      const store = tx.objectStore(CRIMINAL_STORES.PROCESSOS);
+      const get = store.get(processoId);
+      get.onsuccess = () => {
+        const cur = get.result;
+        if (!cur) {
+          tx.abort();
+          reject(new Error(`Processo ${processoId} não encontrado.`));
+          return;
+        }
+        cur.pje_origem = novaOrigem;
+        cur.atualizado_em = new Date().toISOString();
+        store.put(cur);
+      };
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error);
+      };
+    };
+  });
+}
+
+/**
+ * Edição manual de um réu pelo dashboard. Carimba `manual` em
+ * `pje_origem` para cada campo do patch.
+ */
+async function handleCriminalAtualizarReu(
+  payload: { reuId: string; patch: Partial<Reu> },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const { reuId, patch } = payload;
+    if (!reuId || !patch || typeof patch !== 'object') {
+      sendResponse({ ok: false, error: 'Pedido inválido.' });
+      return;
+    }
+    const origemPatch: PjeOrigemMap = {};
+    for (const k of Object.keys(patch)) {
+      origemPatch[k] = 'manual';
+    }
+    const atualizado = await atualizarReu(reuId, patch, origemPatch);
+    if (!atualizado) {
+      sendResponse({ ok: false, error: `Réu ${reuId} não encontrado.` });
+      return;
+    }
+    sendResponse({ ok: true, reu: atualizado });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalAtualizarReu falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Content (aba PJe) → background: cada processo capturado vem aqui com
+ * o `ProcessoCapturado` completo. O background:
+ *
+ *   1. Persiste no IndexedDB da extensão via `upsertProcessoFromPje`
+ *      (CRÍTICO — content scripts abrem IDB no origin do PJe; só o
+ *      background tem acesso ao IDB do origin chrome-extension://).
+ *   2. Roteia uma versão SLIM (apenas numero + nReus + warnings) para
+ *      o painel atualizar a UI sem trafegar o objeto completo.
+ *   3. Em caso de erro de upsert, ainda assim roteia pro painel para
+ *      a UI registrar a tentativa.
+ */
+async function handleCriminalColetaSlot(payload: {
+  requestId: string;
+  capturado: {
+    payload: ProcessoPayload;
+    reus: ReuPayload[];
+    pje_origem: PjeOrigemMap;
+    reusOrigem: PjeOrigemMap[];
+    ultima_sincronizacao_pje: string;
+    warnings: string[];
+  };
+}): Promise<void> {
+  const { requestId, capturado } = payload;
+  if (!requestId || !capturado) {
+    console.warn(`${LOG_PREFIX} criminal: SLOT sem requestId ou capturado`);
+    return;
+  }
+  let upsertOk = true;
+  let upsertError: string | null = null;
+  try {
+    await upsertProcessoFromPje(capturado.payload, capturado.reus, {
+      pje_origem: capturado.pje_origem,
+      reus_origem: capturado.reusOrigem,
+      ultima_sincronizacao_pje: capturado.ultima_sincronizacao_pje
+    });
+  } catch (err) {
+    upsertOk = false;
+    upsertError = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `${LOG_PREFIX} criminal: upsert falhou para ` +
+        `${capturado.payload.numero_processo}:`,
+      err
+    );
+  }
+  // Roteia versão slim pro painel (sempre, mesmo em erro de upsert).
+  await rotearEventoCriminal(MESSAGE_CHANNELS.CRIMINAL_COLETA_SLOT, {
+    requestId,
+    numero: capturado.payload.numero_processo,
+    nReus: capturado.reus.length,
+    warnings: capturado.warnings,
+    upsertOk,
+    upsertError
+  });
+}
+
+/**
+ * Content (aba PJe) → background → aba-painel. Recebe evento de
+ * progresso/slot/done/fail com o `requestId` no payload, localiza a
+ * `painelTabId` e repassa via `tabs.sendMessage`.
+ */
+async function rotearEventoCriminal(
+  channel: string,
+  payload: { requestId?: string; [k: string]: unknown }
+): Promise<void> {
+  const requestId = payload?.requestId;
+  if (typeof requestId !== 'string' || !requestId) {
+    console.warn(`${LOG_PREFIX} criminal: evento ${channel} sem requestId`);
+    return;
+  }
+  try {
+    const rota = await getRota(requestId);
+    if (!rota) {
+      console.warn(
+        `${LOG_PREFIX} criminal: rota ausente para ${requestId} ao rotear ${channel}`
+      );
+      return;
+    }
+    chrome.tabs
+      .sendMessage(rota.painelTabId, { channel, payload })
+      .catch((err) => {
+        // Painel pode ter sido fechado — não é fatal
+        console.debug(
+          `${LOG_PREFIX} criminal: rota ${channel} → painel falhou (aba fechada?):`,
+          err
+        );
+      });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} criminal: rotearEvento falhou:`, err);
+  }
+}
+
 async function handleOpenPericiasPainel(
   payload: {
     tarefas: PericiaTarefaInfo[];
@@ -3427,6 +5004,295 @@ async function handlePericiasColetaFail(
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handlePericiasColetaFail falhou:`, error);
     sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// =====================================================================
+// Central de Comunicação (perfil Secretaria)
+// =====================================================================
+
+function gerarComunicacaoRequestId(): string {
+  return `comunicacao-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function gerarAudienciaRequestId(): string {
+  return `audiencia-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function handleOpenComunicacaoPainel(
+  payload: {
+    peritos: PericiaPerito[];
+    settings: ComunicacaoSettings;
+    hostnamePJe: string;
+    legacyOrigin: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou a Central de Comunicação.'
+      });
+      return;
+    }
+    if (!payload || !payload.settings) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const requestId = gerarComunicacaoRequestId();
+    const stateKey =
+      `${STORAGE_KEYS.COMUNICACAO_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        peritos: Array.isArray(payload.peritos) ? payload.peritos : [],
+        settings: payload.settings,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        legacyOrigin: payload.legacyOrigin ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+    const url =
+      chrome.runtime.getURL('comunicacao-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba da Central de Comunicação.'
+      });
+      return;
+    }
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleOpenComunicacaoPainel falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+async function handleComunicacaoRunColeta(
+  payload: {
+    requestId: string;
+    modo: 'cobrar-perito-whatsapp' | 'cobrar-ceab-email';
+    filtro: 'tarefa' | 'etiqueta';
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !payload.requestId || !payload.modo || !payload.filtro) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const rota = await getRota(payload.requestId);
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão da Central de Comunicação expirou. Volte ao PJe e abra a feature novamente.'
+      });
+      return;
+    }
+    // Lê o snapshot do state para entregar ao content (peritos + settings).
+    const stateKey =
+      `${STORAGE_KEYS.COMUNICACAO_PAINEL_STATE_PREFIX}${payload.requestId}`;
+    const snap = await chrome.storage.session.get(stateKey);
+    const state = snap[stateKey] as
+      | {
+          peritos: PericiaPerito[];
+          settings: ComunicacaoSettings;
+        }
+      | undefined;
+    if (!state) {
+      sendResponse({
+        ok: false,
+        error: 'Estado da Central de Comunicação não encontrado.'
+      });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.COMUNICACAO_RUN_COLETA,
+      payload: {
+        modo: payload.modo,
+        filtro: payload.filtro,
+        peritos: state.peritos,
+        settings: state.settings
+      }
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleComunicacaoRunColeta falhou:`, err);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(err) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handleComunicacaoRegistrarCobranca(
+  payload: Omit<RegistroCobranca, 'id' | 'geradoEm'>,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (
+      !payload ||
+      !payload.modo ||
+      !payload.destinatario ||
+      !Array.isArray(payload.numerosProcesso)
+    ) {
+      sendResponse({ ok: false, error: 'Payload de registro inválido.' });
+      return;
+    }
+    const reg = await addComunicacaoRegistro(payload);
+    sendResponse({ ok: true, registro: reg });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleComunicacaoRegistrarCobranca falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+// =====================================================================
+// Audiência pAIdegua (perfil Secretaria)
+// =====================================================================
+
+async function handleOpenAudienciaPainel(
+  payload: {
+    tarefas: AudienciaTarefaInfo[];
+    hostnamePJe: string;
+    legacyOrigin: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou a Audiência pAIdegua.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const requestId = gerarAudienciaRequestId();
+    const stateKey =
+      `${STORAGE_KEYS.AUDIENCIA_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        legacyOrigin: payload.legacyOrigin ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+    const url =
+      chrome.runtime.getURL('audiencia-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba da Audiência pAIdegua.'
+      });
+      return;
+    }
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleOpenAudienciaPainel falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+async function handleAudienciaRunColeta(
+  payload: {
+    requestId: string;
+    nomesTarefas: string[];
+    quantidadePorPauta: number;
+    dataAudienciaISO: string;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !payload.requestId || !Array.isArray(payload.nomesTarefas)) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const rota = await getRota(payload.requestId);
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão da Audiência pAIdegua expirou. Volte ao PJe e abra a feature novamente.'
+      });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.AUDIENCIA_RUN_COLETA,
+      payload: {
+        nomesTarefas: payload.nomesTarefas,
+        quantidadePorPauta: payload.quantidadePorPauta,
+        dataAudienciaISO: payload.dataAudienciaISO
+      }
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAudienciaRunColeta falhou:`, err);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(err) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handleAudienciaAplicarEtiquetas(
+  payload: {
+    etiquetaPauta: string;
+    idsProcesso: number[];
+    favoritarAposCriar?: boolean;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload?.etiquetaPauta || !Array.isArray(payload.idsProcesso)) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+    if (tabs.length === 0 || !tabs[0].id) {
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhuma aba do PJe aberta. Abra o painel do PJe em uma aba antes de aplicar etiquetas.'
+      });
+      return;
+    }
+    const tab = tabs[0];
+    const resp = await chrome.tabs.sendMessage(tab.id!, {
+      channel: MESSAGE_CHANNELS.AUDIENCIA_APLICAR_ETIQUETAS,
+      payload
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAudienciaAplicarEtiquetas falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
   }
 }
 
@@ -4315,6 +6181,289 @@ async function handlePrazosFitaColetarProcesso(
 }
 
 // =====================================================================
+// Gestão Criminal — coleta de partes + movimentos via DOM scraping
+// =====================================================================
+
+/**
+ * Coleta de UM processo criminal: abre `listAutosDigitais.seam` em aba
+ * inativa, aguarda render, dispara `CRIMINAL_EXTRAIR_NA_ABA` para o
+ * content script da nova aba (que faz o scraping do DOM via
+ * `criminal-extractor.ts`) e fecha a aba ao final.
+ *
+ * Espelha o pattern de `handlePrazosFitaColetarProcesso` — diferenças:
+ *   - Canal de extração distinto (`CRIMINAL_EXTRAIR_NA_ABA`).
+ *   - Resposta carrega `partes` + `movimentos` em vez de expedientes.
+ *   - Sem `idTaskInstance` no fluxo (não estamos dentro de uma tarefa).
+ */
+async function handleCriminalColetarProcesso(
+  payload: {
+    url: string;
+    idProcesso?: number;
+    timeoutMs?: number;
+    runIA?: boolean;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const inicio = Date.now();
+  const url = payload?.url ?? '';
+  if (!url || typeof url !== 'string') {
+    sendResponse({
+      ok: false,
+      url,
+      numeroProcesso: null,
+      error: 'URL ausente ou inválida.',
+      duracaoMs: 0
+    });
+    return;
+  }
+  const timeoutMs = payload.timeoutMs ?? 45_000;
+
+  let tabId: number | null = null;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    if (tab.id == null) {
+      sendResponse({
+        ok: false,
+        url,
+        numeroProcesso: null,
+        error: 'chrome.tabs.create não retornou tabId.',
+        duracaoMs: Date.now() - inicio
+      });
+      return;
+    }
+    tabId = tab.id;
+
+    await waitTabComplete(tabId, timeoutMs);
+
+    const resp = await sendToTabWithRetry(
+      tabId,
+      {
+        channel: MESSAGE_CHANNELS.CRIMINAL_EXTRAIR_NA_ABA,
+        payload: {
+          idProcesso: payload.idProcesso ?? null,
+          runIA: payload.runIA !== false
+        }
+      },
+      { attempts: 12, intervalMs: 500 }
+    );
+
+    if (!resp || resp.ok === false) {
+      sendResponse({
+        ok: false,
+        url,
+        numeroProcesso: resp?.numeroProcesso ?? null,
+        error: resp?.error ?? 'Content script não respondeu ao CRIMINAL_EXTRAIR_NA_ABA.',
+        duracaoMs: Date.now() - inicio
+      });
+      return;
+    }
+
+    sendResponse({
+      ok: true,
+      url,
+      numeroProcesso: resp.numeroProcesso ?? null,
+      partes: resp.partes ?? [],
+      movimentos: resp.movimentos ?? [],
+      detalhes: resp.detalhes ?? null,
+      documentos: resp.documentos ?? [],
+      documentosPrincipais: resp.documentosPrincipais ?? [],
+      dadosIA: resp.dadosIA ?? null,
+      dadosIAFontes: resp.dadosIAFontes ?? [],
+      diagnostic: resp.diagnostic,
+      duracaoMs: Date.now() - inicio
+    });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleCriminalColetarProcesso:`, err);
+    sendResponse({
+      ok: false,
+      url,
+      numeroProcesso: null,
+      error: errorMessage(err),
+      duracaoMs: Date.now() - inicio
+    });
+  } finally {
+    if (tabId != null) {
+      chrome.tabs.remove(tabId).catch(() => { /* aba já fechada */ });
+    }
+  }
+}
+
+// =====================================================================
+// Gestão Criminal — extração estruturada de UM PDF via IA
+// =====================================================================
+
+/**
+ * Recebe o texto de um PDF (já extraído pelo `extractContents` da camada
+ * de content) e devolve o `DadosPdfExtraidos` parseado pelo provider de
+ * IA ativo. Caller decide o que fazer com o resultado (mesclar entre
+ * múltiplos PDFs do mesmo processo, etc.).
+ *
+ * Reusa a infra existente: `getSettings`, `getApiKey`, `getProvider`,
+ * `provider.sendMessage` — exatamente como `handleAnonymizeNames` faz.
+ */
+/**
+ * Chama a IA com o texto de um PDF criminal e devolve `DadosPdfExtraidos`.
+ * Compartilhada entre `CRIMINAL_AI_EXTRAIR_PDF` (usado pelo content
+ * durante varredura/reprocessamento automático) e
+ * `CRIMINAL_PROCESSAR_PDF_MANUAL` (upload manual pelo dashboard).
+ *
+ * Retorna `{ ok, dadosIA, providerId, raw? }`. Em caso de falha, `raw`
+ * traz os primeiros 500 chars da resposta crua para debug.
+ */
+async function extrairDadosPdfComIa(
+  texto: string,
+  tipoDocumento?: string
+): Promise<
+  | { ok: true; dadosIA: DadosPdfExtraidos; providerId: string }
+  | { ok: false; error: string; raw?: string }
+> {
+  const t = (texto ?? '').trim();
+  if (!t) return { ok: false, error: 'Texto vazio.' };
+
+  const settings = await getSettings();
+  const providerId = settings.activeProvider;
+  const apiKey = await getApiKey(providerId);
+  if (!apiKey) {
+    return { ok: false, error: `API key não cadastrada para ${providerId}.` };
+  }
+  const provider = getProvider(providerId);
+
+  const trecho = t.slice(0, MAX_CHARS_PARA_IA);
+  const tipoDoc = (tipoDocumento ?? '').trim();
+  const userMsg =
+    (tipoDoc ? `Tipo do documento: ${tipoDoc}\n\n` : '') +
+    `TEXTO DO DOCUMENTO:\n${trecho}`;
+
+  const controller = new AbortController();
+  const generator = provider.sendMessage({
+    apiKey,
+    model: settings.models[providerId],
+    systemPrompt: PROMPT_SISTEMA_DADOS_PDF,
+    messages: [{ role: 'user', content: userMsg, timestamp: Date.now() }],
+    temperature: 0.05,
+    maxTokens: 2048,
+    signal: controller.signal
+  });
+
+  let raw = '';
+  for await (const chunk of generator) {
+    raw += chunk.delta;
+  }
+
+  raw = raw.trim();
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+  if (fenceMatch?.[1]) raw = fenceMatch[1];
+
+  const jsonMatch = raw.match(/\{[\s\S]+\}/);
+  if (!jsonMatch) {
+    return {
+      ok: false,
+      error: 'Resposta da IA não contém JSON.',
+      raw: raw.slice(0, 500)
+    };
+  }
+
+  try {
+    const dadosIA = JSON.parse(jsonMatch[0]) as DadosPdfExtraidos;
+    return { ok: true, dadosIA, providerId };
+  } catch (parseErr) {
+    return {
+      ok: false,
+      error: `Falha parseando JSON da IA: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+      raw: raw.slice(0, 500)
+    };
+  }
+}
+
+async function handleCriminalAiExtrairPdf(
+  payload: { texto: string; tipoDocumento?: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const r = await extrairDadosPdfComIa(payload?.texto ?? '', payload?.tipoDocumento);
+    sendResponse(r);
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalAiExtrairPdf falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Processa um PDF carregado manualmente pelo usuário no dashboard.
+ * O texto já vem extraído (pelo pdf.js no contexto do dashboard); aqui
+ * apenas chamamos a IA + aplicamos os patches no IDB usando a mesma
+ * função compartilhada com o reprocessamento automático.
+ *
+ * Vantagens desta rota vs. `handleCriminalReprocessarProcesso`:
+ *   - Não depende de aba PJe autenticada nem de janela auxiliar.
+ *   - Funciona para PDFs externos (denúncia recebida por email,
+ *     sentença baixada de outra fonte, ofício do MPF).
+ *   - Funciona em processos sigilosos onde a aba oculta não consegue
+ *     ativar PDFs.
+ */
+async function handleCriminalProcessarPdfManual(
+  payload: { processoId: string; texto: string; tipoDocumento?: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const trace: TraceEntry[] = [];
+  const t0 = Date.now();
+  const log = (
+    etapa: string,
+    status: TraceEntry['status'],
+    info?: string
+  ): void => {
+    trace.push({ etapa, status, info, ts: Date.now() - t0 });
+    console.log(
+      `${LOG_PREFIX} pdf-manual [${etapa}] ${status}${info ? ': ' + info : ''}`
+    );
+  };
+
+  try {
+    log('inicio', 'info', `processoId=${payload?.processoId}`);
+    const proc = await getProcessoById(payload.processoId);
+    if (!proc) {
+      sendResponse({ ok: false, error: 'Processo não encontrado no acervo.', trace });
+      return;
+    }
+
+    const texto = (payload?.texto ?? '').trim();
+    if (!texto) {
+      log('texto-pdf', 'falha', 'texto do PDF vazio');
+      sendResponse({ ok: false, error: 'Texto do PDF vazio.', trace });
+      return;
+    }
+    log('texto-pdf', 'ok', `${texto.length} chars`);
+
+    const r = await extrairDadosPdfComIa(texto, payload.tipoDocumento);
+    if (!r.ok) {
+      log('rodar-ia', 'falha', r.error);
+      sendResponse({ ok: false, error: r.error, raw: r.raw, trace });
+      return;
+    }
+    const camposPreench = (
+      Object.keys(r.dadosIA) as (keyof DadosPdfExtraidos)[]
+    ).filter(
+      (k) => r.dadosIA[k] !== null && r.dadosIA[k] !== undefined && r.dadosIA[k] !== ''
+    );
+    log(
+      'rodar-ia',
+      'ok',
+      `${camposPreench.length} campo(s) extraído(s): ${camposPreench.join(', ')}`
+    );
+
+    await aplicarDadosIaNoProcesso(proc, r.dadosIA, log);
+
+    const atualizado = await getProcessoById(proc.id);
+    log('concluido', 'ok', `total=${Date.now() - t0}ms`);
+    sendResponse({ ok: true, processo: atualizado, dadosIA: r.dadosIA, trace });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleCriminalProcessarPdfManual falhou:`, error);
+    log('exception', 'falha', errorMessage(error));
+    sendResponse({ ok: false, error: errorMessage(error), trace });
+  }
+}
+
+// =====================================================================
 // Prazos na fita — Encerrar todos os expedientes da tarefa (main world)
 // =====================================================================
 
@@ -4763,3 +6912,507 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 console.log(`${LOG_PREFIX} background carregado`);
+
+// =====================================================================
+// Controle Metas CNJ (perfil Gestão) — handlers
+// =====================================================================
+//
+// Topologia espelhada do Painel Gerencial / Sigcrim. O service worker:
+//   1. abre a aba intermediária (`metas-painel`) gravando o estado em
+//      `chrome.storage.session` indexado por `requestId`;
+//   2. dispara a varredura no content da aba PJe original quando o
+//      usuário confirma a seleção;
+//   3. responde a perguntas pontuais do coordinator (precisa fetch?) e
+//      faz upsert no acervo (`paidegua.metas-cnj`) a cada processo
+//      capturado;
+//   4. roteia eventos de progresso/conclusão para a aba-painel.
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import {
+  garantirSeed as garantirSeedTpu,
+  getCategoriasDe as getCategoriasTpu
+} from '../shared/tpu-store';
+import { buildCategoriasJulgamento } from '../shared/tpu-categorias-julgamento';
+import {
+  getProcesso as getProcessoMetas,
+  loadConfig as loadConfigMetas,
+  resetarPresencaVarredura,
+  saveLastSync,
+  upsertProcesso as upsertProcessoMetas
+} from '../shared/metas-cnj-store';
+import {
+  detectarStatus,
+  enriquecerMovimentos,
+  type DetectorInput,
+  type MovimentoProcessual
+} from '../shared/processo-status-detector';
+import { calcularMetasAplicaveis } from '../shared/metas-cnj-regras';
+import type {
+  MetasCnjLastSync,
+  ProcessoMetasCnj
+} from '../shared/metas-cnj-types';
+import { META_CNJ_IDS } from '../shared/metas-cnj-types';
+
+// Shape do envelope que o coordinator do content envia (espelha
+// `MetasPatchEnvelope` em `src/content/metas-cnj/metas-coordinator.ts`).
+interface MetasPatchEnvelopeBg {
+  numero_processo: string;
+  id_processo_pje: number;
+  id_task_instance_atual: number | null;
+  classe_sigla: string;
+  assunto_principal: string | null;
+  polo_ativo: string | null;
+  polo_passivo: string | null;
+  orgao_julgador: string | null;
+  cargo_judicial: string | null;
+  etiquetas_pje: string[];
+  tarefa_origem_atual: string | null;
+  url: string | null;
+  data_distribuicao?: string | null;
+  data_autuacao?: string | null;
+  presente_ultima_varredura: true;
+  ultimo_movimento_visto: string | null;
+  movimentos?: Array<{
+    codigoCnj: number | null;
+    descricao: string;
+    data: string;
+  }>;
+  documentos?: Array<{
+    tipo: string;
+    descricao: string;
+    dataJuntada: string;
+  }>;
+  veioComFetchProfundo: boolean;
+}
+
+function gerarMetasRequestId(): string {
+  return `metas-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Garante TPU seed populado antes da primeira coleta. Idempotente.
+ */
+async function garantirTpuParaMetas(): Promise<void> {
+  try {
+    const mapas = [buildCategoriasJulgamento()];
+    await garantirSeedTpu(mapas);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} metas: garantirSeed TPU falhou:`, err);
+  }
+}
+
+/**
+ * Handler de abertura da aba `metas-painel`. Espelha
+ * `handleOpenPrazosFitaPainel` — só muda a URL alvo e o canal.
+ */
+async function handleOpenMetasPainel(
+  payload: {
+    tarefas: Array<{ nome: string; quantidade: number | null }>;
+    hostnamePJe: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou Metas CNJ.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+
+    // Garante seed TPU antes da varredura — idempotente, custo zero
+    // quando já carregado.
+    await garantirTpuParaMetas();
+
+    const requestId = gerarMetasRequestId();
+    const stateKey = `${STORAGE_KEYS.METAS_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('metas-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba do Metas CNJ.'
+      });
+      return;
+    }
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenMetasPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Aba-painel → background: usuário clicou Iniciar. Despacha
+ * `METAS_RUN_COLETA` para o content da aba PJe.
+ */
+async function handleMetasStartColeta(
+  payload: { requestId: string; nomes: string[] },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão do painel Metas CNJ expirou. Volte ao PJe e abra o painel novamente.'
+      });
+      return;
+    }
+    if (!Array.isArray(payload.nomes) || payload.nomes.length === 0) {
+      sendResponse({ ok: false, error: 'Nenhuma tarefa selecionada.' });
+      return;
+    }
+    // Antes de iniciar: marca todos os processos do acervo como
+    // "ausentes desta varredura" — o coordinator restaura a presença em
+    // cada upsert. Os que ficarem com `presente_ultima_varredura: false`
+    // ao final são candidatos à regra de `inferido_sumico`.
+    try {
+      await resetarPresencaVarredura();
+    } catch (err) {
+      console.warn(
+        `${LOG_PREFIX} metas: resetarPresencaVarredura falhou (seguindo):`,
+        err
+      );
+    }
+
+    const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.METAS_RUN_COLETA,
+      payload: {
+        requestId: payload.requestId,
+        nomesTarefas: payload.nomes
+      }
+    });
+    if (!ack?.ok) {
+      sendResponse({
+        ok: false,
+        error:
+          ack?.error ??
+          'A aba do PJe não aceitou iniciar a coleta. Confirme que ela continua aberta no Painel do Usuário.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleMetasStartColeta falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Coordinator → background: precisa fetch profundo deste processo?
+ * Critério incremental: se já está no acervo com o mesmo
+ * `ultimo_movimento_visto`, não precisa.
+ */
+async function handleMetasPrecisaFetch(
+  payload: {
+    numero_processo: string;
+    ultimo_movimento_visto: string | null;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const atual = await getProcessoMetas(payload.numero_processo);
+    if (!atual) {
+      sendResponse({ precisa: true });
+      return;
+    }
+    // Se ainda não temos data_distribuicao, sempre faz fetch profundo.
+    if (!atual.data_distribuicao) {
+      sendResponse({ precisa: true });
+      return;
+    }
+    const igual =
+      atual.ultimo_movimento_visto === payload.ultimo_movimento_visto;
+    sendResponse({ precisa: !igual });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleMetasPrecisaFetch falhou:`, err);
+    sendResponse({ precisa: true });
+  }
+}
+
+/**
+ * Coordinator → background: upsert de UM processo no acervo. Sequência:
+ *
+ *   1. Faz upsert no IDB (`upsertProcessoMetas`) — preserva campos com
+ *      origem `manual`.
+ *   2. Se veio com fetch profundo (movimentos + documentos), enriquece
+ *      movimentos com categorias TPU, roda detector de status, atualiza
+ *      o registro com `status` + `data_julgamento`/`data_baixa` +
+ *      `origem_status`.
+ *   3. Calcula `metas_aplicaveis` via regras + config; persiste.
+ */
+async function handleMetasUpsertProcesso(
+  envelope: MetasPatchEnvelopeBg,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const ts = new Date().toISOString();
+
+    // Patch básico (sem campos de status — esses vêm na 2ª passagem).
+    const patchBasico = {
+      numero_processo: envelope.numero_processo,
+      id_processo_pje: envelope.id_processo_pje,
+      id_task_instance_atual: envelope.id_task_instance_atual,
+      classe_sigla: envelope.classe_sigla,
+      assunto_principal: envelope.assunto_principal,
+      polo_ativo: envelope.polo_ativo,
+      polo_passivo: envelope.polo_passivo,
+      orgao_julgador: envelope.orgao_julgador,
+      cargo_judicial: envelope.cargo_judicial,
+      etiquetas_pje: envelope.etiquetas_pje,
+      tarefa_origem_atual: envelope.tarefa_origem_atual,
+      url: envelope.url,
+      presente_ultima_varredura: true as const,
+      ultimo_movimento_visto: envelope.ultimo_movimento_visto,
+      // Datas: só preenche se veio com fetch profundo.
+      ...(envelope.veioComFetchProfundo
+        ? {
+            data_distribuicao: envelope.data_distribuicao ?? null,
+            data_autuacao: envelope.data_autuacao ?? null,
+            ano_distribuicao: extrairAno(envelope.data_distribuicao ?? null)
+          }
+        : {})
+    };
+
+    await upsertProcessoMetas(patchBasico, {
+      ultimaSincronizacaoPje: ts
+    });
+
+    // Se houve fetch profundo, processa status + metas
+    if (envelope.veioComFetchProfundo) {
+      await reclassificarProcesso(envelope);
+    }
+
+    sendResponse({ ok: true });
+  } catch (err) {
+    console.warn(
+      `${LOG_PREFIX} metas: upsert falhou para ${envelope.numero_processo}:`,
+      err
+    );
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+function extrairAno(iso: string | null): number | null {
+  if (!iso) return null;
+  const m = iso.match(/^(\d{4})/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Re-roda detector de status + regras das metas para um processo
+ * recém-coletado. Lê o estado atual do acervo (após upsert básico),
+ * computa novos campos, faz segundo upsert para gravar.
+ */
+async function reclassificarProcesso(
+  envelope: MetasPatchEnvelopeBg
+): Promise<void> {
+  const proc = await getProcessoMetas(envelope.numero_processo);
+  if (!proc) return; // safety
+
+  // Enriquece movimentos com categorias TPU
+  const movimentosBase: MovimentoProcessual[] = (envelope.movimentos ?? []).map(
+    (m) => ({
+      codigoCnj: m.codigoCnj,
+      descricao: m.descricao,
+      data: m.data
+    })
+  );
+  const movimentosEnriquecidos = await enriquecerMovimentos(movimentosBase);
+
+  const config = await loadConfigMetas();
+
+  // Detector
+  const detectorInput: DetectorInput = {
+    movimentos: movimentosEnriquecidos,
+    documentos: envelope.documentos,
+    tarefaAtual: envelope.tarefa_origem_atual ?? null,
+    override: null, // override manual aplicado direto via setOverrideMeta
+    tarefasIndicamJulgado: config.tarefasIndicamJulgado,
+    tarefasIndicamBaixa: config.tarefasIndicamBaixa,
+    detectaJulgadoPorDocumento: config.detectaJulgadoPorDocumento,
+    documentosTiposPositivos: config.documentosTiposPositivos,
+    documentosDescricoesNegativas: config.documentosDescricoesNegativas
+  };
+  const status = detectarStatus(detectorInput);
+
+  // Regras das metas — usa o snapshot atual do acervo + config
+  const procAtualizadoParaRegras: ProcessoMetasCnj = {
+    ...proc,
+    status: status.status,
+    data_distribuicao: envelope.data_distribuicao ?? proc.data_distribuicao
+  };
+  const metasAplicaveis = calcularMetasAplicaveis(
+    procAtualizadoParaRegras,
+    config
+  );
+
+  // Suprime aviso "lint:no-unused" sobre META_CNJ_IDS (importado para
+  // garantir que o conjunto fechado está disponível no runtime do
+  // background — útil em logs/diagnóstico futuro).
+  void META_CNJ_IDS;
+
+  await upsertProcessoMetas(
+    {
+      numero_processo: envelope.numero_processo,
+      status: status.status,
+      origem_status: status.origem,
+      status_definido_em: new Date().toISOString(),
+      data_julgamento:
+        status.status === 'julgado' ? status.data ?? null : null,
+      data_baixa: status.status === 'baixado' ? status.data ?? null : null,
+      metas_aplicaveis: metasAplicaveis
+    },
+    { ultimaSincronizacaoPje: new Date().toISOString() }
+  );
+
+  // Mantém referências usadas nos sites — silencia lint
+  void getCategoriasTpu;
+}
+
+/**
+ * Coordinator → background → aba-painel: encaminha eventos de progresso/
+ * conclusão. Espelha `rotearEventoCriminal`.
+ */
+async function rotearEventoMetas(
+  channel: string,
+  payload: { requestId?: string; [k: string]: unknown }
+): Promise<void> {
+  const requestId = payload?.requestId;
+  if (typeof requestId !== 'string' || !requestId) {
+    return;
+  }
+  try {
+    const rota = await getRota(requestId);
+    if (!rota) return;
+
+    chrome.tabs
+      .sendMessage(rota.painelTabId, { channel, payload })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+
+    // Em DONE: grava lastSync, navega painel para o dashboard, limpa rota
+    if (channel === MESSAGE_CHANNELS.METAS_COLETA_DONE) {
+      const resumo = payload as {
+        requestId: string;
+        totalUpserts?: number;
+        totalFetchProfundo?: number;
+        totalPulados?: number;
+        totalErros?: number;
+        tarefasProcessadas?: string[];
+        startedAt?: string;
+      };
+      await registrarLastSync(resumo).catch((err) => {
+        console.warn(`${LOG_PREFIX} metas: saveLastSync falhou:`, err);
+      });
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.METAS_COLETA_READY,
+          payload: { requestId }
+        })
+        .catch(() => { /* fechada */ });
+      await chrome.storage.session.remove(
+        `${STORAGE_KEYS.METAS_PAINEL_STATE_PREFIX}${requestId}`
+      );
+      await deleteRota(requestId);
+    } else if (channel === MESSAGE_CHANNELS.METAS_COLETA_FAIL) {
+      await chrome.storage.session.remove(
+        `${STORAGE_KEYS.METAS_PAINEL_STATE_PREFIX}${requestId}`
+      );
+      await deleteRota(requestId);
+    }
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} metas: rotearEvento falhou:`, err);
+  }
+}
+
+/**
+ * Aplica etiqueta em lote nos processos selecionados — encaminha para
+ * uma aba do PJe (same-origin para o cookie de sessão funcionar). Mesma
+ * estratégia do `handlePericiasAplicarEtiquetas`.
+ */
+async function handleMetasAplicarEtiquetas(
+  payload: {
+    etiquetaPauta: string;
+    idsProcesso: number[];
+    favoritarAposCriar?: boolean;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload?.etiquetaPauta || !Array.isArray(payload.idsProcesso)) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+    if (tabs.length === 0 || !tabs[0].id) {
+      sendResponse({
+        ok: false,
+        error:
+          'Nenhuma aba do PJe aberta. Abra o painel do PJe em uma aba antes de aplicar etiquetas.'
+      });
+      return;
+    }
+    const tab = tabs[0];
+    const resp = await chrome.tabs.sendMessage(tab.id!, {
+      channel: MESSAGE_CHANNELS.METAS_APLICAR_ETIQUETAS,
+      payload
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleMetasAplicarEtiquetas falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+async function registrarLastSync(resumo: {
+  totalUpserts?: number;
+  totalFetchProfundo?: number;
+  totalPulados?: number;
+  totalErros?: number;
+  tarefasProcessadas?: string[];
+  startedAt?: string;
+}): Promise<void> {
+  // Contagens por meta — query simples por status no acervo é mais
+  // confiável que tentar contar incrementalmente durante a varredura.
+  const sync: MetasCnjLastSync = {
+    startedAt: resumo.startedAt ?? new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    totalNoAcervo: 0, // calculado via getStats num próximo passo
+    novosNoAcervo: 0,
+    atualizados: resumo.totalUpserts ?? 0,
+    sumidos: 0,
+    contagemPorMeta: {
+      'meta-2': { pendentes: 0, julgados: 0 },
+      'meta-4': { pendentes: 0, julgados: 0 },
+      'meta-6': { pendentes: 0, julgados: 0 },
+      'meta-7': { pendentes: 0, julgados: 0 },
+      'meta-10': { pendentes: 0, julgados: 0 }
+    },
+    tarefasVarridas: resumo.tarefasProcessadas ?? [],
+    error: null
+  };
+  await saveLastSync(sync);
+}

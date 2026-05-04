@@ -49,7 +49,14 @@ module.exports = (_env, argv) => {
       'save-template/save': './src/save-template/save.ts',
       'diagnostico/diagnostico': './src/diagnostico/diagnostico.ts',
       'suporte/suporte': './src/suporte/suporte.ts',
-      'welcome/welcome': './src/welcome/welcome.ts'
+      'welcome/welcome': './src/welcome/welcome.ts',
+      'criminal-config/criminal-config': './src/criminal-config/criminal-config.ts',
+      'criminal-painel/painel': './src/criminal-painel/painel.ts',
+      'criminal-dashboard/dashboard': './src/criminal-dashboard/dashboard.ts',
+      'metas-painel/painel': './src/metas-painel/painel.ts',
+      'metas-dashboard/dashboard': './src/metas-dashboard/dashboard.ts',
+      'comunicacao-painel/painel': './src/comunicacao-painel/painel.ts',
+      'audiencia-painel/painel': './src/audiencia-painel/painel.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -62,7 +69,21 @@ module.exports = (_env, argv) => {
       alias: {
         '@shared': path.resolve(__dirname, 'src/shared'),
         '@content': path.resolve(__dirname, 'src/content'),
-        '@background': path.resolve(__dirname, 'src/background')
+        '@background': path.resolve(__dirname, 'src/background'),
+        // Substitui o `regenerator-runtime/runtime` original por uma
+        // versão sem o fallback `Function("r", ...)(runtime)` que
+        // dispara warning de CSP no service worker MV3. Detalhes no
+        // próprio arquivo do shim. Tesseract.js v5+ traz esse runtime
+        // em seu bundle; sem o alias, o erro aparece em chrome://
+        // extensions sempre que o content.js é carregado.
+        'regenerator-runtime/runtime.js': path.resolve(
+          __dirname,
+          'src/shims/regenerator-runtime-csp-safe.js'
+        ),
+        'regenerator-runtime/runtime': path.resolve(
+          __dirname,
+          'src/shims/regenerator-runtime-csp-safe.js'
+        )
       }
     },
     module: {
@@ -103,6 +124,20 @@ module.exports = (_env, argv) => {
           { from: 'src/suporte/suporte.css', to: 'suporte/suporte.css' },
           { from: 'src/welcome/welcome.html', to: 'welcome/welcome.html' },
           { from: 'src/welcome/welcome.css', to: 'welcome/welcome.css' },
+          { from: 'src/criminal-config/criminal-config.html', to: 'criminal-config/criminal-config.html' },
+          { from: 'src/criminal-config/criminal-config.css', to: 'criminal-config/criminal-config.css' },
+          { from: 'src/criminal-painel/painel.html', to: 'criminal-painel/painel.html' },
+          { from: 'src/criminal-painel/painel.css', to: 'criminal-painel/painel.css' },
+          { from: 'src/criminal-dashboard/dashboard.html', to: 'criminal-dashboard/dashboard.html' },
+          { from: 'src/criminal-dashboard/dashboard.css', to: 'criminal-dashboard/dashboard.css' },
+          { from: 'src/metas-painel/painel.html', to: 'metas-painel/painel.html' },
+          { from: 'src/metas-painel/painel.css', to: 'metas-painel/painel.css' },
+          { from: 'src/metas-dashboard/dashboard.html', to: 'metas-dashboard/dashboard.html' },
+          { from: 'src/metas-dashboard/dashboard.css', to: 'metas-dashboard/dashboard.css' },
+          { from: 'src/comunicacao-painel/painel.html', to: 'comunicacao-painel/painel.html' },
+          { from: 'src/comunicacao-painel/painel.css', to: 'comunicacao-painel/painel.css' },
+          { from: 'src/audiencia-painel/painel.html', to: 'audiencia-painel/painel.html' },
+          { from: 'src/audiencia-painel/painel.css', to: 'audiencia-painel/painel.css' },
           { from: 'src/content/content.css', to: 'content.css' },
           // PDF.js worker precisa ser servido como arquivo acessivel via
           // chrome.runtime.getURL. Listado em web_accessible_resources

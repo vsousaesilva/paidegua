@@ -26,6 +26,10 @@
  */
 
 import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
+import {
+  lerNomeVaraDasSettings,
+  renderHeaderMeta
+} from '../shared/header-meta';
 import type { GestaoTarefaInfo } from '../shared/types';
 
 type ModoPainel = 'gestao' | 'prazos';
@@ -150,7 +154,7 @@ async function main(): Promise<void> {
       ...state,
       tarefas: modoConfig.filtraTarefas(state.tarefas)
     };
-    montarMeta(stateAtual);
+    void montarMeta(stateAtual);
     registrarListenerBackground();
     await renderizarSeletor(stateAtual);
   } catch (err) {
@@ -219,20 +223,23 @@ async function carregarEstado(rid: string): Promise<PainelState | null> {
   };
 }
 
-function montarMeta(state: PainelState): void {
-  const dt = new Date(state.abertoEm);
-  const dataFmt = dt.toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
+async function montarMeta(state: PainelState): Promise<void> {
+  // Prioridade: unidade detectada na varredura (via prefixo [unidade] do
+  // coordinator) > nomeVara das settings > hostname do PJe.
+  const nomeVara = await lerNomeVaraDasSettings();
+  const unidade = unidadeAtual || nomeVara || state.hostnamePJe;
+  const contadores: string[] = [];
+  // Mostra hostname como referência só quando a linha 1 não é o próprio
+  // hostname (evita duplicação).
+  if (unidade !== state.hostnamePJe && state.hostnamePJe) {
+    contadores.push(state.hostnamePJe);
+  }
+  contadores.push(`${state.tarefas.length} tarefa(s) detectada(s)`);
+  renderHeaderMeta(elMeta, {
+    unidade,
+    geradoEm: state.abertoEm,
+    contadores
   });
-  const topo = unidadeAtual ? unidadeAtual : state.hostnamePJe;
-  const segunda = unidadeAtual
-    ? `<div>${escapeHtml(state.hostnamePJe)}</div>`
-    : '';
-  elMeta.innerHTML =
-    `<div><strong>${escapeHtml(topo)}</strong></div>` +
-    segunda +
-    `<div>${escapeHtml(dataFmt)}</div>`;
 }
 
 /**
@@ -245,7 +252,7 @@ function aplicarUnidadeNoHeader(nome: string): void {
   if (!limpo) return;
   if (unidadeAtual === limpo) return;
   unidadeAtual = limpo;
-  if (stateAtual) montarMeta(stateAtual);
+  if (stateAtual) void montarMeta(stateAtual);
 }
 
 async function renderizarSeletor(state: PainelState): Promise<void> {
@@ -613,14 +620,6 @@ async function salvarSelecao(nomes: string[]): Promise<void> {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 // Silencia unused-warning do stateAtual — a referência é mantida para
 // depuração no console e futuras extensões (ex.: botão "voltar ao seletor").

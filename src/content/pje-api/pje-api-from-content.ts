@@ -472,7 +472,10 @@ export async function listarProcessosDaTarefa(
       // com o painel nativo.
       const body = {
         numeroProcesso: '',
-        classe: null,
+        // `req.classe` permite filtrar pela sigla (ex.: "APN", "PJEC")
+        // — o painel Angular faz o mesmo. Quando ausente, mantém `null`
+        // (comportamento histórico, traz todas as classes da tarefa).
+        classe: req.classe ?? null,
         tags: [],
         tagsString: null,
         poloAtivo: null,

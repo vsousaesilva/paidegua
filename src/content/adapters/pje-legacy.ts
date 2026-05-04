@@ -343,7 +343,40 @@ export class PJeLegacyAdapter implements BaseAdapter {
 
     scan(document);
 
-    const results = Array.from(seen.values())
+    const results = this.consolidarDocumentos(seen);
+    console.log(
+      `${LOG_PREFIX} extractDocumentos (legacy): ${results.length} documento(s) ` +
+        `encontrado(s) — frames escaneados: ${framesScanned}, ignorados: ${framesSkipped}`
+    );
+    return results;
+  }
+
+  /**
+   * Variante in-doc usada pela coleta criminal: scaneia um Document
+   * arbitrário (tipicamente parseado via `DOMParser`) sem descer em
+   * iframes. Em fluxos de fetch + DOMParser não há `contentDocument`
+   * disponível — para escanear iframes filhos seria preciso fetch
+   * recursivo. Esta variante presume que a página alvo
+   * (`listAutosDigitais.seam`) já contém o tree de documentos no HTML
+   * principal, situação observada no PJe legacy do TRF5.
+   */
+  extractDocumentosFromDocPublic(doc: Document): ProcessoDocumento[] {
+    const seen = new Map<string, BuildResult>();
+    this.scanAnchors(doc, seen);
+    this.scanIframes(doc, seen);
+    this.scanOnclickElements(doc, seen);
+    return this.consolidarDocumentos(seen);
+  }
+
+  /**
+   * Aplica o filtro de ruído (ícones, lembretes etc.) sobre o map de
+   * resultados acumulados pelos scanners. Compartilhado entre o fluxo
+   * com iframes (live document) e o fluxo in-doc (parsed Document).
+   */
+  private consolidarDocumentos(
+    seen: Map<string, BuildResult>
+  ): ProcessoDocumento[] {
+    return Array.from(seen.values())
       .map((r) => r.documento)
       .filter((d) => {
         // Exclui entradas que são ruído do DOM do PJe (ex.: "Ícone de certidão",
@@ -352,11 +385,6 @@ export class PJeLegacyAdapter implements BaseAdapter {
         if (desc.startsWith('ícone') || desc.startsWith('icone')) return false;
         return true;
       });
-    console.log(
-      `${LOG_PREFIX} extractDocumentos (legacy): ${results.length} documento(s) ` +
-        `encontrado(s) — frames escaneados: ${framesScanned}, ignorados: ${framesSkipped}`
-    );
-    return results;
   }
 
   /**
@@ -1118,6 +1146,20 @@ export function derivarAnomaliasProcesso(
 // passa o Document resultante para as funcoes abaixo — reusando a mesma
 // logica de parsing sem depender do top frame.
 // =====================================================================
+
+/**
+ * Extrai documentos de um Document arbitrario (ex.: HTML parseado via
+ * `DOMParser`). Reusa as mesmas estrategias do adapter (`<a href>`,
+ * `<iframe src>`, elementos com `onclick`/atributos data-url) — porem
+ * SEM descida em iframes (parsed docs nao tem `contentDocument`).
+ *
+ * Usado pela coleta criminal (`coletarProcessoCriminal`) que faz fetch
+ * direto de `listAutosDigitais.seam` e parseia o HTML em memoria, sem
+ * abrir aba real.
+ */
+export function extractDocumentosFromDoc(doc: Document): ProcessoDocumento[] {
+  return new PJeLegacyAdapter().extractDocumentosFromDocPublic(doc);
+}
 
 /**
  * Extrai expedientes a partir de um Document arbitrario. Reusa a mesma

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Central de Comunicação — pAIdegua</title>
+  <link rel="stylesheet" href="painel.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Central de Comunicação</h1>
+        <p class="header__subtitle">pAIdegua &mdash; Perfil Secretaria</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta"></div>
+  </header>
+
+  <main class="main">
+    <section id="estado-carregando" class="card">
+      <p class="loading">Carregando configurações...</p>
+    </section>
+
+    <section id="estado-erro" class="card" hidden>
+      <h2>Não foi possível iniciar</h2>
+      <p id="erro-msg" class="erro-msg"></p>
+      <div class="toolbar">
+        <button id="btn-fechar" class="btn">Fechar esta aba</button>
+      </div>
+    </section>
+
+    <section id="estado-seletor" class="card" hidden>
+      <h2>Escolha a cobrança a gerar</h2>
+      <p class="hint">
+        Selecione o destinatário e, se preferir, troque o filtro padrão de
+        tarefa para uma etiqueta cadastrada nas configurações da extensão.
+      </p>
+
+      <h3>Destinatário</h3>
+      <div class="modo-grupo">
+        <label class="modo-radio" data-modo="cobrar-perito">
+          <input type="radio" name="modo" value="cobrar-perito" checked />
+          <span>
+            <div class="modo-radio__titulo">Cobrar perito</div>
+            <div class="modo-radio__desc">
+              Lista os processos da tarefa <em>Cobrar laudo</em> e agrupa por
+              perito (inferido pela etiqueta da pauta).
+            </div>
+          </span>
+        </label>
+        <label class="modo-radio" data-modo="cobrar-ceab">
+          <input type="radio" name="modo" value="cobrar-ceab" />
+          <span>
+            <div class="modo-radio__titulo">Cobrar Ceab</div>
+            <div class="modo-radio__desc">
+              Lista os processos da tarefa <em>Obrigação de fazer — Sem
+              manifestação</em>.
+            </div>
+          </span>
+        </label>
+      </div>
+
+      <h3>Canal</h3>
+      <div class="filtro-toggle">
+        <label>
+          <input type="radio" name="canal" value="whatsapp" checked />
+          WhatsApp
+        </label>
+        <label>
+          <input type="radio" name="canal" value="email" />
+          E-mail
+        </label>
+      </div>
+      <p class="hint" id="canal-aviso"></p>
+
+      <h3>Filtro de processos</h3>
+      <div class="filtro-toggle">
+        <label>
+          <input type="radio" name="filtro" value="tarefa" checked />
+          Tarefa-padrão
+        </label>
+        <label id="filtro-etiqueta-label">
+          <input type="radio" name="filtro" value="etiqueta" />
+          Etiqueta cadastrada (<span id="filtro-etiqueta-nome">—</span>)
+        </label>
+      </div>
+      <p class="hint" id="filtro-aviso"></p>
+
+      <div class="toolbar toolbar--end">
+        <button id="btn-cancelar" class="btn">Cancelar</button>
+        <button id="btn-coletar" class="btn primary">Coletar processos</button>
+      </div>
+    </section>
+
+    <section id="estado-progresso" class="card" hidden>
+      <h2>Coletando processos do PJe...</h2>
+      <p class="hint">
+        Não feche esta aba enquanto a coleta estiver em andamento.
+      </p>
+      <div class="progress">
+        <div class="progress__bar indeterminada"><div class="progress__fill" id="bar-fill"></div></div>
+        <div class="progress__label" id="bar-label">Preparando...</div>
+      </div>
+      <h3 class="log-title">Registro</h3>
+      <ul class="log" id="log"></ul>
+    </section>
+
+    <section id="estado-resultado" class="card" hidden>
+      <h2 id="resultado-titulo">Processos coletados</h2>
+      <p class="hint" id="resultado-resumo"></p>
+      <div id="resultado-avisos"></div>
+      <div id="resultado-grupos"></div>
+      <div class="toolbar toolbar--end">
+        <button id="btn-voltar" class="btn">Nova coleta</button>
+      </div>
+    </section>
+
+    <section id="estado-historico" class="card historico" hidden>
+      <h2>Histórico de cobranças</h2>
+      <p class="hint">Últimas 30 cobranças geradas neste navegador.</p>
+      <ul id="historico-lista"></ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <script src="painel.js"></script>
+</body>
+</html>

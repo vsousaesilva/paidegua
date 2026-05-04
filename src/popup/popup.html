@@ -766,6 +766,9 @@
       <button type="button" class="paidegua-popup__tab" role="tab" id="tab-pericias" aria-controls="panel-pericias" aria-selected="false">
         Per&#237;cias
       </button>
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-comunicacao" aria-controls="panel-comunicacao" aria-selected="false">
+        Central de Comunica&#231;&#227;o
+      </button>
     </nav>
 
     <main class="paidegua-popup__main">
@@ -865,6 +868,29 @@
               O OCR roda localmente, sem enviar p&#225;ginas ao provedor de IA.
               Documentos muito longos podem deixar o navegador lento, por isso
               p&#225;ginas acima do limite s&#227;o ignoradas.
+            </p>
+          </section>
+
+          <section class="paidegua-popup__section">
+            <h2>Sigcrim &#8212; acervo criminal</h2>
+            <p class="paidegua-popup__hint">
+              Acervo de processos criminais com controle de prescri&#231;&#227;o,
+              ANPP e SERP. Os dados ficam guardados no seu computador
+              (IndexedDB) e podem ser consultados a qualquer momento &#8212;
+              sem precisar varrer o PJe novamente.
+            </p>
+            <div class="paidegua-popup__row paidegua-popup__row--buttons">
+              <button type="button" id="btn-open-sigcrim-dash" class="paidegua-popup__btn paidegua-popup__btn--primary">
+                Abrir acervo
+              </button>
+              <button type="button" id="btn-open-sigcrim-config" class="paidegua-popup__btn">
+                Configura&#231;&#245;es
+              </button>
+            </div>
+            <p class="paidegua-popup__hint paidegua-popup__hint--small">
+              Para fazer uma <strong>nova varredura</strong>, abra o painel-usu&#225;rio
+              do PJe e clique em &#8220;Sigcrim&#8221; na sidebar do paIdegua &#8212; a varredura
+              precisa da sess&#227;o autenticada do PJe.
             </p>
           </section>
 
@@ -1202,6 +1228,23 @@
               </p>
             </div>
           </div>
+          <div class="paidegua-popup__row">
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="per-telefone" style="margin:0 0 4px;display:block">
+                Telefone (WhatsApp) &#8212; opcional
+              </label>
+              <input type="tel" id="per-telefone" class="paidegua-popup__input" autocomplete="off" placeholder="Ex.: (85) 99999-1234" />
+            </div>
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="per-email" style="margin:0 0 4px;display:block">
+                E-mail &#8212; opcional
+              </label>
+              <input type="email" id="per-email" class="paidegua-popup__input" autocomplete="off" placeholder="perito@exemplo.com" />
+            </div>
+          </div>
+          <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin:-4px 0 8px">
+            Os contatos s&#227;o usados pela Central de Comunica&#231;&#227;o para abrir a sess&#227;o do WhatsApp ou o cliente padr&#227;o de e-mail. Cadastre ao menos um para habilitar a cobran&#231;a autom&#225;tica.
+          </p>
           <div class="paidegua-popup__row" style="flex-direction:column">
             <label class="paidegua-popup__hint" for="per-etiquetas-input" style="margin:0 0 4px;display:block">
               Etiquetas do perito (obrigat&#243;rio pelo menos uma &#8212; ordem = prioridade de cascata)
@@ -1236,6 +1279,66 @@
             <button type="button" id="btn-pericias-salvar" class="paidegua-popup__btn paidegua-popup__btn--primary">Salvar</button>
             <button type="button" id="btn-pericias-cancelar" class="paidegua-popup__btn">Cancelar</button>
           </div>
+        </section>
+      </div>
+
+      <div class="paidegua-popup__tabpanel" role="tabpanel" id="panel-comunicacao" aria-labelledby="tab-comunicacao" hidden>
+        <p class="paidegua-triagem-intro">
+          Configura&#231;&#245;es da <strong>Central de Comunica&#231;&#227;o</strong>: mensagens autom&#225;ticas de
+          cobran&#231;a aos peritos e &#224; Ceab. Cada destinat&#225;rio pode ser cobrado
+          tanto por WhatsApp quanto por e-mail — desde que o contato correspondente
+          esteja cadastrado.
+        </p>
+
+        <section class="paidegua-popup__section">
+          <h2 style="margin:0 0 6px;font-size:14px;color:var(--primary-dark)">Identifica&#231;&#227;o da unidade</h2>
+          <div class="paidegua-popup__row">
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="comm-nome-vara" style="margin:0 0 4px;display:block">Nome da Vara</label>
+              <input type="text" id="comm-nome-vara" class="paidegua-popup__input" autocomplete="off" placeholder="Ex.: 12&#170; Vara Federal" />
+              <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin-top:4px">
+                Aparece nas mensagens como <em>&#8220;Secretaria da [Nome da Vara]&#8221;</em>.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="paidegua-popup__section">
+          <h2 style="margin:0 0 6px;font-size:14px;color:var(--primary-dark)">Contatos da Ceab</h2>
+          <div class="paidegua-popup__row">
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="comm-email-ceab" style="margin:0 0 4px;display:block">E-mail</label>
+              <input type="email" id="comm-email-ceab" class="paidegua-popup__input" autocomplete="off" placeholder="servidor@inss.gov.br" />
+            </div>
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="comm-telefone-ceab" style="margin:0 0 4px;display:block">Telefone (WhatsApp)</label>
+              <input type="tel" id="comm-telefone-ceab" class="paidegua-popup__input" autocomplete="off" placeholder="Ex.: (85) 99999-1234" />
+            </div>
+          </div>
+          <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin:-4px 0 8px">
+            Cadastre ao menos um dos canais para habilitar a cobran&#231;a &#224; Ceab no pain&#233;l.
+          </p>
+        </section>
+
+        <section class="paidegua-popup__section">
+          <h2 style="margin:0 0 6px;font-size:14px;color:var(--primary-dark)">Etiquetas alternativas (opcional)</h2>
+          <div class="paidegua-popup__row">
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="comm-etiqueta-perito" style="margin:0 0 4px;display:block">Etiqueta para cobran&#231;a de perito</label>
+              <input type="text" id="comm-etiqueta-perito" class="paidegua-popup__input" autocomplete="off" placeholder="Ex.: Cobrar laudo perito" />
+              <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin-top:4px">
+                Filtro alternativo &#224; tarefa &#8220;Cobrar laudo&#8221;.
+              </p>
+            </div>
+            <div style="flex:1;min-width:0">
+              <label class="paidegua-popup__hint" for="comm-etiqueta-ceab" style="margin:0 0 4px;display:block">Etiqueta para cobran&#231;a da Ceab</label>
+              <input type="text" id="comm-etiqueta-ceab" class="paidegua-popup__input" autocomplete="off" placeholder="Ex.: Cobrar Ceab" />
+              <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin-top:4px">
+                Filtro alternativo &#224; tarefa &#8220;Obriga&#231;&#227;o de fazer — Sem manifesta&#231;&#227;o&#8221;.
+              </p>
+            </div>
+          </div>
+          <p id="comm-status" class="paidegua-popup__status"></p>
         </section>
       </div>
     </main>

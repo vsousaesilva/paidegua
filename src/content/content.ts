@@ -41,6 +41,7 @@ import {
 import type {
   ChatMessage,
   ChatStartPayload,
+  ComunicacaoSettings,
   PericiaPerito,
   PJeApiProcesso,
   PJeDetection,
@@ -80,6 +81,13 @@ import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { abrirPericiasPainel } from './pericias/pericias-coordinator';
+import { abrirComunicacaoPainel } from './comunicacao/comunicacao-coordinator';
+import { coletarComunicacao } from './comunicacao/comunicacao-coletor';
+import { abrirAudienciaPainel } from './audiencia/audiencia-coordinator';
+import { coletarAudienciaPorAdvogado } from './audiencia/audiencia-coletor';
+import { abrirSigcrim } from './criminal/criminal-coordinator';
+import { varrerCriminalPorTarefas } from './criminal/pje-criminal-fetcher';
+import { enriquecerPessoaFisicaPorCpf } from './criminal/pje-pessoa-fisica-fetcher';
 import { coletarPautasPorPeritos } from './pericias/pericias-coletor';
 import {
   aplicarEtiquetaEmLoteComBridge,
@@ -94,7 +102,23 @@ import {
   type StreamingFinalizedArgs
 } from './gestao/prazos-fita-coordinator';
 import { consultarPorAssinatura as consultarPorAssinaturaScanState } from './gestao/prazos-fita-scan-state';
-import { listarEtiquetas } from './pje-api/pje-api-from-content';
+import { gerarChaveAcesso, listarEtiquetas } from './pje-api/pje-api-from-content';
+import {
+  carregarTimelineCompleta,
+  diagnosticarExtractor,
+  extrairDetalhesProcesso,
+  extrairMovimentosDoDOM,
+  extrairPartesDoDOM,
+  waitAutosDigitaisReady
+} from './criminal/criminal-extractor';
+import {
+  filtrarDocumentosPrincipais,
+  type DocumentoPrincipalIdentificado
+} from '../shared/criminal-pdf-filter';
+import {
+  mesclarDadosPdf,
+  type DadosPdfExtraidos
+} from '../shared/criminal-ai-prompts';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
@@ -106,6 +130,7 @@ import {
   type NomeAnonimizar
 } from '../shared/anonymizer';
 import {
+  activateDocumentInPje,
   extractContents,
   getOcrPendingDocuments,
   runOcrOnDocuments
@@ -2527,6 +2552,21 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     handleTriagemInteligente('pericias');
   });
 
+  els.sigcrimButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleSigcrim();
+  });
+
+  els.comunicacaoPaideguaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleAbrirComunicacao();
+  });
+
+  els.audienciaPaideguaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleAbrirAudiencia();
+  });
+
   els.painelGerencialButton.addEventListener('click', (event) => {
     event.preventDefault();
     void handlePainelGerencial();
@@ -2535,6 +2575,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
   els.prazosFitaButton.addEventListener('click', (event) => {
     event.preventDefault();
     void handlePrazosFita();
+  });
+
+  els.metasCnjButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleMetasCnj();
   });
 }
 
@@ -2643,6 +2688,100 @@ async function handleAbrirPericias(): Promise<void> {
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAbrirPericias falhou:`, err);
     notice(`Falha em "Perícias pAIdegua": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do botão "Central de Comunicação" (perfil Secretaria): abre a
+ * aba dedicada que gera mensagens de cobrança ao perito (WhatsApp) e à
+ * Ceab (e-mail). Todo o trabalho de seleção de modo/filtro e disparo
+ * acontece na aba aberta.
+ */
+async function handleAbrirComunicacao(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+  notice('Abrindo "Central de Comunicação" em nova aba...');
+  try {
+    const result = await abrirComunicacaoPainel({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Central de Comunicação".', 'error');
+      return;
+    }
+    notice('"Central de Comunicação" aberta em nova aba.');
+    window.setTimeout(() => notice('', 'info'), 2500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAbrirComunicacao falhou:`, err);
+    notice(`Falha em "Central de Comunicação": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do botão "Audiência pAIdegua" (perfil Secretaria): detecta as
+ * tarefas de "designar audiência" no painel e abre a aba que agrupa por
+ * advogado e aplica a etiqueta-pauta em lote.
+ */
+async function handleAbrirAudiencia(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+  notice('Abrindo "Audiência pAIdegua" em nova aba...');
+  try {
+    const result = await abrirAudienciaPainel({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Audiência pAIdegua".', 'error');
+      return;
+    }
+    notice(
+      `"Audiência pAIdegua" aberta em nova aba (${result.totalTarefas} tarefa(s) detectadas).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3000);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAbrirAudiencia falhou:`, err);
+    notice(`Falha em "Audiência pAIdegua": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do botão "Sigcrim" (perfil Secretaria):
+ *
+ *   1. Lista TODAS as tarefas do painel — diferente de Perícias, não filtra
+ *      por nome (a feature é genérica para varas criminais; o usuário decide
+ *      quais tarefas varrer dentro da aba do painel).
+ *   2. Lê a config criminal local (matrícula do servidor + vara) — pode
+ *      estar vazia.
+ *   3. Pede ao background para abrir a aba `criminal-painel`, passando
+ *      `{ tarefas, config }` via `chrome.storage.session`. Toda a
+ *      seleção, escolha de modo e progresso da varredura ficam lá.
+ */
+async function handleSigcrim(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo "Sigcrim" em nova aba...');
+  try {
+    const result = await abrirSigcrim({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Sigcrim".', 'error');
+      return;
+    }
+    notice(
+      `"Sigcrim" aberto em nova aba (${result.totalTarefas} tarefa(s) disponíveis para varredura).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleSigcrim falhou:`, err);
+    notice(`Falha em "Sigcrim": ${errorMessage(err)}`, 'error');
   }
 }
 
@@ -3841,6 +3980,67 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  // Controle Metas CNJ → "Aplicar etiqueta": dashboard pede, background
+  // encaminha para esta aba (same-origin para cookies). Mesma rotina do
+  // `aplicarEtiquetaEmLoteComBridge` usada por Perícias.
+  if (message.channel === MESSAGE_CHANNELS.METAS_APLICAR_ETIQUETAS) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      etiquetaPauta: string;
+      idsProcesso: number[];
+      favoritarAposCriar?: boolean;
+    };
+    if (
+      !payload ||
+      typeof payload.etiquetaPauta !== 'string' ||
+      !Array.isArray(payload.idsProcesso)
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await aplicarEtiquetaEmLoteComBridge({
+          etiquetaPauta: payload.etiquetaPauta,
+          idsProcesso: payload.idsProcesso,
+          favoritarAposCriar: payload.favoritarAposCriar === true
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          aplicadas: 0,
+          error: errorMessage(err),
+          detalhes: []
+        });
+      }
+    })();
+    return true;
+  }
+
+  // Controle Metas CNJ: gêmeo de GESTAO_RUN_COLETA — dispara o pipeline
+  // de varredura/upsert no acervo `paidegua.metas-cnj`.
+  if (message.channel === MESSAGE_CHANNELS.METAS_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      requestId: string;
+      nomesTarefas: string[];
+    };
+    if (
+      !payload ||
+      !payload.requestId ||
+      !Array.isArray(payload.nomesTarefas)
+    ) {
+      sendResponse({ ok: false, error: 'Payload de coleta de Metas inválido.' });
+      return false;
+    }
+    sendResponse({ ok: true });
+    void handleMetasRunColeta(payload);
+    return false;
+  }
+
   // Prazos na Fita pAIdegua: gêmeo de GESTAO_RUN_COLETA, dispara o
   // pipeline via API REST (`coletarPrazosPorTarefasViaAPI`).
   if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_RUN_COLETA) {
@@ -3926,6 +4126,126 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  // Central de Comunicação: coletor síncrono. Roda só no top frame da aba PJe.
+  if (message.channel === MESSAGE_CHANNELS.COMUNICACAO_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      modo: 'cobrar-perito' | 'cobrar-ceab';
+      filtro: 'tarefa' | 'etiqueta';
+      peritos: PericiaPerito[];
+      settings: ComunicacaoSettings;
+    };
+    if (!payload || !payload.modo || !payload.filtro) {
+      sendResponse({ ok: false, error: 'Payload de coleta de comunicação inválido.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await coletarComunicacao({
+          modo: payload.modo,
+          filtro: payload.filtro,
+          legacyOrigin: window.location.origin,
+          settings: payload.settings,
+          peritos: Array.isArray(payload.peritos) ? payload.peritos : []
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          modo: payload.modo,
+          filtro: payload.filtro,
+          total: 0,
+          processos: [],
+          avisos: [],
+          error: errorMessage(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  // Audiência pAIdegua: coletor síncrono — agrupa por advogado.
+  if (message.channel === MESSAGE_CHANNELS.AUDIENCIA_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      nomesTarefas: string[];
+      quantidadePorPauta: number;
+      dataAudienciaISO: string;
+    };
+    if (
+      !payload ||
+      !Array.isArray(payload.nomesTarefas) ||
+      typeof payload.dataAudienciaISO !== 'string'
+    ) {
+      sendResponse({ ok: false, error: 'Payload de coleta de audiência inválido.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const dt = new Date(payload.dataAudienciaISO);
+        const r = await coletarAudienciaPorAdvogado({
+          legacyOrigin: window.location.origin,
+          nomesTarefas: payload.nomesTarefas,
+          quantidadePorPauta: payload.quantidadePorPauta,
+          dataAudiencia: dt
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          tarefasVarridas: [],
+          totalVarridos: 0,
+          pautas: [],
+          naoAgrupados: [],
+          dataAudienciaISO: '',
+          avisos: [],
+          error: errorMessage(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  // Audiência pAIdegua: aplicação de etiqueta em lote — reusa o aplicador
+  // das Perícias (mesmo bridge page-world). Resposta síncrona.
+  if (message.channel === MESSAGE_CHANNELS.AUDIENCIA_APLICAR_ETIQUETAS) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      etiquetaPauta: string;
+      idsProcesso: number[];
+      favoritarAposCriar?: boolean;
+    };
+    if (
+      !payload ||
+      typeof payload.etiquetaPauta !== 'string' ||
+      !Array.isArray(payload.idsProcesso)
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await aplicarEtiquetaEmLoteComBridge({
+          etiquetaPauta: payload.etiquetaPauta,
+          idsProcesso: payload.idsProcesso,
+          favoritarAposCriar: payload.favoritarAposCriar === true
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          aplicadas: 0,
+          error: errorMessage(err),
+          detalhes: []
+        });
+      }
+    })();
+    return true;
+  }
+
   // Painel -> content (aba PJe): consulta se existe checkpoint de
   // "Prazos na Fita" compativel com a assinatura da selecao atual.
   if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_QUERY_SCAN_STATE) {
@@ -3986,6 +4306,363 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     })();
     return true;
+  }
+
+  if (message.channel === MESSAGE_CHANNELS.CRIMINAL_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      const payload = message.payload as {
+        requestId: string;
+        nomesTarefas: string[];
+        modo: 'rapido' | 'completo';
+        config?: { servidor_responsavel?: string; vara_id?: string } | null;
+        diasMaximos?: number;
+        tetoProcessos?: number;
+        concorrencia?: number;
+        filtroSigla?: boolean;
+      };
+      const requestId = payload.requestId;
+      const emit = (channel: string, extra: Record<string, unknown>): void => {
+        chrome.runtime
+          .sendMessage({ channel, payload: { requestId, ...extra } })
+          .catch(() => { /* aba fechada — segue */ });
+      };
+      try {
+        const inicio = Date.now();
+        const resumo = await varrerCriminalPorTarefas({
+          tarefas: payload.nomesTarefas,
+          servidorResponsavel: payload.config?.servidor_responsavel,
+          varaId: payload.config?.vara_id,
+          runIA: payload.modo !== 'rapido',
+          diasMaximos: payload.diasMaximos,
+          tetoProcessos: payload.tetoProcessos,
+          concorrencia: payload.concorrencia,
+          filtroSigla: payload.filtroSigla,
+          onProgress: (texto) => {
+            emit(MESSAGE_CHANNELS.CRIMINAL_COLETA_PROG, { texto });
+          },
+          onCapturado: (capturado) => {
+            // CRÍTICO: upsert NÃO pode rodar no content script porque
+            // o IndexedDB do content vive no origin do PJe
+            // (pje1g.trf5.jus.br), não no origin da extensão. A
+            // criminal-config, criminal-painel e demais páginas da
+            // extensão abrem o IndexedDB no origin chrome-extension://,
+            // que é uma base completamente separada. Por isso enviamos
+            // o capturado COMPLETO via SLOT — o background faz o upsert
+            // e depois roteia para o painel uma versão slim para a UI.
+            emit(MESSAGE_CHANNELS.CRIMINAL_COLETA_SLOT, {
+              capturado: {
+                payload: capturado.payload,
+                reus: capturado.reus,
+                pje_origem: capturado.pje_origem,
+                reusOrigem: capturado.reusOrigem,
+                ultima_sincronizacao_pje: capturado.ultima_sincronizacao_pje,
+                warnings: capturado.warnings
+              }
+            });
+          }
+        });
+        emit(MESSAGE_CHANNELS.CRIMINAL_COLETA_DONE, {
+          capturados: resumo.capturados,
+          erros: resumo.erros,
+          tarefasProcessadas: resumo.tarefasProcessadas,
+          tarefasComFalha: resumo.tarefasComFalha,
+          totalProcessosListados: resumo.totalProcessosListados,
+          descartadosPorSigla: resumo.descartadosPorSigla,
+          descartadosPorIdade: resumo.descartadosPorIdade,
+          descartadosPorTeto: resumo.descartadosPorTeto,
+          siglasDesconhecidas: resumo.siglasDesconhecidas,
+          duracaoMs: Date.now() - inicio
+        });
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} criminal: varredura falhou:`, err);
+        emit(MESSAGE_CHANNELS.CRIMINAL_COLETA_FAIL, {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    })();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.channel === MESSAGE_CHANNELS.CRIMINAL_FETCH_CA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      try {
+        const idProcesso = Number(
+          (message.payload as { idProcesso?: unknown })?.idProcesso ?? 0
+        );
+        if (!Number.isFinite(idProcesso) || idProcesso <= 0) {
+          sendResponse({ ok: false, error: 'idProcesso inválido.' });
+          return;
+        }
+        const r = await gerarChaveAcesso(idProcesso);
+        if (!r.ok || !r.ca) {
+          sendResponse({ ok: false, error: r.error ?? 'Falha gerando ca.' });
+          return;
+        }
+        sendResponse({ ok: true, ca: r.ca });
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  if (message.channel === MESSAGE_CHANNELS.CRIMINAL_FETCH_PESSOA_FISICA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      try {
+        const cpf = String(
+          (message.payload as { cpf?: unknown })?.cpf ?? ''
+        ).trim();
+        if (!cpf) {
+          sendResponse({ ok: false, error: 'CPF não informado.' });
+          return;
+        }
+        const r = await enriquecerPessoaFisicaPorCpf(cpf);
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  if (message.channel === MESSAGE_CHANNELS.CRIMINAL_EXTRAIR_NA_ABA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      // Trace acumulado nas etapas internas — vai junto na resposta
+      // pra o background mesclar no trace dele e o dashboard exibir.
+      const trace: import('../shared/criminal-types').TraceEntry[] = [];
+      const t0 = Date.now();
+      const tlog = (
+        etapa: string,
+        status: 'ok' | 'falha' | 'info' | 'aviso',
+        info?: string
+      ): void => {
+        trace.push({ etapa, status, info, ts: Date.now() - t0 });
+      };
+      try {
+        tlog('aguardar-render', 'info', 'esperando autos digitais (até 12s)…');
+        const ready = await waitAutosDigitaisReady(12_000);
+        if (!ready) {
+          tlog('aguardar-render', 'falha', 'timeout — DOM sem partes nem movimentos');
+          sendResponse({
+            ok: false,
+            error:
+              'Autos digitais não renderizou no timeout — DOM sem padrão de partes nem movimentos.',
+            diagnostic: diagnosticarExtractor(),
+            trace
+          });
+          return;
+        }
+        tlog('aguardar-render', 'ok');
+
+        const partes = extrairPartesDoDOM();
+        const movimentos = extrairMovimentosDoDOM();
+        const detalhes = extrairDetalhesProcesso();
+        tlog(
+          'extrair-partes-movimentos',
+          'ok',
+          `partes=${partes.length}, movimentos=${movimentos.length}, detalhes=${detalhes ? 'sim' : 'não'}`
+        );
+
+        // Força carregamento completo da timeline ANTES de listar
+        // documentos. Sem isto, processos com 50+ peças entregam DOM
+        // só com os primeiros itens (lazy load do PJe), e a denúncia
+        // — geralmente "lá embaixo" no fluxo cronológico — fica fora.
+        try {
+          const r = await carregarTimelineCompleta(15_000);
+          tlog(
+            'scroll-timeline',
+            r.estabilizou ? 'ok' : 'aviso',
+            `${r.docsAntes} → ${r.docsDepois} doc(s) em ${r.ciclos} ciclo(s) ` +
+              `(container=${r.containerInfo}, ${r.estabilizou ? 'estabilizou' : 'timeout'})`
+          );
+        } catch (err) {
+          tlog(
+            'scroll-timeline',
+            'aviso',
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+
+        // Lista de documentos via adapter PJe.
+        let documentos: ProcessoDocumento[] = [];
+        let principais: DocumentoPrincipalIdentificado[] = [];
+        try {
+          const adapter = await waitAdapterPronto(3_000);
+          if (adapter) {
+            documentos = adapter.extractDocumentos();
+            principais = filtrarDocumentosPrincipais(documentos);
+            tlog(
+              'listar-documentos',
+              'ok',
+              `total=${documentos.length}, principais=${principais.length}` +
+                (principais.length > 0
+                  ? ` (${principais.map((p) => `${p.tipoPrincipal} ${p.documento.id}`).join(', ')})`
+                  : '')
+            );
+          } else {
+            tlog('listar-documentos', 'aviso', 'adapter PJe não ficou pronto em 3s');
+          }
+        } catch (err) {
+          tlog(
+            'listar-documentos',
+            'falha',
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+
+        const runIA = (message.payload as { runIA?: boolean })?.runIA !== false;
+        let dadosIA: DadosPdfExtraidos | null = null;
+        const dadosIAFontes: DadosPdfExtraidos[] = [];
+        if (!runIA) {
+          tlog('rodar-ia', 'info', 'desligado pelo caller (runIA=false)');
+        } else if (principais.length === 0) {
+          tlog(
+            'rodar-ia',
+            'aviso',
+            'nenhum documento principal — IA não tem o que processar'
+          );
+        } else {
+          try {
+            const docsParaExtrair = principais.map((p) => p.documento);
+            for (const doc of docsParaExtrair) {
+              try {
+                const ativou = await activateDocumentInPje(doc.id);
+                tlog(
+                  `ativar-doc-${doc.id}`,
+                  ativou ? 'ok' : 'aviso',
+                  ativou ? 'click no link, aguardando 2s' : 'link não encontrado no DOM'
+                );
+                if (ativou) {
+                  await new Promise((r) => setTimeout(r, 2000));
+                }
+              } catch (err) {
+                tlog(
+                  `ativar-doc-${doc.id}`,
+                  'falha',
+                  err instanceof Error ? err.message : String(err)
+                );
+              }
+            }
+
+            const extraidos = await extractContents(
+              docsParaExtrair,
+              () => { /* sem progresso */ }
+            );
+            tlog(
+              'ler-pdfs',
+              'ok',
+              extraidos
+                .map(
+                  (e) =>
+                    `${e.id}=${(e.textoExtraido ?? '').length}c`
+                )
+                .join(', ')
+            );
+
+            const MIN_CHARS_PARA_IA = 500;
+            for (let i = 0; i < extraidos.length; i++) {
+              const docExtraido = extraidos[i]!;
+              const tipoPrincipal = principais[i]?.tipoPrincipal;
+              const texto = (docExtraido.textoExtraido ?? '').trim();
+              if (!texto || texto.length < MIN_CHARS_PARA_IA) {
+                tlog(
+                  `ia-doc-${docExtraido.id}`,
+                  'aviso',
+                  `pulado: ${texto.length} chars (stub provável)`
+                );
+                continue;
+              }
+              try {
+                const respIA = await chrome.runtime.sendMessage({
+                  channel: MESSAGE_CHANNELS.CRIMINAL_AI_EXTRAIR_PDF,
+                  payload: { texto, tipoDocumento: tipoPrincipal ?? null }
+                });
+                if (respIA?.ok && respIA.dadosIA) {
+                  dadosIAFontes.push(respIA.dadosIA as DadosPdfExtraidos);
+                  const dia = respIA.dadosIA as DadosPdfExtraidos;
+                  const camposPreench = (
+                    Object.keys(dia) as (keyof DadosPdfExtraidos)[]
+                  ).filter(
+                    (k) => dia[k] !== null && dia[k] !== undefined && dia[k] !== ''
+                  );
+                  tlog(
+                    `ia-doc-${docExtraido.id}`,
+                    'ok',
+                    `${camposPreench.length} campo(s): ${camposPreench.join(', ')}`
+                  );
+                } else {
+                  tlog(
+                    `ia-doc-${docExtraido.id}`,
+                    'falha',
+                    respIA?.error ?? 'sem dados retornados'
+                  );
+                }
+              } catch (err) {
+                tlog(
+                  `ia-doc-${docExtraido.id}`,
+                  'falha',
+                  err instanceof Error ? err.message : String(err)
+                );
+              }
+            }
+            if (dadosIAFontes.length > 0) {
+              dadosIA = mesclarDadosPdf(dadosIAFontes);
+              tlog('mesclar-ia', 'ok', `${dadosIAFontes.length} fonte(s) consolidadas`);
+            } else {
+              tlog('mesclar-ia', 'aviso', 'nenhuma fonte IA produziu dados');
+            }
+          } catch (err) {
+            tlog(
+              'rodar-ia',
+              'falha',
+              err instanceof Error ? err.message : String(err)
+            );
+          }
+        }
+
+        let numeroProcesso: string | null = null;
+        const headerText = document.body.textContent ?? '';
+        const m = headerText.match(/\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/);
+        if (m) numeroProcesso = m[0];
+
+        sendResponse({
+          ok: true,
+          numeroProcesso,
+          partes,
+          movimentos,
+          detalhes,
+          documentos,
+          documentosPrincipais: principais,
+          dadosIA,
+          dadosIAFontes,
+          diagnostic: diagnosticarExtractor(),
+          trace
+        });
+      } catch (err) {
+        tlog('exception', 'falha', err instanceof Error ? err.message : String(err));
+        sendResponse({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          trace
+        });
+      }
+    })();
+    return true; // resposta assíncrona
   }
 
   if (message.channel === MESSAGE_CHANNELS.PRAZOS_FITA_EXTRAIR_NA_ABA) {
@@ -4204,6 +4881,99 @@ function base64ToBlob(b64: string, mime: string): Blob {
     bytes[i] = binary.charCodeAt(i);
   }
   return new Blob([bytes], { type: mime });
+}
+
+// =====================================================================
+// Controle Metas CNJ (perfil Gestão)
+// =====================================================================
+
+import { abrirMetasPainel } from './metas-cnj/abrir-metas-painel';
+import { varrerMetasCnj } from './metas-cnj/metas-coordinator';
+
+async function handleMetasCnj(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo "Controle Metas CNJ" em nova aba...');
+  try {
+    const result = await abrirMetasPainel({ onProgress: (msg) => notice(msg) });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Controle Metas CNJ".', 'error');
+      return;
+    }
+    notice(
+      `"Controle Metas CNJ" aberto em nova aba (${result.totalTarefas} tarefa(s) disponíveis).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleMetasCnj falhou:`, err);
+    notice(`Falha em "Controle Metas CNJ": ${errorMessage(err)}`, 'error');
+  }
+}
+
+const metasCnjEmCurso = new Set<string>();
+
+async function handleMetasRunColeta(payload: {
+  requestId: string;
+  nomesTarefas: string[];
+}): Promise<void> {
+  const { requestId, nomesTarefas } = payload;
+  if (metasCnjEmCurso.has(requestId)) {
+    return; // disparo duplicado — ignorar
+  }
+  metasCnjEmCurso.add(requestId);
+
+  const startedAt = new Date().toISOString();
+  const postProg = (msg: string): void => {
+    chrome.runtime
+      .sendMessage({
+        channel: MESSAGE_CHANNELS.METAS_COLETA_PROG,
+        payload: { requestId, msg }
+      })
+      .catch(() => { /* aba-painel pode ter fechado */ });
+  };
+
+  try {
+    const legacyOrigin = `${window.location.protocol}//${window.location.hostname}`;
+    postProg(
+      `Coleta Metas CNJ iniciada em ${nomesTarefas.length} tarefa(s).`
+    );
+
+    const resumo = await varrerMetasCnj({
+      nomesTarefas,
+      legacyOrigin,
+      hostnamePJe: window.location.hostname,
+      ultimaSincronizacaoPje: startedAt,
+      onProgress: postProg
+    });
+
+    chrome.runtime
+      .sendMessage({
+        channel: MESSAGE_CHANNELS.METAS_COLETA_DONE,
+        payload: {
+          requestId,
+          startedAt,
+          ...resumo
+        }
+      })
+      .catch(() => { /* fechada */ });
+  } catch (err) {
+    if (isContextInvalidatedError(err)) return;
+    console.warn(`${LOG_PREFIX} handleMetasRunColeta falhou:`, err);
+    chrome.runtime
+      .sendMessage({
+        channel: MESSAGE_CHANNELS.METAS_COLETA_FAIL,
+        payload: {
+          requestId,
+          error: err instanceof Error ? err.message : String(err)
+        }
+      })
+      .catch(() => { /* fechada */ });
+  } finally {
+    metasCnjEmCurso.delete(requestId);
+  }
 }
 
 void bootstrap();

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>pAIdegua — Controle Metas CNJ</title>
+  <link rel="stylesheet" href="painel.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Controle Metas CNJ</h1>
+        <p class="header__subtitle">pAIdegua — Perfil Gestão</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta"></div>
+  </header>
+
+  <main class="main">
+    <section id="estado-carregando" class="card estado">
+      <p class="loading">Preparando seletor de tarefas...</p>
+    </section>
+
+    <section id="estado-erro" class="card estado" hidden>
+      <h2>Não foi possível iniciar</h2>
+      <p id="erro-msg" class="erro-msg"></p>
+      <div class="toolbar">
+        <button id="btn-fechar" class="btn">Fechar esta aba</button>
+      </div>
+    </section>
+
+    <section id="estado-seletor" class="card" hidden>
+      <h2>Selecione as tarefas a varrer</h2>
+      <p class="hint">
+        Marque as tarefas cujos processos devem ser classificados/atualizados
+        no acervo de Metas. Após a varredura, esta aba abre o dashboard
+        automaticamente. Atualizações posteriores são <strong>incrementais</strong>:
+        processos sem novo movimento são pulados (rápido).
+      </p>
+
+      <div class="toolbar toolbar--start">
+        <button id="btn-todas" class="btn">Selecionar todas</button>
+        <button id="btn-limpar" class="btn">Limpar</button>
+        <span class="count" id="contador"></span>
+      </div>
+
+      <ul id="lista-tarefas" class="lista"></ul>
+
+      <div class="toolbar toolbar--end">
+        <button id="btn-cancelar" class="btn">Cancelar</button>
+        <button id="btn-confirmar" class="btn primary" disabled>
+          Iniciar varredura
+        </button>
+      </div>
+    </section>
+
+    <section id="estado-progresso" class="card" hidden>
+      <h2>Varrendo tarefas...</h2>
+      <p class="hint" id="progresso-resumo">
+        Não feche esta aba enquanto a varredura estiver em andamento.
+      </p>
+
+      <div class="progress">
+        <div class="progress__bar indeterminada"><div class="progress__fill" id="bar-fill"></div></div>
+        <div class="progress__label" id="bar-label">Iniciando...</div>
+      </div>
+
+      <h3 class="log-title">Registro</h3>
+      <ul class="log" id="log"></ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <script src="painel.js"></script>
+</body>
+</html>

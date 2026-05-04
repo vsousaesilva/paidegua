@@ -1,0 +1,423 @@
+/*
+ * Página de configuração do perfil "Gestão Criminal".
+ * Reusa paleta institucional gov.br / PJe-CNJ do paidegua.
+ */
+:root {
+  --primary: #1351B4;
+  --primary-dark: #0C326F;
+  --primary-light: #5992ED;
+  --yellow: #FFCD07;
+  --bg: #F6F8FC;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --fg: #16243A;
+  --muted: #5B6B82;
+  --border: rgba(19, 81, 180, 0.14);
+  --border-strong: rgba(19, 81, 180, 0.26);
+  --danger: #c0392b;
+  --ok: #1e7e34;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 14px 40px rgba(12, 50, 111, 0.12);
+  --gradient: linear-gradient(135deg, #1351B4 0%, #0C326F 100%);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(900px 420px at 100% 0%, rgba(89, 146, 237, 0.18), transparent 60%),
+    radial-gradient(700px 320px at 0% 100%, rgba(255, 205, 7, 0.08), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--fg);
+  font-family: "Inter", "Rawline", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.92em;
+  background: rgba(19, 81, 180, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.paidegua-criminal__header {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 48px 28px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.paidegua-criminal__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--gradient);
+  box-shadow: 0 14px 32px rgba(19, 81, 180, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.paidegua-criminal__header > div { min-width: 0; flex: 1; }
+
+.paidegua-criminal__header h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.4px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.paidegua-criminal__subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  max-width: 620px;
+}
+
+.paidegua-criminal__main {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 8px 28px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.paidegua-criminal__card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+  backdrop-filter: saturate(180%) blur(10px);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
+}
+
+.paidegua-criminal__card h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  color: var(--primary-dark);
+  letter-spacing: -0.2px;
+}
+
+.paidegua-criminal__hint {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.paidegua-criminal__hint--small { font-size: 12px; }
+.paidegua-criminal__hint.is-ok    { color: var(--ok); }
+.paidegua-criminal__hint.is-error { color: var(--danger); }
+
+.paidegua-criminal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.paidegua-criminal__field span {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary-dark);
+  letter-spacing: 0.2px;
+}
+
+.paidegua-criminal__field input,
+.paidegua-criminal__field select {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--fg);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.paidegua-criminal__field input:focus,
+.paidegua-criminal__field select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(19, 81, 180, 0.18);
+}
+
+.paidegua-criminal__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.paidegua-criminal__btn {
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--primary-dark);
+  border: 1px solid var(--border-strong);
+  transition: background 0.15s, transform 0.05s;
+}
+
+.paidegua-criminal__btn:hover:not(:disabled) {
+  background: rgba(19, 81, 180, 0.08);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.paidegua-criminal__btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.paidegua-criminal__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.paidegua-criminal__btn--primary {
+  background: var(--gradient);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 6px 18px rgba(19, 81, 180, 0.28);
+}
+
+.paidegua-criminal__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--gradient);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 8px 22px rgba(19, 81, 180, 0.38);
+}
+
+.paidegua-criminal__btn--danger {
+  color: var(--danger);
+  border-color: rgba(192, 57, 43, 0.3);
+}
+
+.paidegua-criminal__btn--danger:hover:not(:disabled) {
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.paidegua-criminal__status {
+  font-size: 12.5px;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+.paidegua-criminal__status.is-ok { color: var(--ok); }
+.paidegua-criminal__status.is-error { color: var(--danger); }
+
+.paidegua-criminal__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 8px 0 18px;
+}
+
+.paidegua-criminal__stats div {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.paidegua-criminal__stats dt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.paidegua-criminal__stats dd {
+  margin: 6px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-criminal__card--note {
+  background: rgba(255, 205, 7, 0.06);
+  border-color: rgba(255, 205, 7, 0.32);
+}
+
+.paidegua-criminal__doc {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.paidegua-criminal__doc li {
+  margin-bottom: 8px;
+}
+
+.paidegua-criminal__doc strong {
+  color: var(--primary-dark);
+}
+
+/* ── Modal de revisão de dados inválidos ─────────────────────── */
+.paidegua-criminal__modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.paidegua-criminal__modal[hidden] { display: none; }
+
+.paidegua-criminal__modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 50, 111, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.paidegua-criminal__modal-painel {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(12, 50, 111, 0.32);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.paidegua-criminal__modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(19, 81, 180, 0.04);
+}
+
+.paidegua-criminal__modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.paidegua-criminal__btn-fechar {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.paidegua-criminal__btn-fechar:hover {
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--danger);
+}
+
+.paidegua-criminal__modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 22px;
+}
+
+.paidegua-criminal__modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  background: rgba(19, 81, 180, 0.02);
+}
+
+.paidegua-criminal__poluidos-lista {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.paidegua-criminal__poluido-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.paidegua-criminal__poluido-item:last-child { border-bottom: 0; }
+
+.paidegua-criminal__poluido-titulo {
+  font-weight: 600;
+  color: var(--primary-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-criminal__poluido-tipo-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: rgba(19, 81, 180, 0.1);
+  color: var(--primary-dark);
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.paidegua-criminal__poluido-campo {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.paidegua-criminal__poluido-valor {
+  background: rgba(192, 57, 43, 0.06);
+  border-left: 3px solid var(--danger);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+.paidegua-criminal__poluido-motivo {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .paidegua-criminal__stats { grid-template-columns: 1fr; }
+  .paidegua-criminal__main { padding: 8px 18px 48px; }
+  .paidegua-criminal__header { padding: 32px 18px 12px; }
+}

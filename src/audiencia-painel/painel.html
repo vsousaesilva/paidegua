@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Audiência pAIdegua — Pauta por advogado</title>
+  <link rel="stylesheet" href="painel.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Audiência pAIdegua</h1>
+        <p class="header__subtitle">pAIdegua &mdash; Perfil Secretaria</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta"></div>
+  </header>
+
+  <main class="main">
+    <section id="estado-carregando" class="card">
+      <p class="loading">Carregando configurações...</p>
+    </section>
+
+    <section id="estado-erro" class="card" hidden>
+      <h2>Não foi possível iniciar</h2>
+      <p id="erro-msg" class="erro-msg"></p>
+      <div class="toolbar">
+        <button id="btn-fechar" class="btn">Fechar esta aba</button>
+      </div>
+    </section>
+
+    <section id="estado-seletor" class="card" hidden>
+      <h2>Monte a pauta de audiência</h2>
+      <p class="hint">
+        Selecione as tarefas de <em>Audiência - Designar</em> a varrer e
+        informe a data da audiência e a quantidade-cap por advogado.
+        Os processos serão agrupados por advogado (identificado pela OAB
+        no polo ativo) e ordenados por antiguidade na tarefa.
+      </p>
+
+      <h3>Data da audiência</h3>
+      <div class="toolbar toolbar--start">
+        <label for="input-data" class="sr-only">Data da audiência</label>
+        <input type="date" id="input-data" class="input" required />
+        <span id="data-aviso" class="count"></span>
+      </div>
+
+      <h3>Quantidade por advogado</h3>
+      <div class="toolbar toolbar--start">
+        <label for="input-qtd" class="sr-only">Quantidade por advogado</label>
+        <input
+          type="number"
+          id="input-qtd"
+          class="input"
+          min="1"
+          max="500"
+          step="1"
+          value="5"
+        />
+        <span class="count">processo(s) por pauta</span>
+      </div>
+
+      <h3>Tarefas detectadas</h3>
+      <ul id="lista-tarefas" class="lista"></ul>
+
+      <div class="toolbar toolbar--end">
+        <button id="btn-cancelar" class="btn">Cancelar</button>
+        <button id="btn-coletar" class="btn primary">Coletar e agrupar</button>
+      </div>
+    </section>
+
+    <section id="estado-progresso" class="card" hidden>
+      <h2>Coletando processos do PJe...</h2>
+      <p class="hint">
+        Não feche esta aba enquanto a coleta estiver em andamento.
+      </p>
+      <div class="progress">
+        <div class="progress__bar indeterminada"><div class="progress__fill" id="bar-fill"></div></div>
+        <div class="progress__label" id="bar-label">Preparando...</div>
+      </div>
+      <h3 class="log-title">Registro</h3>
+      <ul class="log" id="log"></ul>
+    </section>
+
+    <section id="estado-resultado" class="card" hidden>
+      <h2>Pauta agrupada por advogado</h2>
+      <p class="hint" id="resultado-resumo"></p>
+      <div id="resultado-avisos"></div>
+      <div id="resultado-pautas"></div>
+      <div class="toolbar toolbar--end">
+        <button id="btn-voltar" class="btn">Nova coleta</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <script src="painel.js"></script>
+</body>
+</html>

@@ -420,7 +420,214 @@ export const MESSAGE_CHANNELS = {
    * processo o resultado (ok/erro). Depende de endpoints REST do PJe —
    * ver `pericias-etiqueta-applier.ts`.
    */
-  PERICIAS_APLICAR_ETIQUETAS: 'paidegua/pericias/aplicar-etiquetas'
+  PERICIAS_APLICAR_ETIQUETAS: 'paidegua/pericias/aplicar-etiquetas',
+  /**
+   * Canais do perfil "Gestão Criminal" — coleta de UM processo por DOM
+   * scraping da página `listAutosDigitais.seam`.
+   *
+   * Topologia espelhada do Prazos na Fita: o caller (content do painel
+   * criminal) pede ao background que abra a URL dos autos em aba inativa,
+   * o background aguarda o `complete`, dispara `CRIMINAL_EXTRAIR_NA_ABA`
+   * para o content script da nova aba, recebe `{ partes, movimentos }`
+   * do scraping do DOM e fecha a aba antes de responder ao caller.
+   *
+   * Por DOM scraping em vez de REST: a API REST de partes/movimentos do
+   * PJe legacy não é estável/documentada; o autos digitais já carrega
+   * todos esses dados no HTML, então parseamos direto. Mais robusto a
+   * mudanças internas e mais barato de validar.
+   */
+  CRIMINAL_COLETAR_PROCESSO: 'paidegua/criminal/coletar-processo',
+  CRIMINAL_EXTRAIR_NA_ABA: 'paidegua/criminal/extrair-na-aba',
+  /**
+   * Content (aba dos autos digitais) → background: pede a extração
+   * estruturada do texto de UM PDF (já transformado em texto pela
+   * camada de extração) usando o prompt criminal. O background chama
+   * o provider de IA ativo e devolve o `DadosPdfExtraidos` parseado.
+   * O caller é responsável por mesclar resultados de múltiplos PDFs.
+   */
+  CRIMINAL_AI_EXTRAIR_PDF: 'paidegua/criminal/ai-extrair-pdf',
+  /**
+   * Content (sidebar do PJe) → background: pede a abertura da aba do
+   * Sigcrim com a lista de tarefas e a config local. O background grava
+   * em `chrome.storage.session` indexado por `requestId` e cria a aba
+   * `criminal-painel/painel.html`.
+   */
+  CRIMINAL_OPEN_PAINEL: 'paidegua/criminal/open-painel',
+  /**
+   * Aba-painel → background: usuário confirmou a seleção de tarefas e
+   * o modo (rápido/completo). O background despacha
+   * `CRIMINAL_RUN_COLETA` para o content da aba PJe correspondente.
+   */
+  CRIMINAL_START_COLETA: 'paidegua/criminal/start-coleta',
+  /**
+   * Background → content (aba PJe): inicia a varredura criminal das
+   * tarefas selecionadas. O content roda `varrerCriminalPorTarefas` e
+   * reporta progresso/processo via canais `CRIMINAL_COLETA_*`.
+   */
+  CRIMINAL_RUN_COLETA: 'paidegua/criminal/run-coleta',
+  /** Content (aba PJe) → background → aba-painel: progresso textual. */
+  CRIMINAL_COLETA_PROG: 'paidegua/criminal/coleta-prog',
+  /** Content → background → aba-painel: cada processo capturado. */
+  CRIMINAL_COLETA_SLOT: 'paidegua/criminal/coleta-slot',
+  /** Content → background → aba-painel: varredura concluída. */
+  CRIMINAL_COLETA_DONE: 'paidegua/criminal/coleta-done',
+  /** Content → background → aba-painel: varredura falhou. */
+  CRIMINAL_COLETA_FAIL: 'paidegua/criminal/coleta-fail',
+  /**
+   * Dashboard → background → content (qualquer aba PJe ativa): pede
+   * enriquecimento de UM réu específico via tela
+   * `/pje/PessoaFisica/listView.seam` (busca por CPF + abertura do
+   * formulário de edição). Background atualiza o IDB e devolve os
+   * campos novos para o dashboard re-renderizar.
+   */
+  CRIMINAL_ENRIQUECER_REU: 'paidegua/criminal/enriquecer-reu',
+  /**
+   * Background → content da aba PJe: dispara a coleta JSF de um único
+   * CPF. Resposta imediata contém os campos extraídos ou erro.
+   */
+  CRIMINAL_FETCH_PESSOA_FISICA: 'paidegua/criminal/fetch-pessoa-fisica',
+  /**
+   * Dashboard → background: edição manual de um processo. Payload
+   * traz `processoId` e `patch` (subconjunto de `ProcessoPayload`).
+   * Carimba `manual` em `pje_origem` para cada campo do patch.
+   */
+  CRIMINAL_ATUALIZAR_PROCESSO: 'paidegua/criminal/atualizar-processo',
+  /**
+   * Dashboard → background: edição manual de um réu. Payload traz
+   * `reuId` e `patch` (subconjunto de campos de `Reu`).
+   */
+  CRIMINAL_ATUALIZAR_REU: 'paidegua/criminal/atualizar-reu',
+  /**
+   * Dashboard → background → aba PJe ativa: gera `chaveAcesso` (`ca`)
+   * para um `idProcesso`. Usado antes de abrir a aba oculta de
+   * reprocessamento, que requer `ca` válida na URL.
+   */
+  CRIMINAL_FETCH_CA: 'paidegua/criminal/fetch-ca',
+  /**
+   * Dashboard → background: reprocessa um processo já capturado
+   * usando aba oculta dos autos digitais — permite ativar links de
+   * documentos (que o PJe legacy serve com 0 bytes via fetch direto)
+   * e rodar IA sobre os PDFs principais. Atualiza tipo_crime, data_fato,
+   * pena_aplicada, status_anpp etc. com origem `ia`. Em paralelo, o
+   * orquestrador chama `CRIMINAL_ENRIQUECER_REU` para cada réu (JSF
+   * Pessoa Física, origem `pje`).
+   */
+  CRIMINAL_REPROCESSAR_PROCESSO: 'paidegua/criminal/reprocessar-processo',
+  /**
+   * Dashboard → background: processa um PDF carregado manualmente
+   * pelo usuário (alternativa ao reprocessamento automático via aba
+   * oculta). O dashboard extrai o texto do PDF localmente via pdf.js
+   * e envia `{ processoId, texto, tipoDocumento? }`. O background
+   * roda a mesma IA do reprocessamento e aplica os dadosIA no IDB
+   * com origem `ia`, preservando campos `manual`. Útil quando a aba
+   * oculta falha (sigilo, sessão expirada) ou para PDFs externos.
+   */
+  CRIMINAL_PROCESSAR_PDF_MANUAL: 'paidegua/criminal/processar-pdf-manual',
+  /**
+   * criminal-config → background: o usuário clicou em "Exportar agora"
+   * (botão na seção de auto-export). O background dispara a rotina
+   * compartilhada `executarAutoExport` no contexto do SW. Como é um
+   * gesto direto do usuário na página, a página também pode chamar
+   * a função local — usar este canal só quando interessar registrar
+   * via SW (consistência com o disparo do alarm).
+   */
+  CRIMINAL_AUTO_EXPORT_NOW: 'paidegua/criminal/auto-export-now',
+  /**
+   * criminal-config → background: a configuração de agendamento
+   * (periodicidade/horário) mudou; o background deve recalcular o
+   * `chrome.alarms` correspondente.
+   */
+  CRIMINAL_REAGENDAR_AUTO_EXPORT: 'paidegua/criminal/reagendar-auto-export',
+  /**
+   * Dashboard / modais → background: abre os autos digitais de um
+   * processo no PJe. O background tenta gerar `ca` (chave de acesso)
+   * via content script de uma aba PJe ativa e abre a URL completa
+   * `Detalhe/listAutosDigitais.seam?idProcesso=X&ca=Y`. Sem aba PJe
+   * disponível, faz fallback para a Consulta Pública por número CNJ
+   * (que dispensa `ca`).
+   *
+   * Reposta inclui `{ ok, modo: 'autos' | 'consulta-publica' }` para
+   * a UI sinalizar (ex.: toast) qual rota foi usada.
+   */
+  CRIMINAL_ABRIR_PROCESSO: 'paidegua/criminal/abrir-processo',
+  /**
+   * Dashboard / modais → background: abre a tarefa atual do processo
+   * no PJe (`movimentar.seam?idProcesso=X&newTaskId=Y&ca=Z`). Mesma
+   * estratégia do `CRIMINAL_ABRIR_PROCESSO` — gera `ca` via content
+   * de uma aba PJe ativa. Se o `idTaskInstance` armazenado estiver
+   * defasado (processo já saiu da tarefa), o PJe rejeita com
+   * "Usuário sem visibilidade" mesmo com `ca` correta — nesse caso
+   * fazemos fallback para a URL dos autos digitais (que abre os
+   * autos, e o usuário pode movimentar a tarefa atual de lá).
+   */
+  CRIMINAL_ABRIR_TAREFA: 'paidegua/criminal/abrir-tarefa',
+  /**
+   * criminal-config → background: lista o que seria limpo pela
+   * função `limparDadosPoluidos`, sem alterar nada. Resposta traz
+   * `itens: ItemPreviewLimpeza[]` para a UI exibir e o usuário aprovar.
+   */
+  CRIMINAL_PREVIEW_LIMPEZA: 'paidegua/criminal/preview-limpeza',
+  /**
+   * criminal-config → background: aplica a limpeza após confirmação
+   * do usuário. Resposta traz `processosLimpos` e `reusLimpos`.
+   */
+  CRIMINAL_APLICAR_LIMPEZA: 'paidegua/criminal/aplicar-limpeza',
+  /**
+   * Canais do módulo "Controle Metas CNJ" (perfil Gestão).
+   *
+   * Topologia espelhada do Painel Gerencial / Prazos na Fita: o content
+   * script da aba PJe abre a aba intermediária (`metas-painel`) com a
+   * lista de tarefas; ao confirmar, o background dispara a varredura no
+   * content original; ao concluir, a aba navega para o dashboard.
+   */
+  METAS_OPEN_PAINEL: 'paidegua/metas/open-painel',
+  METAS_START_COLETA: 'paidegua/metas/start-coleta',
+  METAS_RUN_COLETA: 'paidegua/metas/run-coleta',
+  METAS_COLETA_PROG: 'paidegua/metas/coleta-prog',
+  METAS_COLETA_DONE: 'paidegua/metas/coleta-done',
+  METAS_COLETA_READY: 'paidegua/metas/coleta-ready',
+  METAS_COLETA_FAIL: 'paidegua/metas/coleta-fail',
+  /**
+   * Content (aba PJe) → background: upsert de UM processo no acervo
+   * `paidegua.metas-cnj`. Análogo a `CRIMINAL_COLETA_SLOT`. O coordinator
+   * envia o patch capturado + classificação por meta calculada; o
+   * background grava no IDB (que vive no origin chrome-extension://, fora
+   * do alcance do content).
+   */
+  METAS_UPSERT_PROCESSO: 'paidegua/metas/upsert-processo',
+  /**
+   * Dashboard Metas CNJ → background → aba PJe ativa: aplica etiqueta
+   * em lote nos processos selecionados (cria a etiqueta se não existir;
+   * favorita se solicitado). Reusa o aplicador de Perícias, com a mesma
+   * shape de resposta `AplicarEtiquetasResult`.
+   */
+  METAS_APLICAR_ETIQUETAS: 'paidegua/metas/aplicar-etiquetas',
+  /**
+   * Dashboard Metas CNJ → background: override manual de status ou de
+   * inclusão/exclusão de meta. Persiste com origem `manual` no acervo.
+   */
+  METAS_OVERRIDE_MANUAL: 'paidegua/metas/override-manual',
+  /**
+   * Canais da "Central de Comunicação" (perfil Secretaria).
+   *
+   * Topologia simplificada: só uma aba (sem dashboard separado). O content
+   * abre a aba via `COMUNICACAO_OPEN_PAINEL`; a aba dispara
+   * `COMUNICACAO_RUN_COLETA` para o background, que encaminha ao content
+   * da aba PJe; o content devolve direto pela mesma promise (sem broadcast
+   * de progresso). A aba ainda usa `COMUNICACAO_REGISTRAR_COBRANCA` quando
+   * o usuário gera de fato a mensagem (para o histórico em `storage.local`).
+   */
+  COMUNICACAO_OPEN_PAINEL: 'paidegua/comunicacao/open-painel',
+  COMUNICACAO_RUN_COLETA: 'paidegua/comunicacao/run-coleta',
+  COMUNICACAO_REGISTRAR_COBRANCA: 'paidegua/comunicacao/registrar-cobranca',
+  /**
+   * Canais da "Audiência pAIdegua" (perfil Secretaria). Mesma topologia
+   * simplificada da Central de Comunicação (uma única aba). Reusa o
+   * aplicador de etiquetas das Perícias via `AUDIENCIA_APLICAR_ETIQUETAS`.
+   */
+  AUDIENCIA_OPEN_PAINEL: 'paidegua/audiencia/open-painel',
+  AUDIENCIA_RUN_COLETA: 'paidegua/audiencia/run-coleta',
+  AUDIENCIA_APLICAR_ETIQUETAS: 'paidegua/audiencia/aplicar-etiquetas'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -612,7 +819,67 @@ export const STORAGE_KEYS = {
    * processos por perito (pauta), metadados. Apagado pelo
    * `PERICIAS_CLEAR_PAYLOAD` ao fechar o dashboard.
    */
-  PERICIAS_DASHBOARD_PAYLOAD_PREFIX: 'paidegua.pericias.dashboardPayload.'
+  PERICIAS_DASHBOARD_PAYLOAD_PREFIX: 'paidegua.pericias.dashboardPayload.',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o estado da aba
+   * do Sigcrim — lista de tarefas detectadas + config local. A aba lê
+   * de `${PREFIX}${requestId}` ao abrir.
+   */
+  CRIMINAL_PAINEL_STATE_PREFIX: 'paidegua.criminal.painelState.',
+  /**
+   * Prefixo em `chrome.storage.session` com o roteamento
+   * `requestId → {painelTabId, pjeTabId}`. Mesma necessidade dos
+   * outros painéis: o service worker pode ser suspenso entre mensagens
+   * de progresso e precisamos reidratar a rota.
+   */
+  CRIMINAL_PAINEL_ROUTE_PREFIX: 'paidegua.criminal.painelRoute.',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o estado da aba
+   * intermediária do "Controle Metas CNJ" (lista de tarefas detectadas
+   * no painel). A aba lê de `${PREFIX}${requestId}` ao carregar.
+   */
+  METAS_PAINEL_STATE_PREFIX: 'paidegua.metas.painelState.',
+  /**
+   * Prefixo em `chrome.storage.session` com o roteamento
+   * `requestId → {painelTabId, pjeTabId}`. Mesmo racional dos demais
+   * painéis: o service worker pode ser suspenso entre mensagens de
+   * progresso e precisamos reidratar a rota.
+   */
+  METAS_PAINEL_ROUTE_PREFIX: 'paidegua.metas.painelRoute.',
+  /**
+   * Chave em `chrome.storage.local` com a última seleção de tarefas do
+   * painel Metas CNJ. Pré-marca os checkboxes no seletor.
+   */
+  METAS_TAREFAS_SELECIONADAS: 'paidegua.metas.tarefasSelecionadas',
+  /**
+   * Chave em `chrome.storage.local` com o histórico de cobranças geradas
+   * pela "Central de Comunicação" (perfil Secretaria). Cada entrada é um
+   * `RegistroCobranca` (ver shared/types.ts) — registra quem foi cobrado,
+   * quando, e a lista de CNJs incluídos. Capeado em `addRegistro` para
+   * evitar crescimento ilimitado (ring buffer com limite generoso).
+   */
+  COMUNICACAO_REGISTROS: 'paidegua.comunicacao.registros',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o estado da aba-painel
+   * da Central de Comunicação (lista de peritos + settings + metadados).
+   * A aba lê de `${PREFIX}${requestId}` ao carregar.
+   */
+  COMUNICACAO_PAINEL_STATE_PREFIX: 'paidegua.comunicacao.painelState.',
+  /**
+   * Prefixo em `chrome.storage.session` com o roteamento
+   * `requestId → {painelTabId, pjeTabId}` da aba da Central de Comunicação.
+   */
+  COMUNICACAO_PAINEL_ROUTE_PREFIX: 'paidegua.comunicacao.painelRoute.',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o estado da aba-painel
+   * da Audiência pAIdegua (lista de tarefas detectadas).
+   */
+  AUDIENCIA_PAINEL_STATE_PREFIX: 'paidegua.audiencia.painelState.',
+  /**
+   * Prefixo em `chrome.storage.session` com o roteamento
+   * `requestId → {painelTabId, pjeTabId}` da aba da Audiência pAIdegua.
+   */
+  AUDIENCIA_PAINEL_ROUTE_PREFIX: 'paidegua.audiencia.painelRoute.'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

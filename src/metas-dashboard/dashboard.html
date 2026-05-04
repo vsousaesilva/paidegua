@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>pAIdegua — Dashboard Controle Metas CNJ</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <style>
+    .meta-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      box-shadow: var(--shadow-soft);
+      margin-bottom: 16px;
+    }
+    .meta-card__head {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 12px; margin-bottom: 10px;
+    }
+    .meta-card__title { margin: 0; font-size: 16px; color: var(--primary-dark); }
+    .meta-card__sub  { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .meta-card__metric {
+      font-size: 22px; font-weight: 700; color: var(--primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta-card__metric small { font-size: 12px; color: var(--muted); font-weight: 400; }
+    .meta-card__bar {
+      height: 8px; border-radius: 999px;
+      background: rgba(19, 81, 180, 0.08); overflow: hidden;
+      margin: 8px 0 14px;
+    }
+    .meta-card__bar > div {
+      height: 100%; background: var(--gradient);
+      transition: width 250ms ease-out;
+    }
+    .meta-card__acoes {
+      display: flex; gap: 8px; align-items: center;
+      flex-wrap: wrap; margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .meta-card__acoes input[type="text"] {
+      flex: 1 1 200px;
+      padding: 6px 10px; border: 1px solid var(--border-strong);
+      border-radius: 6px; font-size: 13px; font-family: inherit;
+    }
+    .meta-card__acoes label { display: flex; gap: 4px; align-items: center; font-size: 12px; }
+    .lista-processos {
+      list-style: none; margin: 0; padding: 0;
+      max-height: 280px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+    }
+    .lista-processos li {
+      display: flex; gap: 10px; padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px; align-items: center;
+    }
+    .lista-processos li:last-child { border-bottom: none; }
+    .lista-processos a {
+      color: var(--primary); text-decoration: none; font-family: monospace;
+    }
+    .lista-processos a:hover { text-decoration: underline; }
+    .lista-processos .copy-btn {
+      padding: 2px 6px; font-size: 10px; cursor: pointer;
+      background: #fff; border: 1px solid var(--border-strong);
+      border-radius: 4px;
+    }
+    .lista-processos .assunto { color: var(--muted); flex: 1; }
+    .lista-processos .badge {
+      font-size: 10px; padding: 1px 6px; border-radius: 4px;
+      background: rgba(19, 81, 180, 0.1); color: var(--primary-dark);
+    }
+    .meta-resumo {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px; margin-bottom: 8px;
+    }
+    .meta-resumo__item {
+      background: rgba(19, 81, 180, 0.04); padding: 8px 10px;
+      border-radius: 6px;
+    }
+    .meta-resumo__item .v { font-size: 16px; font-weight: 700; }
+    .meta-resumo__item .l { font-size: 11px; color: var(--muted); display: block; }
+    .alerta {
+      background: #fff8e1; border-left: 4px solid var(--yellow);
+      padding: 10px 14px; border-radius: var(--radius-sm); font-size: 12px;
+      color: var(--fg); margin: 12px 0;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Controle Metas CNJ</h1>
+        <p class="header__subtitle">Metas Nacionais 2026 — pAIdegua</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta-info"></div>
+  </header>
+
+  <main class="main" style="max-width: 980px;">
+    <section class="card" id="resumo-card">
+      <h2>Resumo do acervo</h2>
+      <div class="meta-resumo" id="meta-resumo"></div>
+      <p class="hint" id="orientacao">Carregando acervo...</p>
+    </section>
+
+    <section id="metas-container"></section>
+
+    <section class="card" id="vazio-card" hidden>
+      <h2>Acervo vazio</h2>
+      <p class="hint">
+        Ainda não há processos no acervo. Volte ao PJe, clique em
+        <strong>Controle Metas CNJ</strong> na barra lateral do pAIdegua e
+        rode a primeira varredura.
+      </p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

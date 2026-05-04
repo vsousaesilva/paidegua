@@ -1,0 +1,1518 @@
+/*
+ * Dashboard Sigcrim — paleta institucional gov.br/PJe-CNJ.
+ */
+:root {
+  --primary: #1351B4;
+  --primary-dark: #0C326F;
+  --primary-light: #5992ED;
+  --yellow: #FFCD07;
+  --bg: #F6F8FC;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  --fg: #16243A;
+  --muted: #5B6B82;
+  --border: rgba(19, 81, 180, 0.14);
+  --border-strong: rgba(19, 81, 180, 0.26);
+  --danger: #c0392b;
+  --warn: #b8860b;
+  --ok: #1e7e34;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 14px 40px rgba(12, 50, 111, 0.12);
+  --gradient: linear-gradient(135deg, #1351B4 0%, #0C326F 100%);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(900px 420px at 100% 0%, rgba(89, 146, 237, 0.18), transparent 60%),
+    radial-gradient(700px 320px at 0% 100%, rgba(255, 205, 7, 0.08), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--fg);
+  font-family: "Inter", "Rawline", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { border: 0; cursor: pointer; font-family: inherit; }
+
+/* ── Header ────────────────────────────────────────────────── */
+.paidegua-dash__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 28px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: saturate(180%) blur(8px);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.paidegua-dash__logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--gradient);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 8px 18px rgba(19, 81, 180, 0.25);
+}
+
+.paidegua-dash__header-title { flex: 1; min-width: 0; }
+.paidegua-dash__header-title h1 {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: -0.3px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+.paidegua-dash__subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.paidegua-dash__header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Main ──────────────────────────────────────────────────── */
+.paidegua-dash__main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px 28px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── KPIs ──────────────────────────────────────────────────── */
+.paidegua-dash__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.paidegua-dash__kpi {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(12, 50, 111, 0.05);
+}
+
+.paidegua-dash__kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.paidegua-dash__kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-dash__kpi--alerta .paidegua-dash__kpi-value {
+  color: var(--warn);
+}
+
+.paidegua-dash__kpi--alerta {
+  border-color: rgba(184, 134, 11, 0.32);
+  background: rgba(184, 134, 11, 0.04);
+}
+
+/* ── Filtros ───────────────────────────────────────────────── */
+.paidegua-dash__filtros {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.paidegua-dash__busca input {
+  width: 100%;
+  padding: 9px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--fg);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.paidegua-dash__busca input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(19, 81, 180, 0.15);
+}
+
+.paidegua-dash__filtros-grupo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.paidegua-dash__filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 170px;
+}
+
+.paidegua-dash__filtro > span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.paidegua-dash__filtro select {
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--fg);
+  font-family: inherit;
+}
+
+.paidegua-dash__resultado-info {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ── Tabela ────────────────────────────────────────────────── */
+.paidegua-dash__tabela-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(12, 50, 111, 0.05);
+  position: relative;
+}
+
+/* Toolbar acima da tabela: label à esquerda, ações à direita.
+ * Antes era um botão flutuante absoluto no canto, mas ele se sobrepunha
+ * ao cabeçalho da tabela (especificamente à coluna "Sincronizado") em
+ * larguras menores. A toolbar como linha própria mantém os dois sempre
+ * legíveis e dá lugar para futuras ações (export, etc.). */
+.paidegua-dash__tabela-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(19, 81, 180, 0.02);
+}
+
+.paidegua-dash__tabela-toolbar-label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.paidegua-dash__copy-list-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--primary-dark);
+  transition: background 0.12s, transform 0.05s, border-color 0.12s;
+}
+
+.paidegua-dash__copy-list-btn:hover {
+  background: #fff;
+  border-color: var(--primary);
+}
+
+.paidegua-dash__copy-list-btn:active {
+  transform: translateY(1px);
+}
+
+.paidegua-dash__tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.paidegua-dash__tabela thead th {
+  text-align: left;
+  padding: 11px 14px;
+  background: rgba(19, 81, 180, 0.04);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--primary-dark);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.paidegua-dash__tabela tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.paidegua-dash__tabela tbody tr:hover {
+  background: rgba(19, 81, 180, 0.04);
+}
+
+.paidegua-dash__tabela tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.paidegua-dash__tabela td {
+  padding: 10px 14px;
+  vertical-align: top;
+}
+
+.paidegua-dash__col-numero {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--primary-dark);
+  white-space: nowrap;
+  position: relative;
+}
+
+/* Célula do número: link + botões de copy/abrir-tarefa */
+.paidegua-dash__proc-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.paidegua-dash__proc-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.paidegua-dash__proc-link:hover {
+  color: var(--primary-dark);
+  border-bottom-color: var(--primary-light);
+}
+
+.paidegua-dash__proc-link--disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  border-bottom: 1px dotted var(--border-strong);
+}
+
+.paidegua-dash__proc-link--disabled:hover {
+  color: var(--muted);
+  border-bottom-color: var(--border-strong);
+}
+
+.paidegua-dash__proc-cell-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity 0.12s;
+}
+
+.paidegua-dash__tabela tbody tr:hover .paidegua-dash__proc-cell-actions {
+  opacity: 1;
+}
+
+.paidegua-dash__proc-copy,
+.paidegua-dash__proc-open-task {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.paidegua-dash__proc-copy:hover,
+.paidegua-dash__proc-open-task:hover {
+  background: rgba(19, 81, 180, 0.08);
+  border-color: var(--border-strong);
+  color: var(--primary-dark);
+}
+
+.paidegua-dash__proc-copy:active,
+.paidegua-dash__proc-open-task:active {
+  transform: translateY(1px);
+}
+
+.paidegua-dash__col-classe small {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.paidegua-dash__col-classe strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.paidegua-dash__col-reu {
+  max-width: 280px;
+}
+
+.paidegua-dash__col-reu-extra {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-left: 6px;
+}
+
+.paidegua-dash__col-data,
+.paidegua-dash__col-sync {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.paidegua-dash__row-vazio td {
+  text-align: center;
+  padding: 36px 14px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Badges */
+.paidegua-dash__badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.paidegua-dash__badge--anpp-na      { background: #e9ecef; color: #495057; }
+.paidegua-dash__badge--anpp-neg     { background: rgba(184, 134, 11, 0.15); color: var(--warn); }
+.paidegua-dash__badge--anpp-homo    { background: rgba(19, 81, 180, 0.12); color: var(--primary-dark); }
+.paidegua-dash__badge--anpp-mpf     { background: rgba(89, 146, 237, 0.18); color: var(--primary-dark); }
+.paidegua-dash__badge--anpp-prot    { background: rgba(89, 146, 237, 0.25); color: var(--primary-dark); }
+.paidegua-dash__badge--anpp-exec    { background: rgba(255, 205, 7, 0.30); color: #6f4f00; }
+.paidegua-dash__badge--anpp-vara    { background: rgba(255, 205, 7, 0.40); color: #6f4f00; }
+.paidegua-dash__badge--anpp-cumprd  { background: rgba(30, 126, 52, 0.18); color: var(--ok); }
+
+.paidegua-dash__badge--serp-pend { background: #e9ecef; color: #495057; }
+.paidegua-dash__badge--serp-neg  { background: rgba(30, 126, 52, 0.18); color: var(--ok); }
+.paidegua-dash__badge--serp-pos  { background: rgba(192, 57, 43, 0.15); color: var(--danger); }
+
+.paidegua-dash__badge--completo   { background: rgba(30, 126, 52, 0.18); color: var(--ok); }
+.paidegua-dash__badge--incompleto { background: rgba(184, 134, 11, 0.18); color: var(--warn); cursor: help; }
+
+/* Farol de prescrição — badges na coluna da tabela */
+.paidegua-dash__badge--presc-verde     { background: rgba(30, 126, 52, 0.18); color: var(--ok); cursor: help; }
+.paidegua-dash__badge--presc-amarelo   { background: rgba(184, 134, 11, 0.22); color: var(--warn); cursor: help; }
+.paidegua-dash__badge--presc-vermelho  { background: rgba(192, 57, 43, 0.18); color: var(--danger); cursor: help; font-weight: 700; }
+.paidegua-dash__badge--presc-dados-insuficientes { background: #e9ecef; color: #495057; cursor: help; }
+
+/* KPI de risco prescricional */
+.paidegua-dash__kpi--risco {
+  border-color: rgba(192, 57, 43, 0.32);
+  background: rgba(192, 57, 43, 0.06);
+}
+.paidegua-dash__kpi--risco .paidegua-dash__kpi-value { color: var(--danger); }
+
+/* Bloco de prescrição no painel lateral */
+.paidegua-dash__presc-banner {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  font-size: 12.5px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.paidegua-dash__presc-banner strong { font-size: 13px; }
+
+.paidegua-dash__presc-banner--verde {
+  background: rgba(30, 126, 52, 0.06);
+  border-color: rgba(30, 126, 52, 0.32);
+  color: var(--ok);
+}
+.paidegua-dash__presc-banner--amarelo {
+  background: rgba(184, 134, 11, 0.06);
+  border-color: rgba(184, 134, 11, 0.32);
+  color: var(--warn);
+}
+.paidegua-dash__presc-banner--vermelho {
+  background: rgba(192, 57, 43, 0.08);
+  border-color: rgba(192, 57, 43, 0.4);
+  color: var(--danger);
+}
+.paidegua-dash__presc-banner--dados-insuficientes {
+  background: #f1f3f5;
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.paidegua-dash__presc-reus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paidegua-dash__presc-reu {
+  border: 1px solid var(--border);
+  border-left: 4px solid;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+
+.paidegua-dash__presc-reu--verde     { border-left-color: var(--ok); }
+.paidegua-dash__presc-reu--amarelo   { border-left-color: var(--warn); }
+.paidegua-dash__presc-reu--vermelho  { border-left-color: var(--danger); }
+.paidegua-dash__presc-reu--insuficiente { border-left-color: var(--muted); }
+
+.paidegua-dash__presc-reu-nome {
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.paidegua-dash__presc-reu-info {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.paidegua-dash__presc-reu--vermelho .paidegua-dash__presc-reu-info { color: var(--danger); }
+.paidegua-dash__presc-reu--amarelo  .paidegua-dash__presc-reu-info { color: var(--warn); }
+.paidegua-dash__presc-reu--verde    .paidegua-dash__presc-reu-info { color: var(--ok); }
+.paidegua-dash__presc-reu--insuficiente .paidegua-dash__presc-reu-info { color: var(--muted); }
+
+.paidegua-dash__presc-reu-detalhes {
+  color: var(--muted);
+  font-size: 11.5px;
+  word-break: break-word;
+}
+
+.paidegua-dash__presc-reu-ajustes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.paidegua-dash__presc-ajuste {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.paidegua-dash__presc-ajuste--reincidencia {
+  background: rgba(192, 57, 43, 0.14);
+  color: #8a2922;
+}
+.paidegua-dash__presc-ajuste--idade-menor-21,
+.paidegua-dash__presc-ajuste--idade-maior-70 {
+  background: rgba(19, 81, 180, 0.12);
+  color: var(--primary-dark);
+}
+
+/* Bloco de gestão de ANPP no painel lateral — mesma estética do
+   farol de prescrição, com escala de cores ajustada (laranja para
+   "pendente protocolo SEEU"). */
+.paidegua-dash__gestao-anpp-banner {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  font-size: 12.5px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.paidegua-dash__gestao-anpp-banner strong { font-size: 13px; }
+.paidegua-dash__gestao-anpp-banner-hint {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.paidegua-dash__gestao-anpp-banner--em-dia {
+  background: rgba(30, 126, 52, 0.06);
+  border-color: rgba(30, 126, 52, 0.32);
+  color: var(--ok);
+}
+.paidegua-dash__gestao-anpp-banner--proximo {
+  background: rgba(184, 134, 11, 0.06);
+  border-color: rgba(184, 134, 11, 0.32);
+  color: var(--warn);
+}
+.paidegua-dash__gestao-anpp-banner--atrasado {
+  background: rgba(192, 57, 43, 0.08);
+  border-color: rgba(192, 57, 43, 0.4);
+  color: var(--danger);
+}
+.paidegua-dash__gestao-anpp-banner--pendente-protocolo {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.4);
+  color: #b85b04;
+}
+.paidegua-dash__gestao-anpp-banner--cumprido {
+  background: rgba(19, 81, 180, 0.06);
+  border-color: rgba(19, 81, 180, 0.28);
+  color: var(--primary-dark);
+}
+.paidegua-dash__gestao-anpp-banner--nao-aplicavel {
+  background: #f1f3f5;
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.paidegua-dash__gestao-anpp-reus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paidegua-dash__gestao-anpp-reu {
+  border: 1px solid var(--border);
+  border-left: 4px solid;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+
+.paidegua-dash__gestao-anpp-reu--em-dia              { border-left-color: var(--ok); }
+.paidegua-dash__gestao-anpp-reu--proximo             { border-left-color: var(--warn); }
+.paidegua-dash__gestao-anpp-reu--atrasado            { border-left-color: var(--danger); }
+.paidegua-dash__gestao-anpp-reu--pendente-protocolo  { border-left-color: #d97706; }
+.paidegua-dash__gestao-anpp-reu--cumprido            { border-left-color: var(--primary-dark); }
+.paidegua-dash__gestao-anpp-reu--nao-aplicavel       { border-left-color: var(--muted); }
+
+.paidegua-dash__gestao-anpp-reu-nome {
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+.paidegua-dash__gestao-anpp-reu-info {
+  font-weight: 600;
+  font-size: 13px;
+}
+.paidegua-dash__gestao-anpp-reu--atrasado          .paidegua-dash__gestao-anpp-reu-info { color: var(--danger); }
+.paidegua-dash__gestao-anpp-reu--pendente-protocolo .paidegua-dash__gestao-anpp-reu-info { color: #b85b04; }
+.paidegua-dash__gestao-anpp-reu--proximo           .paidegua-dash__gestao-anpp-reu-info { color: var(--warn); }
+.paidegua-dash__gestao-anpp-reu--em-dia            .paidegua-dash__gestao-anpp-reu-info { color: var(--ok); }
+.paidegua-dash__gestao-anpp-reu--cumprido          .paidegua-dash__gestao-anpp-reu-info { color: var(--primary-dark); }
+.paidegua-dash__gestao-anpp-reu--nao-aplicavel     .paidegua-dash__gestao-anpp-reu-info { color: var(--muted); }
+
+.paidegua-dash__gestao-anpp-reu-detalhes {
+  color: var(--muted);
+  font-size: 11.5px;
+  word-break: break-word;
+}
+
+/* Origem (audit) — usado no detalhe */
+.paidegua-dash__badge--origem-pje    { background: rgba(19, 81, 180, 0.12); color: var(--primary-dark); }
+.paidegua-dash__badge--origem-manual { background: rgba(255, 205, 7, 0.25); color: #6f4f00; }
+.paidegua-dash__badge--origem-ia     { background: rgba(151, 71, 255, 0.15); color: #5d2ea8; }
+
+/* ── Paginação ───────────────────────────────────────────── */
+.paidegua-dash__paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 4px 0;
+}
+
+.paidegua-dash__paginacao-info {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Botões ──────────────────────────────────────────────── */
+.paidegua-dash__btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary-dark);
+  border: 1px solid var(--border-strong);
+  transition: background 0.12s, transform 0.05s;
+}
+
+.paidegua-dash__btn:hover:not(:disabled) {
+  background: rgba(19, 81, 180, 0.08);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+.paidegua-dash__btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.paidegua-dash__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paidegua-dash__btn--primary {
+  background: var(--gradient);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(19, 81, 180, 0.25);
+}
+.paidegua-dash__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--gradient);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 18px rgba(19, 81, 180, 0.38);
+}
+
+.paidegua-dash__btn--ghost {
+  background: transparent;
+  border-style: dashed;
+}
+.paidegua-dash__btn--ghost:hover:not(:disabled) {
+  background: rgba(19, 81, 180, 0.08);
+  border-style: solid;
+  border-color: var(--primary);
+}
+
+/* ── Painel lateral ────────────────────────────────────────── */
+.paidegua-dash__aside {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.paidegua-dash__aside[hidden] { display: none; }
+
+.paidegua-dash__aside-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 50, 111, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.paidegua-dash__aside-painel {
+  position: relative;
+  width: min(640px, 100%);
+  height: 100vh;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -10px 0 40px rgba(12, 50, 111, 0.25);
+  overflow: hidden;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.paidegua-dash__aside-header {
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(19, 81, 180, 0.04);
+}
+
+.paidegua-dash__aside-titulo-wrap { flex: 1; min-width: 0; }
+.paidegua-dash__aside-titulo {
+  margin: 0;
+  font-size: 16px;
+  color: var(--primary-dark);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paidegua-dash__aside-titulo-numero {
+  display: inline-block;
+}
+
+.paidegua-dash__btn-copy-cnj {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.paidegua-dash__btn-copy-cnj:hover {
+  background: rgba(89, 146, 237, 0.18);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.paidegua-dash__btn-copy-cnj:active {
+  transform: scale(0.96);
+}
+
+.paidegua-dash__aside-subtitulo {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.paidegua-dash__aside-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.paidegua-dash__btn-fechar {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 22px;
+  color: var(--muted);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.paidegua-dash__btn-fechar:hover {
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--danger);
+  border-color: rgba(192, 57, 43, 0.25);
+}
+
+.paidegua-dash__aside-conteudo {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px 32px;
+}
+
+.paidegua-dash__completude-banner {
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.5;
+  border: 1px solid;
+}
+
+.paidegua-dash__completude-banner strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.paidegua-dash__completude-banner--ok {
+  background: rgba(30, 126, 52, 0.06);
+  border-color: rgba(30, 126, 52, 0.32);
+  color: var(--ok);
+}
+
+.paidegua-dash__completude-banner--alerta {
+  background: rgba(184, 134, 11, 0.06);
+  border-color: rgba(184, 134, 11, 0.32);
+  color: var(--warn);
+}
+
+.paidegua-dash__completude-banner--editando {
+  background: rgba(19, 81, 180, 0.06);
+  border-color: rgba(19, 81, 180, 0.30);
+  color: var(--primary-dark);
+}
+
+/* ── Inputs do modo edição ───────────────────────────────────── */
+.paidegua-dash__edit-input {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--fg);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.paidegua-dash__edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(19, 81, 180, 0.15);
+}
+
+.paidegua-dash__edit-textarea {
+  resize: vertical;
+  min-height: 36px;
+}
+
+input[type="checkbox"].paidegua-dash__edit-input {
+  width: auto;
+  margin: 0;
+}
+
+.paidegua-dash__field--check {
+  flex-direction: row;
+  align-items: center;
+}
+
+.paidegua-dash__field-label--check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.paidegua-dash__field-label--check span {
+  color: inherit;
+}
+
+.paidegua-dash__aside-secao {
+  margin-bottom: 22px;
+}
+
+.paidegua-dash__aside-secao h3 {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--primary-dark);
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+}
+
+.paidegua-dash__aside-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+}
+
+.paidegua-dash__aside-subsecao {
+  margin: 16px 0 8px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Linha do botão "Atualizar com PJe + IA" dentro do banner de
+ * completude. O botão fica com largura ajustada ao texto e o status
+ * (mensagens de erro/parcial) ocupa a linha de baixo em telas
+ * estreitas via `flex-wrap`. */
+.paidegua-dash__atualizar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.paidegua-dash__btn-atualizar {
+  font-size: 12.5px;
+  padding: 7px 14px;
+}
+
+.paidegua-dash__btn-atualizar:disabled {
+  opacity: 0.85;
+  cursor: progress;
+}
+
+.paidegua-dash__btn-carregar-pdf {
+  font-size: 12.5px;
+  padding: 7px 14px;
+}
+
+.paidegua-dash__btn-carregar-pdf:disabled {
+  opacity: 0.85;
+  cursor: progress;
+}
+
+.paidegua-dash__atualizar-status {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1;
+  min-width: 100%;
+}
+
+.paidegua-dash__atualizar-status--erro {
+  color: var(--danger);
+}
+
+/* ── Bloco de trace operacional ────────────────────────────── */
+.paidegua-dash__trace-bloco {
+  position: relative;
+  margin: 14px 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(19, 81, 180, 0.02);
+  overflow: hidden;
+}
+
+.paidegua-dash__trace-titulo {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--primary-dark);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.paidegua-dash__trace-titulo--sucesso {
+  background: rgba(30, 126, 52, 0.10);
+  color: var(--ok);
+}
+.paidegua-dash__trace-titulo--falha {
+  background: rgba(192, 57, 43, 0.10);
+  color: var(--danger);
+}
+.paidegua-dash__trace-titulo--parcial {
+  background: rgba(184, 134, 11, 0.10);
+  color: var(--warn);
+}
+
+.paidegua-dash__trace-resumo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.paidegua-dash__trace-resumo-icone {
+  display: inline-block;
+  width: 18px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.paidegua-dash__trace-resumo-texto {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.paidegua-dash__trace-resumo-titulo {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.paidegua-dash__trace-titulo::-webkit-details-marker { display: none; }
+.paidegua-dash__trace-titulo::marker { display: none; }
+.paidegua-dash__trace-titulo::before { content: '▾'; margin-right: 6px; font-size: 10px; }
+.paidegua-dash__trace-bloco:not([open]) .paidegua-dash__trace-titulo::before { content: '▸'; }
+
+.paidegua-dash__trace-limpar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.paidegua-dash__trace-limpar:hover {
+  background: rgba(192, 57, 43, 0.15);
+  color: var(--danger);
+}
+
+.paidegua-dash__trace-corpo {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.paidegua-dash__trace-secao {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  font-weight: 700;
+  font-family: inherit;
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+}
+.paidegua-dash__trace-secao:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+}
+
+.paidegua-dash__trace-linha {
+  display: flex;
+  gap: 8px;
+  padding: 3px 14px;
+  align-items: baseline;
+  line-height: 1.5;
+}
+
+.paidegua-dash__trace-icone {
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+.paidegua-dash__trace-ok .paidegua-dash__trace-icone     { color: var(--ok); }
+.paidegua-dash__trace-falha .paidegua-dash__trace-icone  { color: var(--danger); }
+.paidegua-dash__trace-aviso .paidegua-dash__trace-icone  { color: var(--warn); }
+.paidegua-dash__trace-info .paidegua-dash__trace-icone   { color: var(--muted); }
+
+.paidegua-dash__trace-etapa {
+  color: var(--primary-dark);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.paidegua-dash__trace-info {
+  color: var(--fg);
+  flex: 1;
+  word-break: break-word;
+}
+
+.paidegua-dash__trace-falha .paidegua-dash__trace-info { color: var(--danger); }
+.paidegua-dash__trace-aviso .paidegua-dash__trace-info { color: var(--warn); }
+
+.paidegua-dash__trace-ts {
+  color: var(--muted);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.paidegua-dash__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.paidegua-dash__field-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paidegua-dash__field-value {
+  font-size: 13px;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+.paidegua-dash__field-value--vazio {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.paidegua-dash__reus-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.paidegua-dash__reus-tab {
+  padding: 7px 12px;
+  background: transparent;
+  border: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.paidegua-dash__reus-tab:hover { color: var(--primary-dark); }
+
+.paidegua-dash__reus-tab--ativa {
+  color: var(--primary-dark);
+  border-bottom-color: var(--primary);
+}
+
+/* ── Toast ─────────────────────────────────────────────────── */
+.paidegua-dash__toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 10px 18px;
+  background: var(--primary-dark);
+  color: #fff;
+  font-size: 13px;
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(12, 50, 111, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 200;
+  max-width: 80vw;
+}
+
+.paidegua-dash__toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── Modal de revisão SERP em lote ─────────────────────── */
+.paidegua-dash__modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.paidegua-dash__modal[hidden] { display: none; }
+
+.paidegua-dash__modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 50, 111, 0.42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.paidegua-dash__modal-painel {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.paidegua-dash__modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+
+.paidegua-dash__modal-titulo {
+  margin: 0;
+  font-size: 18px;
+  color: var(--primary-dark);
+}
+
+.paidegua-dash__modal-subtitulo {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  max-width: 64ch;
+}
+
+.paidegua-dash__modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(245, 247, 251, 0.6);
+  flex-wrap: wrap;
+}
+
+.paidegua-dash__modal-resumo {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-dash__modal-corpo {
+  overflow: auto;
+  padding: 0 12px 18px;
+}
+
+.paidegua-dash__modal-legenda {
+  margin: 10px 22px;
+  padding: 10px 12px;
+  background: rgba(89, 146, 237, 0.08);
+  border: 1px solid rgba(19, 81, 180, 0.18);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--fg);
+  line-height: 1.55;
+}
+
+.paidegua-dash__modal-legenda em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.paidegua-dash__modal-legenda strong {
+  color: var(--primary-dark);
+}
+
+.paidegua-dash__serp-legenda-pendente,
+.paidegua-dash__serp-legenda-negativo,
+.paidegua-dash__serp-legenda-positivo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  vertical-align: middle;
+}
+
+.paidegua-dash__serp-legenda-pendente { background: var(--warn); }
+.paidegua-dash__serp-legenda-negativo { background: var(--ok); }
+.paidegua-dash__serp-legenda-positivo { background: var(--danger); }
+
+/* Tabela compacta */
+.paidegua-dash__serp-tabela {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+
+.paidegua-dash__serp-tabela thead th {
+  position: sticky;
+  top: 0;
+  background: #ffffff;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-strong);
+  z-index: 2;
+}
+
+.paidegua-dash__serp-tabela tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.paidegua-dash__serp-tabela td {
+  padding: 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+
+.paidegua-dash__serp-row--positivo {
+  background: rgba(192, 57, 43, 0.04);
+}
+.paidegua-dash__serp-row--negativo {
+  background: rgba(30, 126, 52, 0.04);
+}
+.paidegua-dash__serp-row--pendente {
+  background: rgba(184, 134, 11, 0.06);
+}
+
+.paidegua-dash__serp-col-reu {
+  min-width: 200px;
+  max-width: 280px;
+}
+.paidegua-dash__serp-col-reu strong {
+  display: block;
+  font-weight: 600;
+  color: var(--fg);
+}
+.paidegua-dash__serp-col-reu small {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-dash__serp-col-proc {
+  min-width: 180px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-dash__serp-link {
+  color: var(--primary);
+  text-decoration: none;
+}
+.paidegua-dash__serp-link:hover { text-decoration: underline; }
+
+.paidegua-dash__serp-col-resultado { min-width: 150px; }
+.paidegua-dash__serp-col-flag      {
+  width: 64px;
+  text-align: center;
+}
+.paidegua-dash__serp-tabela thead th.paidegua-dash__serp-col-flag {
+  text-align: center;
+}
+.paidegua-dash__serp-col-flag input[type="checkbox"] {
+  display: block;
+  margin: 0 auto;
+}
+.paidegua-dash__serp-col-ultima    { min-width: 130px; color: var(--muted); }
+
+.paidegua-dash__serp-radios {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.paidegua-dash__serp-radio {
+  position: relative;
+  cursor: pointer;
+}
+
+.paidegua-dash__serp-radio input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.paidegua-dash__serp-radio span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--muted);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.paidegua-dash__serp-radio--pendente input:checked + span {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #fff;
+}
+.paidegua-dash__serp-radio--negativo input:checked + span {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+.paidegua-dash__serp-radio--positivo input:checked + span {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.paidegua-dash__serp-radio:hover span { border-color: var(--primary); }
+
+.paidegua-dash__serp-dias {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paidegua-dash__serp-status {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.paidegua-dash__serp-status--ok  { color: var(--ok); }
+.paidegua-dash__serp-status--err { color: var(--danger); }
+
+.paidegua-dash__serp-vazio {
+  text-align: center;
+  padding: 28px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+@media (max-width: 720px) {
+  .paidegua-dash__header { flex-wrap: wrap; }
+  .paidegua-dash__header-actions { width: 100%; }
+  .paidegua-dash__main { padding: 14px 14px 40px; }
+  .paidegua-dash__filtros-grupo { flex-direction: column; align-items: stretch; }
+  .paidegua-dash__filtro { min-width: 0; }
+  .paidegua-dash__tabela thead { display: none; }
+  .paidegua-dash__tabela td { display: block; padding: 4px 14px; }
+  .paidegua-dash__tabela tr { padding: 8px 0; display: block; }
+  .paidegua-dash__aside-painel { width: 100%; }
+}

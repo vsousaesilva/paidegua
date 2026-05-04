@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sigcrim — Acervo Criminal</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <header class="paidegua-dash__header">
+      <span class="paidegua-dash__logo" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div class="paidegua-dash__header-title">
+        <h1>Sigcrim — Acervo Criminal</h1>
+        <p class="paidegua-dash__subtitle">
+          Seus processos criminais com controle de prescrição, ANPP e SERP —
+          tudo guardado no seu computador, sem subir para a nuvem.
+        </p>
+      </div>
+      <div class="paidegua-dash__header-actions">
+        <button id="btn-serp-lote" type="button" class="paidegua-dash__btn">
+          🔎 Revisar SERP em lote
+        </button>
+        <button id="btn-config" type="button" class="paidegua-dash__btn">Configurações</button>
+        <button id="btn-varrer" type="button" class="paidegua-dash__btn paidegua-dash__btn--primary">
+          Nova varredura
+        </button>
+      </div>
+    </header>
+
+    <main class="paidegua-dash__main">
+      <!-- ── Stats / KPIs ────────────────────────────────────────── -->
+      <section class="paidegua-dash__kpis" aria-label="Indicadores do acervo">
+        <div class="paidegua-dash__kpi">
+          <span class="paidegua-dash__kpi-label">Processos primários</span>
+          <span id="kpi-primarios" class="paidegua-dash__kpi-value">—</span>
+        </div>
+        <div class="paidegua-dash__kpi">
+          <span class="paidegua-dash__kpi-label">Auxiliares</span>
+          <span id="kpi-auxiliares" class="paidegua-dash__kpi-value">—</span>
+        </div>
+        <div class="paidegua-dash__kpi">
+          <span class="paidegua-dash__kpi-label">Réus cadastrados</span>
+          <span id="kpi-reus" class="paidegua-dash__kpi-value">—</span>
+        </div>
+        <div class="paidegua-dash__kpi">
+          <span class="paidegua-dash__kpi-label">ANPP ativos</span>
+          <span id="kpi-anpp-cumpr" class="paidegua-dash__kpi-value">—</span>
+        </div>
+        <div class="paidegua-dash__kpi paidegua-dash__kpi--alerta">
+          <span class="paidegua-dash__kpi-label">A completar</span>
+          <span id="kpi-incompletos" class="paidegua-dash__kpi-value">—</span>
+        </div>
+        <div class="paidegua-dash__kpi paidegua-dash__kpi--risco">
+          <span class="paidegua-dash__kpi-label">🔴 Risco prescricional</span>
+          <span id="kpi-presc-risco" class="paidegua-dash__kpi-value">—</span>
+        </div>
+        <div class="paidegua-dash__kpi paidegua-dash__kpi--risco">
+          <span class="paidegua-dash__kpi-label">🔴 ANPP atrasados</span>
+          <span id="kpi-anpp-atrasados" class="paidegua-dash__kpi-value">—</span>
+        </div>
+      </section>
+
+      <!-- ── Filtros e busca ─────────────────────────────────────── -->
+      <section class="paidegua-dash__filtros">
+        <div class="paidegua-dash__busca">
+          <input
+            id="input-busca"
+            type="search"
+            placeholder="Buscar por número do processo ou nome do réu…"
+            autocomplete="off"
+          />
+        </div>
+        <div class="paidegua-dash__filtros-grupo">
+          <label class="paidegua-dash__filtro">
+            <span>Trilha</span>
+            <select id="select-trilha">
+              <option value="todas">Todas</option>
+              <option value="primaria" selected>Primárias</option>
+              <option value="auxiliar">Auxiliares</option>
+            </select>
+          </label>
+          <label class="paidegua-dash__filtro">
+            <span>Categoria</span>
+            <select id="select-categoria">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label class="paidegua-dash__filtro">
+            <span>Status ANPP</span>
+            <select id="select-anpp">
+              <option value="">Todos</option>
+              <option value="Nao Aplicavel">Não aplicável</option>
+              <option value="Em Negociacao">Em negociação</option>
+              <option value="Homologado">Homologado</option>
+              <option value="Remetido MPF">Remetido MPF</option>
+              <option value="Protocolado SEEU">Protocolado SEEU</option>
+              <option value="Em Execucao SEEU">Em execução SEEU</option>
+              <option value="Execucao Vara">Execução vara</option>
+              <option value="Cumprido">Cumprido</option>
+            </select>
+          </label>
+          <label class="paidegua-dash__filtro">
+            <span>Completude</span>
+            <select id="select-completude">
+              <option value="">Todos</option>
+              <option value="incompleto">Incompletos (priorizar)</option>
+              <option value="completo">Completos</option>
+            </select>
+          </label>
+          <label class="paidegua-dash__filtro">
+            <span>Prescrição</span>
+            <select id="select-prescricao">
+              <option value="">Todas</option>
+              <option value="vermelho">🔴 Risco iminente (priorizar)</option>
+              <option value="amarelo">🟡 Atenção (6-12 meses)</option>
+              <option value="verde">🟢 Sem risco</option>
+              <option value="dados_insuficientes">⚪ Dados incompletos</option>
+            </select>
+          </label>
+          <label class="paidegua-dash__filtro">
+            <span>Cumprimento ANPP</span>
+            <select id="select-gestao-anpp">
+              <option value="">Todos</option>
+              <option value="atrasado">🔴 Atrasados (priorizar)</option>
+              <option value="pendente_protocolo">🟠 Pendente protocolo SEEU</option>
+              <option value="proximo">🟡 Próximo (≤7 dias)</option>
+              <option value="em_dia">🟢 Em dia</option>
+              <option value="cumprido">✓ Cumpridos</option>
+              <option value="nao_aplicavel">⚪ Sem cumprimento</option>
+            </select>
+          </label>
+          <button id="btn-limpar-filtros" type="button" class="paidegua-dash__btn paidegua-dash__btn--ghost">
+            Limpar filtros
+          </button>
+        </div>
+        <div class="paidegua-dash__resultado-info">
+          <span id="resultado-info">Carregando…</span>
+        </div>
+      </section>
+
+      <!-- ── Tabela de processos ─────────────────────────────────── -->
+      <section class="paidegua-dash__tabela-wrap">
+        <div class="paidegua-dash__tabela-toolbar">
+          <span class="paidegua-dash__tabela-toolbar-label">Lista de processos</span>
+          <button
+            id="btn-copiar-lista"
+            type="button"
+            class="paidegua-dash__copy-list-btn"
+            title="Copiar lista de números (filtro atual)"
+            aria-label="Copiar lista de números de processo"
+          >
+            <!-- Ícone preenchido via JS para reaproveitar COPY_ICON_SVG -->
+          </button>
+        </div>
+        <table class="paidegua-dash__tabela" id="tabela-processos">
+          <thead>
+            <tr>
+              <th class="paidegua-dash__col-numero">Nº processo</th>
+              <th class="paidegua-dash__col-classe">Classe</th>
+              <th class="paidegua-dash__col-reu">Réu(s)</th>
+              <th class="paidegua-dash__col-presc">Prescrição</th>
+              <th class="paidegua-dash__col-status">Status</th>
+              <th class="paidegua-dash__col-data">Recebimento</th>
+              <th class="paidegua-dash__col-anpp">ANPP</th>
+              <th class="paidegua-dash__col-serp">SERP</th>
+              <th class="paidegua-dash__col-sync">Sincronizado</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-processos">
+            <tr class="paidegua-dash__row-vazio">
+              <td colspan="9">Carregando processos…</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ── Paginação ───────────────────────────────────────────── -->
+      <nav class="paidegua-dash__paginacao" aria-label="Paginação">
+        <button id="btn-pagina-anterior" type="button" class="paidegua-dash__btn paidegua-dash__btn--ghost" disabled>
+          ← Anterior
+        </button>
+        <span id="paginacao-info" class="paidegua-dash__paginacao-info"></span>
+        <button id="btn-pagina-proxima" type="button" class="paidegua-dash__btn paidegua-dash__btn--ghost" disabled>
+          Próxima →
+        </button>
+      </nav>
+    </main>
+
+    <!-- ── Painel lateral de detalhe ───────────────────────────── -->
+    <aside id="aside-detalhe" class="paidegua-dash__aside" hidden>
+      <div class="paidegua-dash__aside-overlay" id="aside-overlay"></div>
+      <div class="paidegua-dash__aside-painel" role="dialog" aria-modal="true" aria-labelledby="aside-titulo">
+        <header class="paidegua-dash__aside-header">
+          <div class="paidegua-dash__aside-titulo-wrap">
+            <h2 id="aside-titulo" class="paidegua-dash__aside-titulo">—</h2>
+            <p id="aside-subtitulo" class="paidegua-dash__aside-subtitulo"></p>
+          </div>
+          <div class="paidegua-dash__aside-actions">
+            <button id="btn-aside-editar" type="button" class="paidegua-dash__btn paidegua-dash__btn--primary">
+              ✎ Editar
+            </button>
+            <button id="btn-aside-salvar" type="button" class="paidegua-dash__btn paidegua-dash__btn--primary" hidden>
+              ✓ Salvar
+            </button>
+            <button id="btn-aside-cancelar" type="button" class="paidegua-dash__btn" hidden>
+              Cancelar
+            </button>
+            <button id="btn-aside-pje" type="button" class="paidegua-dash__btn paidegua-dash__btn--ghost" disabled>
+              Abrir no PJe
+            </button>
+            <button id="btn-aside-fechar" type="button" class="paidegua-dash__btn-fechar" aria-label="Fechar">
+              ×
+            </button>
+          </div>
+        </header>
+        <div id="aside-conteudo" class="paidegua-dash__aside-conteudo">
+          <!-- Conteúdo populado via JS -->
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Modal de revisão SERP em lote ───────────────────────── -->
+    <div id="modal-serp" class="paidegua-dash__modal" hidden>
+      <div class="paidegua-dash__modal-overlay" id="modal-serp-overlay"></div>
+      <div class="paidegua-dash__modal-painel" role="dialog" aria-modal="true" aria-labelledby="modal-serp-titulo">
+        <header class="paidegua-dash__modal-header">
+          <div>
+            <h2 id="modal-serp-titulo" class="paidegua-dash__modal-titulo">Revisão SERP em lote</h2>
+            <p class="paidegua-dash__modal-subtitulo">
+              Atualize o resultado SERP de cada réu sem precisar abrir o processo.
+              Mudanças são salvas automaticamente ao alternar os controles.
+            </p>
+          </div>
+          <button id="btn-serp-fechar" type="button" class="paidegua-dash__btn-fechar" aria-label="Fechar">×</button>
+        </header>
+        <div class="paidegua-dash__modal-toolbar">
+          <label class="paidegua-dash__filtro">
+            <span>Mostrar</span>
+            <select id="select-serp-escopo">
+              <option value="pendentes_e_antigos" selected>
+                Pendentes + consultas &gt; 90 dias
+              </option>
+              <option value="pendentes">Apenas pendentes</option>
+              <option value="todos">Todos os réus</option>
+            </select>
+          </label>
+          <span id="serp-resumo" class="paidegua-dash__modal-resumo">Carregando…</span>
+        </div>
+        <div class="paidegua-dash__modal-legenda">
+          <strong>Como usar:</strong>
+          na coluna <em>Resultado</em>, clique em
+          <span class="paidegua-dash__serp-legenda-pendente">P</span> para
+          <em>Pendente</em>,
+          <span class="paidegua-dash__serp-legenda-negativo">N</span> para
+          <em>Negativo</em> ou
+          <span class="paidegua-dash__serp-legenda-positivo">P</span> para
+          <em>Positivo</em>. Em seguida, marque os achados nas colunas
+          <em>IPP</em> (inquérito), <em>Denún.</em> (denúncia),
+          <em>Sent.</em> (sentença) e <em>Guia</em>.
+          A data de hoje é gravada automaticamente em <em>Última consulta</em>.
+        </div>
+        <div class="paidegua-dash__modal-corpo">
+          <table class="paidegua-dash__serp-tabela" id="tabela-serp">
+            <thead>
+              <tr>
+                <th class="paidegua-dash__serp-col-reu">Réu</th>
+                <th class="paidegua-dash__serp-col-proc">Processo</th>
+                <th class="paidegua-dash__serp-col-resultado">Resultado</th>
+                <th class="paidegua-dash__serp-col-flag" title="Inquérito Policial">IPP</th>
+                <th class="paidegua-dash__serp-col-flag" title="Denúncia oferecida">Denún.</th>
+                <th class="paidegua-dash__serp-col-flag" title="Sentença condenatória">Sent.</th>
+                <th class="paidegua-dash__serp-col-flag" title="Guia de execução penal">Guia</th>
+                <th class="paidegua-dash__serp-col-ultima">Última consulta</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-serp">
+              <tr><td colspan="8" class="paidegua-dash__serp-vazio">Carregando réus…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+  </body>
+</html>

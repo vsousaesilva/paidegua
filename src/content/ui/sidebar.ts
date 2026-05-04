@@ -47,6 +47,24 @@ export interface SidebarElements {
    */
   periciasPaideguaButton: HTMLButtonElement;
   /**
+   * Botão "Sigcrim" — visível apenas no perfil Secretaria quando a aba
+   * atual é o painel-usuario-interno do PJe. Dispara a varredura criminal
+   * (ANPP, prescrição, SERP) sobre as tarefas do usuário.
+   */
+  sigcrimButton: HTMLButtonElement;
+  /**
+   * Botão "Central de Comunicação" — perfil Secretaria. Abre a aba que
+   * gera mensagens de cobrança ao perito (WhatsApp) e à Ceab (e-mail).
+   * Depende do painel-usuario-interno do PJe.
+   */
+  comunicacaoPaideguaButton: HTMLButtonElement;
+  /**
+   * Botão "Audiência pAIdegua" — perfil Secretaria. Abre a aba que
+   * agrupa processos de "designar audiência" por advogado e aplica a
+   * etiqueta-pauta em lote. Depende do painel-usuario-interno do PJe.
+   */
+  audienciaPaideguaButton: HTMLButtonElement;
+  /**
    * Botão "Abrir Painel Gerencial" — visível apenas no perfil Gestão e
    * quando a aba atual é o painel-usuario-interno do PJe (fora dessa
    * tela o CSS do container oculta o grupo inteiro).
@@ -58,6 +76,12 @@ export interface SidebarElements {
    * "Controle de prazo" via API REST do PJe.
    */
   prazosFitaButton: HTMLButtonElement;
+  /**
+   * Botão "Controle Metas CNJ" — perfil Gestão. Mantém um acervo
+   * persistente dos processos da vara classificados quanto às Metas
+   * Nacionais 2026 do CNJ.
+   */
+  metasCnjButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -637,10 +661,14 @@ export function mountSidebar(
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações da secretaria</div>
       <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de Triagem Inteligente" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Triagem Inteligente</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui é uma análise!</span></span></button>
       <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="pericias-paidegua" title="Organiza os processos das tarefas de perícia em uma pauta por perito" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Perícias pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Organize a sua pauta!</span></span></button>
+      <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="sigcrim" title="Varre processos criminais e captura dados de prescrição, ANPP e SERP" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Sigcrim</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Controle ANPP e prescrição penal!</span></span></button>
+      <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="comunicacao-paidegua" title="Gera mensagens de cobrança aos peritos (WhatsApp) e à Ceab (e-mail)" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Central de Comunicação</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Cobre peritos e Ceab num clique!</span></span></button>
+      <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="audiencia-paidegua" title="Agrupa processos de designar audiência por advogado e gera a pauta" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Audiência pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Pauta agrupada por advogado!</span></span></button>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Recursos para a Gestão</div>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Painel Gerencial pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui você se faz!</span></span></button>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="prazos-fita" title="Coleta os expedientes abertos das tarefas de Controle de prazo e abre o painel Prazos na Fita" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Prazos na Fita pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Expedientes abertos por prazo</span></span></button>
+      <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="metas-cnj" title="Controle das Metas Nacionais 2026 do CNJ — acervo persistente, atualização incremental e aplicação de etiquetas em lote" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Controle Metas CNJ</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Acervo persistente das Metas 2026</span></span></button>
       <div data-profile-section="gestao" data-painel-section="fora-painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 12px; color: var(--paidegua-text-muted); line-height: 1.45; padding: 10px 12px; background: rgba(255,255,255,0.6); border: 1px dashed var(--paidegua-border); border-radius: var(--paidegua-radius-sm);">Abra o <strong>Painel do usuário</strong> do PJe para usar as ferramentas de Gestão.</div>
     </div>
 
@@ -698,8 +726,12 @@ export function mountSidebar(
   }
   const triagemInteligenteButton = q<HTMLButtonElement>('triagem-inteligente');
   const periciasPaideguaButton = q<HTMLButtonElement>('pericias-paidegua');
+  const sigcrimButton = q<HTMLButtonElement>('sigcrim');
+  const comunicacaoPaideguaButton = q<HTMLButtonElement>('comunicacao-paidegua');
+  const audienciaPaideguaButton = q<HTMLButtonElement>('audiencia-paidegua');
   const painelGerencialButton = q<HTMLButtonElement>('painel-gerencial');
   const prazosFitaButton = q<HTMLButtonElement>('prazos-fita');
+  const metasCnjButton = q<HTMLButtonElement>('metas-cnj');
   const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
@@ -750,8 +782,12 @@ export function mountSidebar(
     templateActionButtons,
     triagemInteligenteButton,
     periciasPaideguaButton,
+    sigcrimButton,
+    comunicacaoPaideguaButton,
+    audienciaPaideguaButton,
     painelGerencialButton,
     prazosFitaButton,
+    metasCnjButton,
     providerLabel,
     globalNotice
   };
