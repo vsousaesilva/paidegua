@@ -1,0 +1,75 @@
+name: CI da extensão pAIdegua
+
+# Roda em todo push em main e em todo Pull Request que toque o código da
+# extensão. Faz typecheck (tsc --noEmit) e build (webpack production) — bloqueia
+# merge se algo estiver quebrado.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'manifest.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'webpack.config.js'
+      - 'icons/**'
+      - 'shims/**'
+      - '.github/workflows/ci-extension.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'manifest.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'webpack.config.js'
+      - 'icons/**'
+      - 'shims/**'
+      - '.github/workflows/ci-extension.yml'
+  workflow_dispatch:
+
+jobs:
+  typecheck-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build (webpack production)
+        run: npm run build
+
+      - name: Verificar manifest.json
+        run: |
+          test -f dist/manifest.json
+          MANIFEST_VERSION=$(node -p "require('./dist/manifest.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "manifest.json version: $MANIFEST_VERSION"
+          echo "package.json version: $PACKAGE_VERSION"
+          if [ "$MANIFEST_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Versões divergentes entre manifest.json ($MANIFEST_VERSION) e package.json ($PACKAGE_VERSION)"
+            exit 1
+          fi
+
+      - name: Resumo do bundle
+        run: |
+          echo "### 📦 dist/ gerado" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          du -sh dist >> $GITHUB_STEP_SUMMARY
+          ls -la dist | head -30 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

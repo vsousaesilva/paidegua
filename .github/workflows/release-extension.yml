@@ -1,0 +1,124 @@
+name: Release da extensão pAIdegua
+
+# Em cada tag git no formato v*.*.* (ex.: v1.3.0):
+#  1. typecheck + build limpo
+#  2. valida que manifest.json bate com o número da tag (sem 'v')
+#  3. empacota dist/ em "dist vX.Y.Z.zip"
+#  4. cria/atualiza GitHub Release com o zip como asset
+#
+# Para liberar uma versão:
+#   - bumpar manifest.json E package.json para a nova versão
+#   - commit e push em main
+#   - git tag v1.X.Y && git push --tags
+#
+# O Actions detecta a tag e gera a release automaticamente.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag para gerar release (ex.: v1.3.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build (webpack production)
+        run: npm run build
+
+      - name: Resolver número de versão a partir da tag
+        id: ver
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"         >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Validar manifest.json contra a tag
+        run: |
+          MANIFEST_VERSION=$(node -p "require('./dist/manifest.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED="${{ steps.ver.outputs.version }}"
+          echo "tag → $EXPECTED"
+          echo "manifest.json → $MANIFEST_VERSION"
+          echo "package.json → $PACKAGE_VERSION"
+          if [ "$MANIFEST_VERSION" != "$EXPECTED" ] || [ "$PACKAGE_VERSION" != "$EXPECTED" ]; then
+            echo "::error::Tag $EXPECTED não bate com manifest ($MANIFEST_VERSION) e/ou package ($PACKAGE_VERSION). Bumpe os arquivos antes de retaggear."
+            exit 1
+          fi
+
+      - name: Empacotar dist como "dist vX.Y.Z.zip"
+        id: zip
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          ZIP_NAME="dist v${VERSION}.zip"
+          (cd dist && zip -r -q "../${ZIP_NAME}" .)
+          ls -la "${ZIP_NAME}"
+          echo "zip_name=${ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "zip_path=${ZIP_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Gerar changelog (commits desde a tag anterior)
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ steps.ver.outputs.tag }}$" | head -1 || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+            echo "Sem tag anterior — listando commits desde o início."
+          else
+            RANGE="$PREV_TAG..HEAD"
+            echo "Commits desde $PREV_TAG"
+          fi
+          {
+            echo 'changelog<<__EOF__'
+            echo "## Mudanças"
+            echo ""
+            git log --pretty=format:"- %s (%h)" $RANGE | head -50
+            echo ""
+            echo ""
+            echo "**Comparar:** \`$PREV_TAG..${{ steps.ver.outputs.tag }}\`"
+            echo "**Asset:** \`${{ steps.zip.outputs.zip_name }}\` (dist/ empacotado, descompactar antes de carregar no Chrome)."
+            echo "__EOF__"
+          } >> $GITHUB_OUTPUT
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: ${{ steps.zip.outputs.zip_path }}
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+
+      - name: Resumo
+        run: |
+          echo "### ✨ Release ${{ steps.ver.outputs.tag }} publicada" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Asset: \`${{ steps.zip.outputs.zip_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Veja em: https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
