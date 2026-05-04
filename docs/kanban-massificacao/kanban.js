@@ -44,16 +44,33 @@
   function recalcStickyTop() {
     const header = document.querySelector('.paidegua-header');
     const toolbar = document.querySelector('.toolbar');
-    const hH = header ? header.offsetHeight : 0;
-    const tH = (toolbar && !toolbar.hidden) ? toolbar.offsetHeight : 0;
-    document.documentElement.style.setProperty('--header-height', hH + 'px');
-    document.documentElement.style.setProperty('--sticky-top', (hH + tH) + 'px');
+    const hH = header ? header.getBoundingClientRect().height : 0;
+    const tH = (toolbar && !toolbar.hidden) ? toolbar.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--header-height', Math.round(hH) + 'px');
+    document.documentElement.style.setProperty('--sticky-top', Math.round(hH + tH) + 'px');
   }
 
-  // Recalcula em resize, e em mutações da toolbar (filtros podem quebrar linha)
+  // Recalcula em resize e em mutações de tamanho do header/toolbar.
   window.addEventListener('resize', recalcStickyTop, { passive: true });
-  document.addEventListener('DOMContentLoaded', recalcStickyTop);
-  setTimeout(recalcStickyTop, 50);
+  document.addEventListener('DOMContentLoaded', () => {
+    recalcStickyTop();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => recalcStickyTop());
+      const h = document.querySelector('.paidegua-header');
+      const t = document.querySelector('.toolbar');
+      if (h) ro.observe(h);
+      if (t) ro.observe(t);
+    }
+    // MutationObserver pra detectar quando toolbar deixa de ter [hidden]
+    if (typeof MutationObserver !== 'undefined') {
+      const t = document.querySelector('.toolbar');
+      if (t) {
+        new MutationObserver(() => recalcStickyTop()).observe(t, { attributes: true, attributeFilter: ['hidden', 'class', 'style'] });
+      }
+    }
+  });
+  // Garantia adicional após render assíncrono
+  requestAnimationFrame(() => requestAnimationFrame(recalcStickyTop));
 
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -74,6 +91,7 @@
       el.classList.toggle('is-active', el.dataset.view === view);
     });
     render();
+    requestAnimationFrame(recalcStickyTop);
   }
 
   // ===== Utils =====
@@ -372,7 +390,7 @@
     $('#header-user').textContent = state.user;
     bootstrap();
     detectAdmin();
-    setTimeout(recalcStickyTop, 0);
+    requestAnimationFrame(() => requestAnimationFrame(recalcStickyTop));
   }
 
   async function detectAdmin() {
