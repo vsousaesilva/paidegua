@@ -88,11 +88,20 @@ jobs:
           node-version: '20'
       - name: Gerar import-docs-state.json
         working-directory: docs/kanban-massificacao
-        run: node scripts/import-docs.mjs
+        run: |
+          node scripts/import-docs.mjs
+          echo "Tamanho do JSON gerado:"
+          ls -la scripts/import-docs-state.json
+          echo "Itens no JSON:"
+          node -e "const d=require('./scripts/import-docs-state.json'); console.log(d.items.length, 'docs')"
       - name: Subir para KV docs:state
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: docs/kanban-massificacao
-          command: kv key put "docs:state" --path=scripts/import-docs-state.json --namespace-id=9002dc0915f84842bf98ea894257d0a9 --remote
+        working-directory: docs/kanban-massificacao
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@latest kv key put \
+            "docs:state" \
+            --path=scripts/import-docs-state.json \
+            --namespace-id=9002dc0915f84842bf98ea894257d0a9 \
+            --remote
