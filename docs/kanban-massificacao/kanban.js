@@ -41,6 +41,20 @@
 
   applyTheme(state.theme);
 
+  function recalcStickyTop() {
+    const header = document.querySelector('.paidegua-header');
+    const toolbar = document.querySelector('.toolbar');
+    const hH = header ? header.offsetHeight : 0;
+    const tH = (toolbar && !toolbar.hidden) ? toolbar.offsetHeight : 0;
+    document.documentElement.style.setProperty('--header-height', hH + 'px');
+    document.documentElement.style.setProperty('--sticky-top', (hH + tH) + 'px');
+  }
+
+  // Recalcula em resize, e em mutações da toolbar (filtros podem quebrar linha)
+  window.addEventListener('resize', recalcStickyTop, { passive: true });
+  document.addEventListener('DOMContentLoaded', recalcStickyTop);
+  setTimeout(recalcStickyTop, 50);
+
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(STORAGE_KEY_THEME, theme);
@@ -358,6 +372,7 @@
     $('#header-user').textContent = state.user;
     bootstrap();
     detectAdmin();
+    setTimeout(recalcStickyTop, 0);
   }
 
   async function detectAdmin() {
