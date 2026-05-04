@@ -3,41 +3,175 @@
   "geradoEm": "2026-05-03",
   "fonte": "Backlog inicial consolidado a partir de docs/manual-massificacao-pje.md, docs/controle-metas-cnj.md e do diagnóstico de lacunas (sessão de 03/05/2026).",
   "colunas": [
-    { "id": "triagem", "titulo": "Triagem", "descricao": "Ideia capturada. Aguarda decisão go/no-go.", "ordem": 1 },
-    { "id": "discovery", "titulo": "Discovery", "descricao": "Investigação técnica, prova de conceito, entrevistas.", "ordem": 2 },
-    { "id": "spec", "titulo": "Especificação", "descricao": "ADR, contrato, prompt, fixtures, plano de teste.", "ordem": 3 },
-    { "id": "dev", "titulo": "Desenvolvimento", "descricao": "Codificação ativa em branch dedicado.", "ordem": 4 },
-    { "id": "qa", "titulo": "QA & Testes", "descricao": "Testes automatizados e manuais; revisão de código.", "ordem": 5 },
-    { "id": "validacao", "titulo": "Validação institucional", "descricao": "Inovajus, comitê, parecer CNJ/DTI quando aplicável.", "ordem": 6 },
-    { "id": "piloto", "titulo": "Piloto em vara", "descricao": "Uso supervisionado em unidade-piloto da JFCE.", "ordem": 7 },
-    { "id": "lancado", "titulo": "Lançado", "descricao": "Em produção para todos os usuários autorizados.", "ordem": 8 },
-    { "id": "bloqueado", "titulo": "Bloqueado", "descricao": "Depende de algo externo (aguardando CNJ, regulação, etc.).", "ordem": 9 },
-    { "id": "arquivado", "titulo": "Arquivado", "descricao": "Descartado, postergado ou substituído.", "ordem": 10 }
+    {
+      "id": "triagem",
+      "titulo": "Triagem",
+      "descricao": "Ideia capturada. Aguarda decisão go/no-go.",
+      "ordem": 1
+    },
+    {
+      "id": "discovery",
+      "titulo": "Discovery",
+      "descricao": "Investigação técnica, prova de conceito, entrevistas.",
+      "ordem": 2
+    },
+    {
+      "id": "spec",
+      "titulo": "Especificação",
+      "descricao": "ADR, contrato, prompt, fixtures, plano de teste.",
+      "ordem": 3
+    },
+    {
+      "id": "dev",
+      "titulo": "Desenvolvimento",
+      "descricao": "Codificação ativa em branch dedicado.",
+      "ordem": 4
+    },
+    {
+      "id": "qa",
+      "titulo": "QA & Testes",
+      "descricao": "Testes automatizados e manuais; revisão de código.",
+      "ordem": 5
+    },
+    {
+      "id": "validacao",
+      "titulo": "Validação institucional",
+      "descricao": "Inovajus, comitê, parecer CNJ/DTI quando aplicável.",
+      "ordem": 6
+    },
+    {
+      "id": "piloto",
+      "titulo": "Piloto em vara",
+      "descricao": "Uso supervisionado em unidade-piloto da JFCE.",
+      "ordem": 7
+    },
+    {
+      "id": "lancado",
+      "titulo": "Lançado",
+      "descricao": "Em produção para todos os usuários autorizados.",
+      "ordem": 8
+    },
+    {
+      "id": "bloqueado",
+      "titulo": "Bloqueado",
+      "descricao": "Depende de algo externo (aguardando CNJ, regulação, etc.).",
+      "ordem": 9
+    },
+    {
+      "id": "arquivado",
+      "titulo": "Arquivado",
+      "descricao": "Descartado, postergado ou substituído.",
+      "ordem": 10
+    }
   ],
   "categorias": [
-    { "id": "infra", "nome": "Infraestrutura PJe", "cor": "#0C326F" },
-    { "id": "conformidade", "nome": "Conformidade CNJ 615/LGPD", "cor": "#7B1FA2" },
-    { "id": "gabinete", "nome": "Gabinete", "cor": "#1351B4" },
-    { "id": "secretaria", "nome": "Secretaria", "cor": "#1565C0" },
-    { "id": "gestao", "nome": "Gestão", "cor": "#2E7D32" },
-    { "id": "audiencia", "nome": "Audiência", "cor": "#00796B" },
-    { "id": "criminal", "nome": "Criminal", "cor": "#5D4037" },
-    { "id": "comunicacao", "nome": "Comunicação", "cor": "#0277BD" },
-    { "id": "metas", "nome": "Metas CNJ", "cor": "#F57C00" },
-    { "id": "calculadoras", "nome": "Calculadoras", "cor": "#6A1B9A" },
-    { "id": "pesquisa", "nome": "Pesquisa jurídica", "cor": "#0288D1" },
-    { "id": "integracoes", "nome": "Integrações externas", "cor": "#37474F" },
-    { "id": "ergonomia", "nome": "Ergonomia/UX", "cor": "#5992ED" },
-    { "id": "acessibilidade", "nome": "Acessibilidade", "cor": "#1B5E20" },
-    { "id": "diretor", "nome": "Diretor de Foro/Corregedoria", "cor": "#B71C1C" },
-    { "id": "operacional", "nome": "Operacional/Release", "cor": "#455A64" },
-    { "id": "atendimento", "nome": "Atendimento ao público", "cor": "#FFA000" }
+    {
+      "id": "infra",
+      "nome": "Infraestrutura PJe",
+      "cor": "#0C326F"
+    },
+    {
+      "id": "conformidade",
+      "nome": "Conformidade CNJ 615/LGPD",
+      "cor": "#7B1FA2"
+    },
+    {
+      "id": "gabinete",
+      "nome": "Gabinete",
+      "cor": "#1351B4"
+    },
+    {
+      "id": "secretaria",
+      "nome": "Secretaria",
+      "cor": "#1565C0"
+    },
+    {
+      "id": "gestao",
+      "nome": "Gestão",
+      "cor": "#2E7D32"
+    },
+    {
+      "id": "audiencia",
+      "nome": "Audiência",
+      "cor": "#00796B"
+    },
+    {
+      "id": "criminal",
+      "nome": "Criminal",
+      "cor": "#5D4037"
+    },
+    {
+      "id": "comunicacao",
+      "nome": "Comunicação",
+      "cor": "#0277BD"
+    },
+    {
+      "id": "metas",
+      "nome": "Metas CNJ",
+      "cor": "#F57C00"
+    },
+    {
+      "id": "calculadoras",
+      "nome": "Calculadoras",
+      "cor": "#6A1B9A"
+    },
+    {
+      "id": "pesquisa",
+      "nome": "Pesquisa jurídica",
+      "cor": "#0288D1"
+    },
+    {
+      "id": "integracoes",
+      "nome": "Integrações externas",
+      "cor": "#37474F"
+    },
+    {
+      "id": "ergonomia",
+      "nome": "Ergonomia/UX",
+      "cor": "#5992ED"
+    },
+    {
+      "id": "acessibilidade",
+      "nome": "Acessibilidade",
+      "cor": "#1B5E20"
+    },
+    {
+      "id": "diretor",
+      "nome": "Diretor de Foro/Corregedoria",
+      "cor": "#B71C1C"
+    },
+    {
+      "id": "operacional",
+      "nome": "Operacional/Release",
+      "cor": "#455A64"
+    },
+    {
+      "id": "atendimento",
+      "nome": "Atendimento ao público",
+      "cor": "#FFA000"
+    }
   ],
   "prioridades": [
-    { "id": "P0", "nome": "P0 — Bloqueante regulatório ou release", "cor": "#c0392b" },
-    { "id": "P1", "nome": "P1 — Alto impacto institucional", "cor": "#F57C00" },
-    { "id": "P2", "nome": "P2 — Diferencial competitivo", "cor": "#1351B4" },
-    { "id": "P3", "nome": "P3 — Evolução incremental", "cor": "#5B6B82" }
+    {
+      "id": "P0",
+      "nome": "P0 — Bloqueante regulatório ou release",
+      "cor": "#c0392b"
+    },
+    {
+      "id": "P1",
+      "nome": "P1 — Alto impacto institucional",
+      "cor": "#F57C00"
+    },
+    {
+      "id": "P2",
+      "nome": "P2 — Diferencial competitivo",
+      "cor": "#1351B4"
+    },
+    {
+      "id": "P3",
+      "nome": "P3 — Evolução incremental",
+      "cor": "#5B6B82"
+    }
   ],
   "cards": [
     {
@@ -46,10 +180,14 @@
       "descricao": "Gateway único que toda chamada a *.jus.br atravessa. Bucket por origem (1g/2g por TRF/TJ), fila FIFO com prioridade (critical:true para clique do usuário, false para varreduras), jitter 120-480ms só em varreduras, maxRequestsPerSecond default=4, maxConcurrent=6. Reaproveita o retry exponencial de pje-api-from-content.ts:246. Não loga URL com ca/idProcesso.",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "spec",
       "origem": "manual-massificacao §II.2.2",
       "fase": "F1",
-      "tags": ["gateway", "throttle", "fingerprint"],
+      "tags": [
+        "gateway",
+        "throttle",
+        "fingerprint"
+      ],
       "esforco": "L",
       "depende": [],
       "aceitacao": [
@@ -58,6 +196,20 @@
         "Jitter aplicado apenas em critical:false",
         "Teste de throttle injetando Date.now() passa",
         "100% das chamadas a *.jus.br migradas"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-04T04:22:55.625Z",
+      "atualizadoEm": "2026-05-04T04:22:55.625Z",
+      "atualizadoPor": "sprint-planning/2026-05-04",
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "spec",
+          "autor": "sprint-planning/2026-05-04",
+          "data": "2026-05-04T04:22:55.625Z",
+          "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
+        }
       ]
     },
     {
@@ -66,17 +218,38 @@
       "descricao": "Cache em memória do content script (Map<idProcesso,{snapshot,expiresAt}>). TTL default 300_000ms. Single-flight: chamadas paralelas para o mesmo idProcesso compartilham o Promise. Detecção de stub: rejeita se htmlBytes<50_000 ou faltarem #divTimeLine/#mais-detalhes. Reuso de aba: se preferTabDom aponta para aba aberta com o idProcesso, parseia o DOM via chrome.scripting.executeScript (zero hit servidor). NÃO usa chrome.storage.local para HTML (LGPD).",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "spec",
       "origem": "manual-massificacao §II.2.1",
       "fase": "F1",
-      "tags": ["cache", "single-flight", "stub-detection", "LGPD"],
+      "tags": [
+        "cache",
+        "single-flight",
+        "stub-detection",
+        "LGPD"
+      ],
       "esforco": "L",
-      "depende": ["INFRA-01"],
+      "depende": [
+        "INFRA-01"
+      ],
       "aceitacao": [
         "Single-flight: 50 chamadas paralelas geram 1 fetch",
         "Stub de 32KB do incidente 20/04/2026 é rejeitado",
         "TTL ≤ 600_000ms; nada persistido em disco",
         "invalidateAutos(idProcesso) disponível"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-04T04:22:55.625Z",
+      "atualizadoEm": "2026-05-04T04:22:55.625Z",
+      "atualizadoPor": "sprint-planning/2026-05-04",
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "spec",
+          "autor": "sprint-planning/2026-05-04",
+          "data": "2026-05-04T04:22:55.625Z",
+          "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
+        }
       ]
     },
     {
@@ -88,9 +261,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.3",
       "fase": "F2",
-      "tags": ["strangler-fig", "migracao"],
+      "tags": [
+        "strangler-fig",
+        "migracao"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-02"],
+      "depende": [
+        "INFRA-02"
+      ],
       "aceitacao": [
         "Comportamento observável idêntico em 30 processos reais",
         "0 incidentes em 1 semana de uso interno"
@@ -105,9 +283,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.3",
       "fase": "F3",
-      "tags": ["strangler-fig", "metas-cnj"],
+      "tags": [
+        "strangler-fig",
+        "metas-cnj"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-03"]
+      "depende": [
+        "INFRA-03"
+      ]
     },
     {
       "id": "INFRA-05",
@@ -118,9 +301,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.3",
       "fase": "F3",
-      "tags": ["strangler-fig", "criminal"],
+      "tags": [
+        "strangler-fig",
+        "criminal"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-04"]
+      "depende": [
+        "INFRA-04"
+      ]
     },
     {
       "id": "INFRA-06",
@@ -131,9 +319,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.3",
       "fase": "F4",
-      "tags": ["strangler-fig", "audiencia"],
+      "tags": [
+        "strangler-fig",
+        "audiencia"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-05"]
+      "depende": [
+        "INFRA-05"
+      ]
     },
     {
       "id": "INFRA-07",
@@ -144,9 +337,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.3",
       "fase": "F4",
-      "tags": ["strangler-fig", "triagem"],
+      "tags": [
+        "strangler-fig",
+        "triagem"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-06"]
+      "depende": [
+        "INFRA-06"
+      ]
     },
     {
       "id": "INFRA-08",
@@ -157,9 +355,15 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.3",
       "fase": "F4",
-      "tags": ["strangler-fig", "prazos-fita", "alto-risco"],
+      "tags": [
+        "strangler-fig",
+        "prazos-fita",
+        "alto-risco"
+      ],
       "esforco": "L",
-      "depende": ["INFRA-07"]
+      "depende": [
+        "INFRA-07"
+      ]
     },
     {
       "id": "INFRA-09",
@@ -170,9 +374,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §I.2.5, §II.2.4",
       "fase": "F5",
-      "tags": ["snapshot", "metas-cnj"],
+      "tags": [
+        "snapshot",
+        "metas-cnj"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-02"]
+      "depende": [
+        "INFRA-02"
+      ]
     },
     {
       "id": "INFRA-10",
@@ -183,9 +392,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §I.2.4, §II.2.4",
       "fase": "F5",
-      "tags": ["snapshot", "performance"],
+      "tags": [
+        "snapshot",
+        "performance"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-02"]
+      "depende": [
+        "INFRA-02"
+      ]
     },
     {
       "id": "INFRA-11",
@@ -196,9 +410,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §I.2.6, §II.2.4",
       "fase": "F5",
-      "tags": ["snapshot", "auditoria"],
+      "tags": [
+        "snapshot",
+        "auditoria"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-02"]
+      "depende": [
+        "INFRA-02"
+      ]
     },
     {
       "id": "INFRA-12",
@@ -209,9 +428,13 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.2.4",
       "fase": "F5",
-      "tags": ["snapshot"],
+      "tags": [
+        "snapshot"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-02"]
+      "depende": [
+        "INFRA-02"
+      ]
     },
     {
       "id": "INFRA-13",
@@ -219,12 +442,29 @@
       "descricao": "Fixtures em test/fixtures/listAutosDigitais/: cível 33 movs, criminal com sigilo, JEF, timeline >100 entradas. TRF1, TRF2, TRF3, TRF4, TRF5, TRF6 + TJSP, TJMG, TJRJ. Anonimizar todas.",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "spec",
       "origem": "manual-massificacao §II.4, §II.5.3",
       "fase": "F1",
-      "tags": ["fixtures", "testes"],
+      "tags": [
+        "fixtures",
+        "testes"
+      ],
       "esforco": "L",
-      "depende": []
+      "depende": [],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-04T04:22:55.625Z",
+      "atualizadoEm": "2026-05-04T04:22:55.625Z",
+      "atualizadoPor": "sprint-planning/2026-05-04",
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "spec",
+          "autor": "sprint-planning/2026-05-04",
+          "data": "2026-05-04T04:22:55.625Z",
+          "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
+        }
+      ]
     },
     {
       "id": "INFRA-14",
@@ -235,9 +475,15 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.4",
       "fase": "F1",
-      "tags": ["testes", "regressao"],
+      "tags": [
+        "testes",
+        "regressao"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-13", "INFRA-02"]
+      "depende": [
+        "INFRA-13",
+        "INFRA-02"
+      ]
     },
     {
       "id": "INFRA-15",
@@ -245,12 +491,29 @@
       "descricao": "Falha no merge se houver console.log/warn/error com template literal contendo variáveis de nome cpf|ca|url|htmlBruto. Bloqueio LGPD §6.",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "spec",
       "origem": "manual-massificacao §II.4 #7, §II.5.2",
       "fase": "F1",
-      "tags": ["LGPD", "ci-gate"],
+      "tags": [
+        "LGPD",
+        "ci-gate"
+      ],
       "esforco": "S",
-      "depende": []
+      "depende": [],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-04T04:22:55.625Z",
+      "atualizadoEm": "2026-05-04T04:22:55.625Z",
+      "atualizadoPor": "sprint-planning/2026-05-04",
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "spec",
+          "autor": "sprint-planning/2026-05-04",
+          "data": "2026-05-04T04:22:55.625Z",
+          "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
+        }
+      ]
     },
     {
       "id": "INFRA-16",
@@ -261,7 +524,10 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.3",
       "fase": "F6",
-      "tags": ["adapter", "compat"],
+      "tags": [
+        "adapter",
+        "compat"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -274,9 +540,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.5",
       "fase": "F4",
-      "tags": ["sessao", "auth"],
+      "tags": [
+        "sessao",
+        "auth"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-01"]
+      "depende": [
+        "INFRA-01"
+      ]
     },
     {
       "id": "INFRA-18",
@@ -287,9 +558,13 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.3 item 4",
       "fase": "F6",
-      "tags": ["incident-response"],
+      "tags": [
+        "incident-response"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-01"]
+      "depende": [
+        "INFRA-01"
+      ]
     },
     {
       "id": "INFRA-19",
@@ -300,9 +575,13 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §III.3",
       "fase": "F7",
-      "tags": ["release-gate"],
+      "tags": [
+        "release-gate"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-08"]
+      "depende": [
+        "INFRA-08"
+      ]
     },
     {
       "id": "CONF-01",
@@ -314,7 +593,11 @@
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-03T00:00:00.000Z",
       "origem": "manual-instalacao-uso §9; Res. CNJ 615/2025 art. 19 §6º",
-      "tags": ["res-615", "auditoria", "bloqueante-regulatorio"],
+      "tags": [
+        "res-615",
+        "auditoria",
+        "bloqueante-regulatorio"
+      ],
       "esforco": "L",
       "depende": [],
       "aceitacao": [
@@ -325,11 +608,31 @@
         "Política de privacidade §3 atualizada citando o log"
       ],
       "checklist": [
-        { "id": "ck1", "texto": "Definir schema da tabela audit_ia_log (TypeScript + IndexedDB)", "feito": false },
-        { "id": "ck2", "texto": "Identificar todos os call-sites de chamada a IA na extensão", "feito": false },
-        { "id": "ck3", "texto": "Escrever ADR sobre hash do prompt (SHA-256 vs MD5; não persistir o prompt em claro)", "feito": false },
-        { "id": "ck4", "texto": "Submeter ADR à equipe Inovajus para aprovação", "feito": false },
-        { "id": "ck5", "texto": "Definir UI da página de Diagnóstico (contadores + export)", "feito": false }
+        {
+          "id": "ck1",
+          "texto": "Definir schema da tabela audit_ia_log (TypeScript + IndexedDB)",
+          "feito": false
+        },
+        {
+          "id": "ck2",
+          "texto": "Identificar todos os call-sites de chamada a IA na extensão",
+          "feito": false
+        },
+        {
+          "id": "ck3",
+          "texto": "Escrever ADR sobre hash do prompt (SHA-256 vs MD5; não persistir o prompt em claro)",
+          "feito": false
+        },
+        {
+          "id": "ck4",
+          "texto": "Submeter ADR à equipe Inovajus para aprovação",
+          "feito": false
+        },
+        {
+          "id": "ck5",
+          "texto": "Definir UI da página de Diagnóstico (contadores + export)",
+          "feito": false
+        }
       ],
       "historico": [
         {
@@ -353,11 +656,28 @@
       "descricao": "Permitir que magistrado opte por marcar a minuta como produzida com apoio de IA (rodapé padronizado). Configurável no popup.",
       "categoria": "conformidade",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "spec",
       "origem": "Res. CNJ 615/2025 art. 21",
-      "tags": ["res-615", "transparencia"],
+      "tags": [
+        "res-615",
+        "transparencia"
+      ],
       "esforco": "S",
-      "depende": []
+      "depende": [],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-04T04:22:55.625Z",
+      "atualizadoEm": "2026-05-04T04:22:55.625Z",
+      "atualizadoPor": "sprint-planning/2026-05-04",
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "spec",
+          "autor": "sprint-planning/2026-05-04",
+          "data": "2026-05-04T04:22:55.625Z",
+          "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
+        }
+      ]
     },
     {
       "id": "CONF-03",
@@ -367,7 +687,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "Res. CNJ 615/2025 art. 19 IV, art. 34",
-      "tags": ["res-615", "supervisao-humana"],
+      "tags": [
+        "res-615",
+        "supervisao-humana"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -379,7 +702,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "Res. CNJ 615/2025 art. 19 II",
-      "tags": ["res-615", "treino-vedado"],
+      "tags": [
+        "res-615",
+        "treino-vedado"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -391,9 +717,14 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.2",
-      "tags": ["LGPD", "transparencia"],
+      "tags": [
+        "LGPD",
+        "transparencia"
+      ],
       "esforco": "S",
-      "depende": ["INFRA-02"]
+      "depende": [
+        "INFRA-02"
+      ]
     },
     {
       "id": "CONF-06",
@@ -403,9 +734,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "Res. CNJ 615/2025 art. 27",
-      "tags": ["res-615", "estatistica"],
+      "tags": [
+        "res-615",
+        "estatistica"
+      ],
       "esforco": "M",
-      "depende": ["CONF-01"]
+      "depende": [
+        "CONF-01"
+      ]
     },
     {
       "id": "CONF-07",
@@ -416,7 +752,11 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.3 item 1",
       "fase": "F6",
-      "tags": ["cnj", "institucional", "bloqueante"],
+      "tags": [
+        "cnj",
+        "institucional",
+        "bloqueante"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -429,9 +769,13 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.3 item 2",
       "fase": "F6",
-      "tags": ["institucional"],
+      "tags": [
+        "institucional"
+      ],
       "esforco": "M",
-      "depende": ["CONF-07"]
+      "depende": [
+        "CONF-07"
+      ]
     },
     {
       "id": "CONF-09",
@@ -442,9 +786,14 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.3 item 3",
       "fase": "F6",
-      "tags": ["cnj", "fingerprint"],
+      "tags": [
+        "cnj",
+        "fingerprint"
+      ],
       "esforco": "S",
-      "depende": ["CONF-07"]
+      "depende": [
+        "CONF-07"
+      ]
     },
     {
       "id": "CONF-10",
@@ -455,9 +804,15 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §II.5.3 item 4",
       "fase": "F6",
-      "tags": ["incident-response", "cnj"],
+      "tags": [
+        "incident-response",
+        "cnj"
+      ],
       "esforco": "M",
-      "depende": ["CONF-07", "INFRA-18"]
+      "depende": [
+        "CONF-07",
+        "INFRA-18"
+      ]
     },
     {
       "id": "CONF-11",
@@ -467,7 +822,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "Res. CNJ 615/2025",
-      "tags": ["res-615", "termo-uso"],
+      "tags": [
+        "res-615",
+        "termo-uso"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -479,7 +837,11 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (ApoIA TRF2, MAIA TJPE)",
-      "tags": ["IA", "jurisprudencia", "semantica"],
+      "tags": [
+        "IA",
+        "jurisprudencia",
+        "semantica"
+      ],
       "esforco": "XL",
       "depende": []
     },
@@ -491,9 +853,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (anti-alucinação) + Res. 615 art. 19 III",
-      "tags": ["IA", "fact-check"],
+      "tags": [
+        "IA",
+        "fact-check"
+      ],
       "esforco": "L",
-      "depende": ["GAB-01"]
+      "depende": [
+        "GAB-01"
+      ]
     },
     {
       "id": "GAB-03",
@@ -503,9 +870,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "sobrestamento"],
+      "tags": [
+        "IA",
+        "sobrestamento"
+      ],
       "esforco": "L",
-      "depende": ["GAB-01"]
+      "depende": [
+        "GAB-01"
+      ]
     },
     {
       "id": "GAB-04",
@@ -515,7 +887,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "coerencia"],
+      "tags": [
+        "IA",
+        "coerencia"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -527,9 +902,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (jurimetria)",
-      "tags": ["jurimetria", "IA"],
+      "tags": [
+        "jurimetria",
+        "IA"
+      ],
       "esforco": "XL",
-      "depende": ["GAB-01"]
+      "depende": [
+        "GAB-01"
+      ]
     },
     {
       "id": "GAB-06",
@@ -539,9 +919,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["UX", "visualizacao"],
+      "tags": [
+        "UX",
+        "visualizacao"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-02"]
+      "depende": [
+        "INFRA-02"
+      ]
     },
     {
       "id": "GAB-07",
@@ -551,7 +936,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "resumo"],
+      "tags": [
+        "IA",
+        "resumo"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -563,7 +951,11 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (alta demanda JF previdenciária)",
-      "tags": ["IA", "pericia", "previdenciario"],
+      "tags": [
+        "IA",
+        "pericia",
+        "previdenciario"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -575,9 +967,15 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Tema 1124 STJ)",
-      "tags": ["IA", "previdenciario", "checagem"],
+      "tags": [
+        "IA",
+        "previdenciario",
+        "checagem"
+      ],
       "esforco": "L",
-      "depende": ["INFRA-10"]
+      "depende": [
+        "INFRA-10"
+      ]
     },
     {
       "id": "GAB-10",
@@ -587,7 +985,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Ártemis TJDFT)",
-      "tags": ["IA", "prevencao"],
+      "tags": [
+        "IA",
+        "prevencao"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -599,7 +1000,11 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (MAIA TJPE)",
-      "tags": ["IA", "2-grau", "acordao"],
+      "tags": [
+        "IA",
+        "2-grau",
+        "acordao"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -611,7 +1016,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "minutas"],
+      "tags": [
+        "IA",
+        "minutas"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -623,7 +1031,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "estruturacao"],
+      "tags": [
+        "IA",
+        "estruturacao"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -635,7 +1046,11 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Módulo Plantão PJe)",
-      "tags": ["IA", "plantao", "urgente"],
+      "tags": [
+        "IA",
+        "plantao",
+        "urgente"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -647,9 +1062,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe+R, MaisPJe TRT12)",
-      "tags": ["lote", "atos-ordinatorios"],
+      "tags": [
+        "lote",
+        "atos-ordinatorios"
+      ],
       "esforco": "L",
-      "depende": ["INFRA-08"]
+      "depende": [
+        "INFRA-08"
+      ]
     },
     {
       "id": "SEC-02",
@@ -659,7 +1079,11 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (+Autonomia TJPE)",
-      "tags": ["IA", "obito", "lote"],
+      "tags": [
+        "IA",
+        "obito",
+        "lote"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -671,7 +1095,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["certidao", "automacao"],
+      "tags": [
+        "certidao",
+        "automacao"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -683,7 +1110,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (MaisPJe TRT12)",
-      "tags": ["mandado", "lote"],
+      "tags": [
+        "mandado",
+        "lote"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -695,9 +1125,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["pendencias", "checklist"],
+      "tags": [
+        "pendencias",
+        "checklist"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-10"]
+      "depende": [
+        "INFRA-10"
+      ]
     },
     {
       "id": "SEC-06",
@@ -707,9 +1142,15 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["checklist", "apto"],
+      "tags": [
+        "checklist",
+        "apto"
+      ],
       "esforco": "L",
-      "depende": ["INFRA-10", "SEC-05"]
+      "depende": [
+        "INFRA-10",
+        "SEC-05"
+      ]
     },
     {
       "id": "SEC-07",
@@ -719,7 +1160,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe+R, MaisPJe TRT12)",
-      "tags": ["macro", "encadeada"],
+      "tags": [
+        "macro",
+        "encadeada"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -731,9 +1175,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["lote", "intimacao"],
+      "tags": [
+        "lote",
+        "intimacao"
+      ],
       "esforco": "L",
-      "depende": ["SEC-05"]
+      "depende": [
+        "SEC-05"
+      ]
     },
     {
       "id": "SEC-09",
@@ -743,9 +1192,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "urgente"],
+      "tags": [
+        "IA",
+        "urgente"
+      ],
       "esforco": "M",
-      "depende": ["INFRA-10"]
+      "depende": [
+        "INFRA-10"
+      ]
     },
     {
       "id": "SEC-10",
@@ -755,7 +1209,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "triagem"],
+      "tags": [
+        "IA",
+        "triagem"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -767,7 +1224,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Justiça em Números CNJ)",
-      "tags": ["indicadores", "painel"],
+      "tags": [
+        "indicadores",
+        "painel"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -779,7 +1239,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["visualizacao", "gargalos"],
+      "tags": [
+        "visualizacao",
+        "gargalos"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -791,9 +1254,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Provimento 19/2022 TRF5)",
-      "tags": ["inspecao", "corregedoria"],
+      "tags": [
+        "inspecao",
+        "corregedoria"
+      ],
       "esforco": "M",
-      "depende": ["GES-01"]
+      "depende": [
+        "GES-01"
+      ]
     },
     {
       "id": "GES-04",
@@ -803,9 +1271,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["benchmark", "JFCE"],
+      "tags": [
+        "benchmark",
+        "JFCE"
+      ],
       "esforco": "L",
-      "depende": ["GES-01"]
+      "depende": [
+        "GES-01"
+      ]
     },
     {
       "id": "GES-05",
@@ -815,7 +1288,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "diagnostico atual",
-      "tags": ["historico", "evolucao"],
+      "tags": [
+        "historico",
+        "evolucao"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -827,7 +1303,11 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (TJPB)",
-      "tags": ["produtividade", "individual", "sensivel"],
+      "tags": [
+        "produtividade",
+        "individual",
+        "sensivel"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -839,9 +1319,14 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["distribuicao", "RH"],
+      "tags": [
+        "distribuicao",
+        "RH"
+      ],
       "esforco": "M",
-      "depende": ["GES-06"]
+      "depende": [
+        "GES-06"
+      ]
     },
     {
       "id": "GES-08",
@@ -851,9 +1336,14 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "simulador"],
+      "tags": [
+        "IA",
+        "simulador"
+      ],
       "esforco": "L",
-      "depende": ["GES-01"]
+      "depende": [
+        "GES-01"
+      ]
     },
     {
       "id": "AUD-01",
@@ -863,9 +1353,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Pauta Inteligente TRT3)",
-      "tags": ["pauta", "audiencia"],
+      "tags": [
+        "pauta",
+        "audiencia"
+      ],
       "esforco": "L",
-      "depende": ["INFRA-06"]
+      "depende": [
+        "INFRA-06"
+      ]
     },
     {
       "id": "AUD-02",
@@ -875,9 +1370,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Pauta Inteligente TRT3)",
-      "tags": ["pauta", "pericia"],
+      "tags": [
+        "pauta",
+        "pericia"
+      ],
       "esforco": "S",
-      "depende": ["AUD-01"]
+      "depende": [
+        "AUD-01"
+      ]
     },
     {
       "id": "AUD-03",
@@ -887,9 +1387,15 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["pauta", "checklist", "lembrete"],
+      "tags": [
+        "pauta",
+        "checklist",
+        "lembrete"
+      ],
       "esforco": "M",
-      "depende": ["AUD-01"]
+      "depende": [
+        "AUD-01"
+      ]
     },
     {
       "id": "AUD-04",
@@ -899,7 +1405,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "ata"],
+      "tags": [
+        "IA",
+        "ata"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -911,7 +1420,11 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Escriba TRT4, CSJT/TRT17, Ipubi-PE)",
-      "tags": ["IA", "transcricao", "audio"],
+      "tags": [
+        "IA",
+        "transcricao",
+        "audio"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -923,9 +1436,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["IA", "termo"],
+      "tags": [
+        "IA",
+        "termo"
+      ],
       "esforco": "M",
-      "depende": ["AUD-05"]
+      "depende": [
+        "AUD-05"
+      ]
     },
     {
       "id": "AUD-07",
@@ -935,7 +1453,10 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["lembrete", "push"],
+      "tags": [
+        "lembrete",
+        "push"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -947,7 +1468,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em desenvolvimento)",
-      "tags": ["modulo", "release"],
+      "tags": [
+        "modulo",
+        "release"
+      ],
       "esforco": "XL",
       "depende": []
     },
@@ -959,7 +1483,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em desenvolvimento)",
-      "tags": ["modulo", "release"],
+      "tags": [
+        "modulo",
+        "release"
+      ],
       "esforco": "XL",
       "depende": []
     },
@@ -971,7 +1498,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em curso)",
-      "tags": ["calculo", "prescricao"],
+      "tags": [
+        "calculo",
+        "prescricao"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -983,9 +1513,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (+Autonomia TJPE — 38 audiências de júri com réu falecido)",
-      "tags": ["IA", "obito"],
+      "tags": [
+        "IA",
+        "obito"
+      ],
       "esforco": "M",
-      "depende": ["SEC-02"]
+      "depende": [
+        "SEC-02"
+      ]
     },
     {
       "id": "CRI-04",
@@ -995,7 +1530,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em curso)",
-      "tags": ["ANPP", "cumprimento"],
+      "tags": [
+        "ANPP",
+        "cumprimento"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1007,7 +1545,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["custodia", "checklist"],
+      "tags": [
+        "custodia",
+        "checklist"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1019,7 +1560,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (BNMP 3.0 CNJ)",
-      "tags": ["integracao", "BNMP"],
+      "tags": [
+        "integracao",
+        "BNMP"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1031,7 +1575,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (SEEU CNJ)",
-      "tags": ["integracao", "SEEU"],
+      "tags": [
+        "integracao",
+        "SEEU"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1043,7 +1590,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em curso); docs/extracao-tpu-pje.md",
-      "tags": ["TPU", "seed"],
+      "tags": [
+        "TPU",
+        "seed"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1055,9 +1605,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["prescricao", "alerta"],
+      "tags": [
+        "prescricao",
+        "alerta"
+      ],
       "esforco": "M",
-      "depende": ["CRI-02"]
+      "depende": [
+        "CRI-02"
+      ]
     },
     {
       "id": "COM-01",
@@ -1067,7 +1622,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em desenvolvimento)",
-      "tags": ["modulo", "release"],
+      "tags": [
+        "modulo",
+        "release"
+      ],
       "esforco": "XL",
       "depende": []
     },
@@ -1079,9 +1637,13 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status (em curso)",
-      "tags": ["template"],
+      "tags": [
+        "template"
+      ],
       "esforco": "M",
-      "depende": ["COM-01"]
+      "depende": [
+        "COM-01"
+      ]
     },
     {
       "id": "COM-03",
@@ -1091,9 +1653,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (MaisPJe TRT12)",
-      "tags": ["lote", "email"],
+      "tags": [
+        "lote",
+        "email"
+      ],
       "esforco": "L",
-      "depende": ["COM-02"]
+      "depende": [
+        "COM-02"
+      ]
     },
     {
       "id": "COM-04",
@@ -1103,9 +1670,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["citacao", "regulacao"],
+      "tags": [
+        "citacao",
+        "regulacao"
+      ],
       "esforco": "L",
-      "depende": ["COM-03"]
+      "depende": [
+        "COM-03"
+      ]
     },
     {
       "id": "COM-05",
@@ -1115,7 +1687,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["DJEN", "integracao"],
+      "tags": [
+        "DJEN",
+        "integracao"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1127,7 +1702,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (+Autonomia TJPE busca de endereços)",
-      "tags": ["mandado", "endereco"],
+      "tags": [
+        "mandado",
+        "endereco"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1139,9 +1717,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["historico", "consolidado"],
+      "tags": [
+        "historico",
+        "consolidado"
+      ],
       "esforco": "M",
-      "depende": ["COM-01"]
+      "depende": [
+        "COM-01"
+      ]
     },
     {
       "id": "MET-01",
@@ -1151,7 +1734,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "git status + docs/controle-metas-cnj.md",
-      "tags": ["modulo", "release"],
+      "tags": [
+        "modulo",
+        "release"
+      ],
       "esforco": "XL",
       "depende": []
     },
@@ -1163,9 +1749,14 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Metas CNJ 2026)",
-      "tags": ["metas-2026", "JF"],
+      "tags": [
+        "metas-2026",
+        "JF"
+      ],
       "esforco": "L",
-      "depende": ["MET-01"]
+      "depende": [
+        "MET-01"
+      ]
     },
     {
       "id": "MET-03",
@@ -1175,9 +1766,13 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["visualizacao"],
+      "tags": [
+        "visualizacao"
+      ],
       "esforco": "S",
-      "depende": ["MET-02"]
+      "depende": [
+        "MET-02"
+      ]
     },
     {
       "id": "MET-04",
@@ -1187,9 +1782,13 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["alerta"],
+      "tags": [
+        "alerta"
+      ],
       "esforco": "M",
-      "depende": ["MET-02"]
+      "depende": [
+        "MET-02"
+      ]
     },
     {
       "id": "MET-05",
@@ -1199,9 +1798,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["export", "relatorio"],
+      "tags": [
+        "export",
+        "relatorio"
+      ],
       "esforco": "M",
-      "depende": ["MET-02"]
+      "depende": [
+        "MET-02"
+      ]
     },
     {
       "id": "MET-06",
@@ -1211,7 +1815,9 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "docs/controle-metas-cnj.md",
-      "tags": ["roadmap-doc"],
+      "tags": [
+        "roadmap-doc"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1223,7 +1829,9 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["previdenciario"],
+      "tags": [
+        "previdenciario"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1235,7 +1843,9 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Projef Web TRF4)",
-      "tags": ["correcao"],
+      "tags": [
+        "correcao"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1247,9 +1857,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe-Calc)",
-      "tags": ["RPV", "precatorio"],
+      "tags": [
+        "RPV",
+        "precatorio"
+      ],
       "esforco": "M",
-      "depende": ["CAL-02"]
+      "depende": [
+        "CAL-02"
+      ]
     },
     {
       "id": "CAL-04",
@@ -1259,7 +1874,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["prescricao"],
+      "tags": [
+        "prescricao"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1271,7 +1888,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["previdenciario", "tempo-contribuicao"],
+      "tags": [
+        "previdenciario",
+        "tempo-contribuicao"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1283,7 +1903,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["honorarios"],
+      "tags": [
+        "honorarios"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -1295,7 +1917,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["alimentos"],
+      "tags": [
+        "alimentos"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -1307,7 +1931,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Promptus CNJ)",
-      "tags": ["prompts", "compartilhado"],
+      "tags": [
+        "prompts",
+        "compartilhado"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1319,7 +1946,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["JFCE", "regional"],
+      "tags": [
+        "JFCE",
+        "regional"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1331,9 +1961,13 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["sobrestamento"],
+      "tags": [
+        "sobrestamento"
+      ],
       "esforco": "L",
-      "depende": ["GAB-03"]
+      "depende": [
+        "GAB-03"
+      ]
     },
     {
       "id": "PES-04",
@@ -1343,7 +1977,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["base-juridica"],
+      "tags": [
+        "base-juridica"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1355,9 +1991,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (BNMP 3.0 CNJ)",
-      "tags": ["BNMP", "criminal"],
+      "tags": [
+        "BNMP",
+        "criminal"
+      ],
       "esforco": "L",
-      "depende": ["CONF-07"]
+      "depende": [
+        "CONF-07"
+      ]
     },
     {
       "id": "INT-02",
@@ -1367,7 +2008,10 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["CNIB", "execucao"],
+      "tags": [
+        "CNIB",
+        "execucao"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1379,7 +2023,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["Renajud"],
+      "tags": [
+        "Renajud"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1391,7 +2037,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Manual SISBAJUD-PJe)",
-      "tags": ["Sisbajud"],
+      "tags": [
+        "Sisbajud"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1403,9 +2051,14 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Fórum Previdenciário TRF4)",
-      "tags": ["INSS", "previdenciario"],
+      "tags": [
+        "INSS",
+        "previdenciario"
+      ],
       "esforco": "XL",
-      "depende": ["CONF-07"]
+      "depende": [
+        "CONF-07"
+      ]
     },
     {
       "id": "INT-06",
@@ -1415,7 +2068,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["DJEN"],
+      "tags": [
+        "DJEN"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1427,9 +2082,14 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["RFB", "CPF"],
+      "tags": [
+        "RFB",
+        "CPF"
+      ],
       "esforco": "L",
-      "depende": ["CONF-07"]
+      "depende": [
+        "CONF-07"
+      ]
     },
     {
       "id": "INT-08",
@@ -1439,7 +2099,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (CNF Brasil)",
-      "tags": ["obito", "CNF"],
+      "tags": [
+        "obito",
+        "CNF"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1451,7 +2114,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe+R)",
-      "tags": ["atalho", "produtividade"],
+      "tags": [
+        "atalho",
+        "produtividade"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1463,7 +2129,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe+R)",
-      "tags": ["filtro", "produtividade"],
+      "tags": [
+        "filtro",
+        "produtividade"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1475,7 +2144,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa (MaisPJe TRT12)",
-      "tags": ["multi-monitor"],
+      "tags": [
+        "multi-monitor"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1487,7 +2158,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (MaisPJe TRT12)",
-      "tags": ["sync"],
+      "tags": [
+        "sync"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1499,7 +2172,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (MaisPJe TRT12)",
-      "tags": ["download", "ZIP"],
+      "tags": [
+        "download",
+        "ZIP"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1511,7 +2187,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["contextmenu"],
+      "tags": [
+        "contextmenu"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -1523,7 +2201,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe+R)",
-      "tags": ["lote", "etiqueta"],
+      "tags": [
+        "lote",
+        "etiqueta"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1535,7 +2216,10 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["UX", "tema"],
+      "tags": [
+        "UX",
+        "tema"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1547,7 +2231,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (TRT5/CSJT acessibilidade)",
-      "tags": ["WCAG"],
+      "tags": [
+        "WCAG"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1559,9 +2245,14 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["NVDA", "leitor-tela"],
+      "tags": [
+        "NVDA",
+        "leitor-tela"
+      ],
       "esforco": "M",
-      "depende": ["ACE-01"]
+      "depende": [
+        "ACE-01"
+      ]
     },
     {
       "id": "ACE-03",
@@ -1571,7 +2262,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (PJe v2.11)",
-      "tags": ["OCR", "leitor-tela"],
+      "tags": [
+        "OCR",
+        "leitor-tela"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1583,7 +2277,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["perfil-novo"],
+      "tags": [
+        "perfil-novo"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1595,9 +2291,15 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["inspecao", "remoto"],
+      "tags": [
+        "inspecao",
+        "remoto"
+      ],
       "esforco": "M",
-      "depende": ["DIR-01", "GES-03"]
+      "depende": [
+        "DIR-01",
+        "GES-03"
+      ]
     },
     {
       "id": "DIR-03",
@@ -1607,7 +2309,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Berna TJGO/CNJ)",
-      "tags": ["IA", "predatoria"],
+      "tags": [
+        "IA",
+        "predatoria"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1619,9 +2324,13 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["multi-vara"],
+      "tags": [
+        "multi-vara"
+      ],
       "esforco": "L",
-      "depende": ["DIR-01"]
+      "depende": [
+        "DIR-01"
+      ]
     },
     {
       "id": "OPS-01",
@@ -1631,7 +2340,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["CI", "release"],
+      "tags": [
+        "CI",
+        "release"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1643,7 +2355,9 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "docs/telemetria-local-e-escala.md",
-      "tags": ["telemetria"],
+      "tags": [
+        "telemetria"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1655,7 +2369,10 @@
       "prioridade": "P1",
       "coluna": "triagem",
       "origem": "CLAUDE.md workspace + gap-pesquisa",
-      "tags": ["offline", "intranet"],
+      "tags": [
+        "offline",
+        "intranet"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1667,7 +2384,10 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["onboarding", "sandbox"],
+      "tags": [
+        "onboarding",
+        "sandbox"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1680,9 +2400,15 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §III.2 anti-padrão 10",
       "fase": "F7",
-      "tags": ["release", "marketplace"],
+      "tags": [
+        "release",
+        "marketplace"
+      ],
       "esforco": "M",
-      "depende": ["CONF-07", "INFRA-19"]
+      "depende": [
+        "CONF-07",
+        "INFRA-19"
+      ]
     },
     {
       "id": "OPS-06",
@@ -1692,7 +2418,9 @@
       "prioridade": "P2",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["onboarding"],
+      "tags": [
+        "onboarding"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1704,7 +2432,10 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["doc", "ajuda"],
+      "tags": [
+        "doc",
+        "ajuda"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1716,7 +2447,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["i18n"],
+      "tags": [
+        "i18n"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1729,7 +2462,9 @@
       "coluna": "triagem",
       "origem": "manual-massificacao §III.4",
       "fase": "F7",
-      "tags": ["doc"],
+      "tags": [
+        "doc"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -1741,7 +2476,9 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa (Balcão Virtual JF)",
-      "tags": ["balcao-virtual"],
+      "tags": [
+        "balcao-virtual"
+      ],
       "esforco": "S",
       "depende": []
     },
@@ -1753,7 +2490,10 @@
       "prioridade": "P3",
       "coluna": "triagem",
       "origem": "gap-pesquisa",
-      "tags": ["jurisdicionado", "fora-escopo"],
+      "tags": [
+        "jurisdicionado",
+        "fora-escopo"
+      ],
       "esforco": "L",
       "depende": []
     },
@@ -1765,7 +2505,10 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "decisão sessão 03/05/2026",
-      "tags": ["kanban", "cloudflare"],
+      "tags": [
+        "kanban",
+        "cloudflare"
+      ],
       "esforco": "M",
       "depende": []
     },
@@ -1777,9 +2520,14 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "decisão sessão 03/05/2026",
-      "tags": ["kanban", "cloudflare-pages"],
+      "tags": [
+        "kanban",
+        "cloudflare-pages"
+      ],
       "esforco": "M",
-      "depende": ["KAN-01"]
+      "depende": [
+        "KAN-01"
+      ]
     },
     {
       "id": "INFRA-EXT-AUTH",
@@ -1790,7 +2538,17 @@
       "coluna": "triagem",
       "owner": "vsousaesilva@jfce.jus.br",
       "origem": "decisão sessão 04/05/2026 (gestão centralizada de membros)",
-      "tags": ["auth", "extensao", "migracao", "cloudflare", "team-members"],
+      "tags": [
+        "auth",
+        "extensao",
+        "migracao",
+        "cloudflare",
+        "team-members",
+        "jwt",
+        "apps-script",
+        "whitelist",
+        "gas-legado"
+      ],
       "esforco": "L",
       "depende": [],
       "aceitacao": [
@@ -1802,16 +2560,60 @@
         "Plano de fallback: durante 30 dias o Apps Script continua respondendo para sessões em andamento, depois é desligado"
       ],
       "checklist": [
-        { "id": "ext1", "texto": "Definir endpoints /api/auth/extension/* no worker.js", "feito": false },
-        { "id": "ext2", "texto": "Decidir formato do bearer (token simples como o Kanban OU JWT igual ao GAS atual)", "feito": false },
-        { "id": "ext3", "texto": "Adicionar campo 'jwt' no membro (se manter compatibilidade GAS)", "feito": false },
-        { "id": "ext4", "texto": "Implementar import de planilha → team:members (script utilitário)", "feito": false },
-        { "id": "ext5", "texto": "Atualizar src/popup/popup.ts da extensão (URL de auth)", "feito": false },
-        { "id": "ext6", "texto": "Comunicar pilotos atuais sobre a migração + período de fallback", "feito": false },
-        { "id": "ext7", "texto": "Atualizar docs/index.md (política de privacidade)", "feito": false },
-        { "id": "ext8", "texto": "Desligar Apps Script após 30 dias de validação", "feito": false }
+        {
+          "id": "ext1",
+          "texto": "Definir endpoints /api/auth/extension/* no worker.js",
+          "feito": false
+        },
+        {
+          "id": "ext2",
+          "texto": "Decidir formato do bearer (token simples como o Kanban OU JWT igual ao GAS atual)",
+          "feito": false
+        },
+        {
+          "id": "ext3",
+          "texto": "Adicionar campo 'jwt' no membro (se manter compatibilidade GAS)",
+          "feito": false
+        },
+        {
+          "id": "ext4",
+          "texto": "Implementar import de planilha → team:members (script utilitário)",
+          "feito": false
+        },
+        {
+          "id": "ext5",
+          "texto": "Atualizar src/popup/popup.ts da extensão (URL de auth)",
+          "feito": false
+        },
+        {
+          "id": "ext6",
+          "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
+          "feito": false
+        },
+        {
+          "id": "ext7",
+          "texto": "Atualizar docs/index.md (política de privacidade)",
+          "feito": false
+        },
+        {
+          "id": "ext8",
+          "texto": "Desligar Apps Script após 30 dias de validação",
+          "feito": false
+        }
       ],
-      "historico": []
+      "historico": [
+        {
+          "tipo": "editado",
+          "campos": [
+            "tags"
+          ],
+          "autor": "sprint-planning/2026-05-04",
+          "data": "2026-05-04T04:22:55.625Z",
+          "comando": "sprint planning 04/05/2026 — tags refinadas para deixar pronto para puxar"
+        }
+      ],
+      "atualizadoEm": "2026-05-04T04:22:55.625Z",
+      "atualizadoPor": "sprint-planning/2026-05-04"
     },
     {
       "id": "KAN-03",
@@ -1821,9 +2623,14 @@
       "prioridade": "P0",
       "coluna": "triagem",
       "origem": "decisão sessão 03/05/2026",
-      "tags": ["CI", "wrangler"],
+      "tags": [
+        "CI",
+        "wrangler"
+      ],
       "esforco": "S",
-      "depende": ["KAN-02"]
+      "depende": [
+        "KAN-02"
+      ]
     }
   ]
 }
