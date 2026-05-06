@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "pAIdegua",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Inteligência Artificial integrada ao PJe — análise de processos, geração de minutas e extração de informações com IA.",
   "permissions": [
     "activeTab",
