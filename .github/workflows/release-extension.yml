@@ -122,3 +122,71 @@ jobs:
           echo "Asset: \`${{ steps.zip.outputs.zip_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Veja em: https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+
+      # Empacota o zip como artifact pra próximo job (publish-cws) usar
+      - name: Upload zip como artifact (para publish-cws)
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: ${{ steps.zip.outputs.zip_path }}
+          retention-days: 7
+
+  # ----------------------------------------------------------------------
+  # Publish na Chrome Web Store automático.
+  #
+  # Disparado SOMENTE em push de tag (não em workflow_dispatch) pra evitar
+  # subir builds ad-hoc sem revisão. Submete pra revisão automaticamente
+  # se SUBMIT_FOR_REVIEW for "true" (default). Pra apenas dar upload sem
+  # submeter (modo "draft"), defina SUBMIT_FOR_REVIEW="false" como var
+  # do repo.
+  #
+  # Secrets necessários (cadastrar 1x em Settings > Secrets and variables > Actions):
+  #   CWS_EXTENSION_ID    : belangijcipajlpcofhljhgjeemkbofk
+  #   CWS_CLIENT_ID       : OAuth client ID da Google Cloud Console
+  #   CWS_CLIENT_SECRET   : OAuth client secret da Google Cloud Console
+  #   CWS_REFRESH_TOKEN   : refresh token gerado uma vez via OAuth playground
+  #
+  # Setup detalhado em docs/publicacao-marketplace.md (será atualizado).
+  # ----------------------------------------------------------------------
+  publish-cws:
+    needs: release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Baixar zip do job anterior
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-zip
+          path: ./
+
+      - name: Detectar zip baixado
+        id: detect
+        run: |
+          ZIP=$(ls "dist v"*.zip 2>/dev/null | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "::error::Nenhum 'dist v*.zip' encontrado no artifact"
+            exit 1
+          fi
+          echo "zip=$ZIP" >> $GITHUB_OUTPUT
+
+      - name: Upload + Submit para Chrome Web Store
+        uses: mobilefirstllc/cws-publish@latest
+        with:
+          action: ${{ vars.SUBMIT_FOR_REVIEW == 'false' && 'upload' || 'publish' }}
+          client_id: ${{ secrets.CWS_CLIENT_ID }}
+          client_secret: ${{ secrets.CWS_CLIENT_SECRET }}
+          refresh_token: ${{ secrets.CWS_REFRESH_TOKEN }}
+          extension_id: ${{ secrets.CWS_EXTENSION_ID }}
+          zip_file: ${{ steps.detect.outputs.zip }}
+
+      - name: Resumo
+        run: |
+          echo "### 🛍️ Chrome Web Store" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          MODE="${{ vars.SUBMIT_FOR_REVIEW == 'false' && 'upload (draft)' || 'publish (submit for review)' }}"
+          echo "Modo: **$MODE**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Veja em: https://chrome.google.com/webstore/devconsole/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Listing público: https://chromewebstore.google.com/detail/${{ secrets.CWS_EXTENSION_ID }}" >> $GITHUB_STEP_SUMMARY

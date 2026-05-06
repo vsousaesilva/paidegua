@@ -763,14 +763,28 @@
     {
       "id": "CONF-08",
       "titulo": "Adesão por convite institucional (TRF/TJ)",
-      "descricao": "Termo de adesão para TRFs/TJs interessados. Distribuição não-aberta na Chrome Web Store enquanto não houver alinhamento com CNJ.",
+      "descricao": "Termo de adesão para TRFs/TJs interessados. Distribuição não-aberta na Chrome Web Store enquanto não houver alinhamento com CNJ.\n\n**Arquivado em 2026-05-04** — premissa do card foi superada pela publicação pública na Chrome Web Store (ver OPS-05). A política de 'distribuição não-aberta' deixou de aplicar; passamos a controlar acesso via whitelist `team:members` no Worker (campo `equipes: ['extensao']`), permitindo o mesmo nível de controle institucional sem precisar de termos de adesão por TRF/TJ. Decisão registrada como mudança estratégica do roadmap F6.",
       "categoria": "conformidade",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "arquivado",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-03T00:00:00.000Z",
       "origem": "manual-massificacao §II.5.3 item 2",
       "fase": "F6",
       "tags": [
-        "institucional"
+        "institucional",
+        "arquivado",
+        "superado"
+      ],
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "arquivado",
+          "autor": "claude-code/sessao-2026-05-04",
+          "data": "2026-05-04T14:30:00.000Z",
+          "comando": "Arquivado: premissa superada pela publicação CWS (OPS-05) + whitelist team:members no Worker"
+        }
       ],
       "esforco": "M",
       "depende": [
@@ -2394,15 +2408,29 @@
     {
       "id": "OPS-05",
       "titulo": "Publicação Chrome Web Store / Edge Add-ons (após F6)",
-      "descricao": "Submissão e moderação. Apenas após convênio CNJ (CONF-07) — não publicar antes.",
+      "descricao": "Submissão e moderação. Apenas após convênio CNJ (CONF-07) — não publicar antes.\n\n**Concluído em 2026-05-04** — extensão pAIdegua aprovada e publicada na Chrome Web Store com ID `belangijcipajlpcofhljhgjeemkbofk`. Listing público em https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk/preview. Versão atual no store: v1.2.0 (Apps Script). Próxima publicação: v1.3.0 (Worker, INFRA-EXT-AUTH).",
       "categoria": "operacional",
       "prioridade": "P0",
-      "coluna": "triagem",
+      "coluna": "lancado",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-03T00:00:00.000Z",
+      "dataConclusao": "2026-05-04T14:30:00.000Z",
       "origem": "manual-massificacao §III.2 anti-padrão 10",
       "fase": "F7",
       "tags": [
         "release",
-        "marketplace"
+        "marketplace",
+        "concluido"
+      ],
+      "historico": [
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-04",
+          "data": "2026-05-04T14:30:00.000Z",
+          "comando": "Aprovação CWS confirmada pelo usuário (extension ID belangijcipajlpcofhljhgjeemkbofk publicada)"
+        }
       ],
       "esforco": "M",
       "depende": [

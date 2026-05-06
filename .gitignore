@@ -7,3 +7,4 @@ Thumbs.db
 .idea/
 .claude/
 *.zip
+.commit-msg.txt
