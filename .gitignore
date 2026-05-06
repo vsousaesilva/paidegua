@@ -14,3 +14,8 @@ docs/kanban-massificacao/scripts/board-after-sync.json
 docs/kanban-massificacao/scripts/import-docs-state.json
 docs/kanban-massificacao/board-backup-*.json
 docs/kanban-massificacao/kv-atual.json
+
+# Tokens e credenciais que possam acidentalmente cair na raiz do repo
+# (o canonico e %USERPROFILE%\.paidegua-cf-token, fora do repo)
+.paidegua-cf-token
+*.cf-token
