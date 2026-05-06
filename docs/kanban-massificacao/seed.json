@@ -2560,7 +2560,7 @@
     {
       "id": "INFRA-EXT-AUTH",
       "titulo": "Migrar auth da extensão pAIdegua para o Worker (substitui Apps Script)",
-      "descricao": "Hoje a extensão usa backend em Google Apps Script com whitelist em planilha Google Sheets. Migrar para o Worker Cloudflare (kanban.paidegua.ia.br/api/auth/extension) usando a mesma lista team:members do KV (somente membros com 'extensao' em equipes podem logar). Alinha gestão de acessos do Kanban e da extensão, elimina dependência de Apps Script, reduz custo de operação, simplifica revogação.\n\n**Concluído em 2026-05-06.** Validado ponta a ponta: Worker no ar, extensão local logou com sucesso, v1.3.1 submetida à revisão da Chrome Web Store. Pendentes não-bloqueantes do checklist (comunicação aos pilotos após aprovação CWS; desligar Apps Script após 30 dias) seguirão como follow-up agendado.",
+      "descricao": "Hoje a extensão usa backend em Google Apps Script com whitelist em planilha Google Sheets. Migrar para o Worker Cloudflare (kanban.paidegua.ia.br/api/auth/extension) usando a mesma lista team:members do KV (somente membros com 'extensao' em equipes podem logar). Alinha gestão de acessos do Kanban e da extensão, elimina dependência de Apps Script, reduz custo de operação, simplifica revogação.\n\n**Concluído em 2026-05-06.** Validado ponta a ponta: Worker no ar, extensão local logou com sucesso. Migração entrou em produção pela v1.3.2 (hotfix da v1.3.1, que tinha o bundle publicado corrompido — BACKEND_URL ausente após DCE do Terser; ver histórico). Pendentes não-bloqueantes do checklist (comunicação aos pilotos após aprovação CWS da v1.3.2; desligar Apps Script após 30 dias) seguirão como follow-up agendado.",
       "categoria": "infra",
       "prioridade": "P1",
       "coluna": "lancado",
@@ -2632,8 +2632,7 @@
           "id": "ext6",
           "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
           "feito": false,
-          "nota": "Em andamento — v1.3.1 submetida à revisão Google em 2026-05-06; comunicar pilotos quando aprovada (~1-7 dias úteis). Texto pronto: \"A extensão pAIdegua foi atualizada para v1.3.1. O Chrome instalará a atualização automaticamente em algumas horas. Na primeira vez que abrir o popup depois da atualização, será necessário fazer login novamente (e-mail institucional + código de 6 dígitos por e-mail). Sessão dura 90 dias.\""
-        },
+          "nota": "Em andamento — v1.3.1 foi aprovada pelo Google em 2026-05-06 mas estava com bundle publicado corrompido (BACKEND_URL ausente após DCE do Terser). Hotfix v1.3.2 submetido à CWS em 2026-05-06 via upload manual com zip local validado. Comunicar pilotos quando v1.3.2 for aprovada (~1-7 dias úteis), incluindo aviso de que a v1.3.1 nunca chegou a funcionar."
         {
           "id": "ext7",
           "texto": "Atualizar docs/index.md (política de privacidade)",
@@ -2645,7 +2644,7 @@
           "id": "ext8",
           "texto": "Desligar Apps Script após 30 dias de validação",
           "feito": false,
-          "nota": "Pendente — agendar para 30 dias após v1.3.1 ser aprovada na CWS. Data alvo: ~05/06/2026 a 06/06/2026 (30 dias após release pública)."
+          "nota": "Pendente — agendar para 30 dias após v1.3.2 (hotfix) ser aprovada na CWS. Data alvo recalculada para ~05-12/06/2026, condicionada à aprovação da v1.3.2. v1.3.1 não conta como release válida (bundle publicado estava sem auth)."
         }
       ],
       "historico": [
@@ -2694,9 +2693,22 @@
           "autor": "claude-code/sessao-2026-05-06",
           "data": "2026-05-06T19:00:00.000Z",
           "comando": "Migração validada ponta a ponta. v1.3.1 submetida à revisão Google Chrome Web Store. Worker no ar; auth funcionando; whitelist KV ativa; política de privacidade pública atualizada (https://vsousaesilva.github.io/paidegua/)."
+        },
+        {
+          "tipo": "incidente",
+          "autor": "claude-code/sessao-2026-05-06",
+          "data": "2026-05-06T21:00:00.000Z",
+          "comando": "Pós-aprovação CWS, instalação a partir do listing público falhou com 'Backend de autenticacao nao configurado'. Diagnóstico: o background.js do zip publicado não contém nem 'paidegua.ia.br' nem 'isBackendConfigured' nem 'BACKEND_URL' — o Terser fez Dead Code Elimination porque o source da tag v1.3.1 (gerado pelo workflow release-extension.yml) tinha BACKEND_URL='' e a função sempre retornaria false, então toda a camada de auth foi removida. dist/ local validado tem URL correta — a divergência é entre source local e source da tag. Causa raiz: tag aplicada antes do commit do fix definitivo do BACKEND_URL ser pushado para o remote. Manifest publicado está OK (host_permissions correto), só o bundle está vazio."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["versao", "manifest.json", "package.json"],
+          "autor": "claude-code/sessao-2026-05-06",
+          "data": "2026-05-06T22:00:00.000Z",
+          "comando": "Hotfix v1.3.2: bump 1.3.1 → 1.3.2. Build local com Node portátil (npm run build), zip gerado via 'tar -a -cf' a partir do conteúdo de dist/, upload manual no Developer Dashboard da CWS. Validações pré-upload: dist/manifest.json com versao 1.3.2, dist/background.js contendo 'kanban.paidegua.ia.br', estrutura do zip com manifest.json na raiz. Commit b4c2437 push em main. Lição registrada em memory: nunca usar zip do GitHub Actions/Release sem validar conteúdo do bundle — sempre build local + zip local + upload manual."
         }
       ],
-      "atualizadoEm": "2026-05-06T19:00:00.000Z",
+      "atualizadoEm": "2026-05-06T22:00:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-05-06"
     },
     {
