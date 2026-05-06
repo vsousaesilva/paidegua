@@ -2707,10 +2707,16 @@
           "autor": "claude-code/sessao-2026-05-06",
           "data": "2026-05-06T22:00:00.000Z",
           "comando": "Hotfix v1.3.2: bump 1.3.1 → 1.3.2. Build local com Node portátil (npm run build), zip gerado via 'tar -a -cf' a partir do conteúdo de dist/, upload manual no Developer Dashboard da CWS. Validações pré-upload: dist/manifest.json com versao 1.3.2, dist/background.js contendo 'kanban.paidegua.ia.br', estrutura do zip com manifest.json na raiz. Commit b4c2437 push em main. Lição registrada em memory: nunca usar zip do GitHub Actions/Release sem validar conteúdo do bundle — sempre build local + zip local + upload manual."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-06T23:00:00.000Z",
+          "comando": "v1.3.2 aprovada pela Chrome Web Store. Listing público: https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk. Aguardando smoke test do owner antes de comunicar os 2 pilotos. ext8 (desligar Apps Script) re-agendado para ~05-12/06/2026 (30 dias após esta data)."
         }
       ],
-      "atualizadoEm": "2026-05-06T22:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-06"
+      "atualizadoEm": "2026-05-06T23:00:00.000Z",
+      "atualizadoPor": "vsousaesilva@jfce.jus.br"
     },
     {
       "id": "KAN-03",
@@ -2727,6 +2733,311 @@
       "esforco": "S",
       "depende": [
         "KAN-02"
+      ]
+    },
+    {
+      "id": "FLUX-01",
+      "titulo": "Parser jPDL + catálogo embarcado dos fluxos do PJe",
+      "descricao": "Script Node.js (fluxos-pje/scripts/parser-jpdl.mjs) que lê os 210 XMLs jBPM 3.2 coletados de pje1gta.trf5 e gera três artefatos: paidegua/assets/fluxos-catalogo.json (embarcado no build da extensão), fluxos-pje/grafo.json (grafo dirigido das chamadas incluirNovoFluxo) e fluxos-pje/analise-topologica.md (entradas, saídas, hubs, fantasmas, ilhas, distribuição por lane/fase). Usa fast-xml-parser. Heurísticas de classificação por lane (JEF, EF, Comum, Shared) e fase (Distribuição → Arquivo) em fluxos-pje/scripts/heuristicas.mjs.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "sessão 06/05/2026 — discovery dos fluxos do PJe",
+      "tags": [
+        "fluxos",
+        "jbpm",
+        "parser",
+        "catalogo"
+      ],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "fluxos-pje/scripts/gerar-catalogo.bat roda sem erro com Node portátil",
+        "paidegua/assets/fluxos-catalogo.json gerado e válido contra o schema CatalogoFluxos",
+        "210 fluxos no catálogo (210 do _lista.txt; 2 com falha registrada em FALHAS-ANALISE.md)",
+        "fluxos-pje/analise-topologica.md gerado com entradas, saídas, hubs e fantasmas listados",
+        "≥85% dos fluxos com fase definida pela heurística (faseOrigem='heuristica'); demais marcados como 'pendente'"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-06T23:30:00.000Z",
+      "atualizadoEm": "2026-05-07T00:30:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-06-fluxos",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-06T23:30:00.000Z",
+          "comando": "criação do esforço 'Consultor de fluxos' — Sprint 0"
+        },
+        {
+          "tipo": "editado",
+          "campos": ["parser-jpdl.mjs"],
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T00:15:00.000Z",
+          "comando": "Fix de mojibação UTF-8: trocado readFile encoding 'latin1' → 'utf8'. Causa raiz: o coletor JSZip salva os XMLs como UTF-8 por default mesmo com prólogo declarando ISO-8859-1; ler como latin1 gerava double-encoding visível na UI ('AnÃ¡lise' em vez de 'Análise'). Após o fix, regenerar o catálogo (gerar-catalogo.bat) restabeleceu acentos corretos."
+        }
+      ]
+    },
+    {
+      "id": "FLUX-02",
+      "titulo": "Módulo \"Consultor de fluxos\" no pAIdegua (aba dedicada)",
+      "descricao": "Nova aba dedicada no pAIdegua, acionada por botão 'Consultor de fluxos' na seção 'Conhecimento' da toolbar do sidebar (visível em todos os perfis). Abre página estática paidegua/src/fluxos-consultor/consultor.html com chat especializado em fluxos jBPM, busca textual lateral e revelador Mermaid (lazy-loaded). Reusa porta CHAT_STREAM com novo campo opcional ChatStartPayload.systemPromptOverride. Catálogo embarcado via assets/fluxos-catalogo.json (gerado por FLUX-01). Detecta padrão 'X até Y' na pergunta e renderiza caminho determinístico (BFS) ANTES da resposta do LLM. Conformidade BR4/CNJ 615 — sem novo encargo regulatório (catálogo é metadata, sem PII).",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "sessão 06/05/2026 — Sprint 1",
+      "tags": [
+        "fluxos",
+        "consultor",
+        "chat",
+        "mermaid",
+        "ux"
+      ],
+      "esforco": "L",
+      "depende": [
+        "FLUX-01"
+      ],
+      "aceitacao": [
+        "npm run typecheck (paidegua) sem erro após mermaid instalado",
+        "npm run build (paidegua) sem erro; dist/ inclui fluxos-consultor/ + assets/fluxos-catalogo.json",
+        "Botão 'Consultor de fluxos' aparece na toolbar do sidebar em todos os perfis",
+        "Clicar no botão abre nova aba com a página do consultor; catálogo carrega; quick actions visíveis",
+        "Pergunta 'do JEF_ELDESP até CERTTRANSJULG' renderiza diagrama Mermaid lateralmente",
+        "Chat responde via provider configurado (Anthropic/OpenAI/Gemini), citando códigos entre crases",
+        "Busca textual no painel esquerdo retorna resultados em <300ms"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-06T23:30:00.000Z",
+      "atualizadoEm": "2026-05-07T00:30:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-06-fluxos",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-06T23:30:00.000Z",
+          "comando": "criação do esforço 'Consultor de fluxos' — Sprint 1"
+        },
+        {
+          "tipo": "editado",
+          "campos": ["fluxos-pje/scripts/env.bat", "fluxos-pje/scripts/gerar-catalogo.bat"],
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T00:00:00.000Z",
+          "comando": "Adequação ao padrão CMD + Node portátil do paidegua. Criado fluxos-pje/scripts/env.bat espelhando paidegua/env.bat (path ..\\..\\Nodej\\node-v24.14.1-win-x64). gerar-catalogo.bat agora chama env.bat e segue o mesmo padrão de install.bat/build.bat. Instruções nos docs reescritas com cd /d %USERPROFILE%\\OneDrive..."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/fluxos-consultor/consultor.ts", "src/shared/types.ts", "src/background/background.ts"],
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T00:10:00.000Z",
+          "comando": "Fix typecheck (7 erros TS): ProviderId movido do import de '../shared/types' para '../shared/constants' (era exportado lá). Os 6 erros consequentes (Record indexing) sumiram automaticamente. Adicionado ChatStartPayload.systemPromptOverride em types.ts e seu uso opcional em handleChatStart no background.ts."
+        }
+      ]
+    },
+    {
+      "id": "FLUX-03",
+      "titulo": "Validação institucional do Consultor de fluxos (3 servidores)",
+      "descricao": "Sessão de 1h por lane (JEF, EF, Comum), com servidor sênior previamente designado, executando: (a) 3 perguntas reais do dia-a-dia e anotando o que está errado/faltando/impreciso na resposta; (b) revisão do macro-grafo da lane; (c) flip do faseOrigem de 'heuristica' para 'manual' nos fluxos validados. Saída: faseOrigem atualizado em fluxos-catalogo.json + relatório institucional curto.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "triagem",
+      "origem": "sessão 06/05/2026 — Sprint 2",
+      "tags": [
+        "fluxos",
+        "validacao",
+        "institucional",
+        "inovajus"
+      ],
+      "esforco": "M",
+      "depende": [
+        "FLUX-02"
+      ],
+      "aceitacao": [
+        "3 servidores designados (JEF, EF, Comum) com data de sessão agendada",
+        "Cada lane tem ≥80% dos fluxos com faseOrigem='manual' após validação",
+        "Lista de 9 perguntas (3 por lane) respondida com aprovação registrada por escrito",
+        "Relatório curto (≤2 páginas) entregue ao Inovajus"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-06T23:30:00.000Z",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-06T23:30:00.000Z",
+          "comando": "criação do esforço 'Consultor de fluxos' — Sprint 2"
+        }
+      ]
+    },
+    {
+      "id": "FLUX-04",
+      "titulo": "Detector contextual proativo do Consultor de fluxos",
+      "descricao": "Estende o detector.ts para detectar quando o usuário está em tela de tarefa do PJe cujo nome casa com um nó conhecido do catálogo. Mostra bubble não-intrusiva no sidebar 'Você está em [JEF] Perícia - Aguardar (JEF_OPPER). Quer entender o que vem a seguir?' com botão que abre o consultor já com pergunta pré-preenchida. Sem persistência — só sinalização. Reutiliza padrão dos outros bubbles (etiquetas-sugestoes, analise-processo).",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão 06/05/2026 — Sprint 3",
+      "tags": [
+        "fluxos",
+        "consultor",
+        "detector",
+        "ux",
+        "proatividade"
+      ],
+      "esforco": "M",
+      "depende": [
+        "FLUX-02"
+      ],
+      "aceitacao": [
+        "Bubble aparece em ≤500ms após detecção de nome de tarefa correspondente no catálogo",
+        "Não-intrusivo (não bloqueia interação com o PJe)",
+        "Botão abre consultor com pergunta pré-preenchida sobre aquele fluxo específico",
+        "Pode ser dispensado e não reaparece para o mesmo processo na mesma sessão"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-06T23:30:00.000Z",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-06T23:30:00.000Z",
+          "comando": "criação do esforço 'Consultor de fluxos' — Sprint 3"
+        }
+      ]
+    },
+    {
+      "id": "FLUX-05",
+      "titulo": "Cache de Q&A + métricas opt-in do Consultor de fluxos",
+      "descricao": "Persistência local (IndexedDB) das últimas N perguntas/respostas do consultor para retomada rápida. Métricas opt-in (toggle nas Opções) que registram localmente apenas 'pergunta_id, fluxo_referenciado, timestamp' — sem conteúdo. Útil para identificar perguntas frequentes e priorizar curadoria do catálogo. Sem envio externo.",
+      "categoria": "ergonomia",
+      "prioridade": "P3",
+      "coluna": "triagem",
+      "origem": "sessão 06/05/2026 — Sprint 4",
+      "tags": [
+        "fluxos",
+        "consultor",
+        "cache",
+        "metricas",
+        "lgpd"
+      ],
+      "esforco": "S",
+      "depende": [
+        "FLUX-02"
+      ],
+      "aceitacao": [
+        "Cache armazena últimas 50 conversas em IndexedDB local",
+        "Toggle opt-in nas Opções para métricas anônimas locais",
+        "Sem qualquer transmissão a backend Inovajus ou terceiros",
+        "Botão 'limpar cache' disponível"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-06T23:30:00.000Z",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-06T23:30:00.000Z",
+          "comando": "criação do esforço 'Consultor de fluxos' — Sprint 4"
+        }
+      ]
+    },
+    {
+      "id": "FLUX-06",
+      "titulo": "Avaliar migração catálogo embarcado → Cloudflare Worker",
+      "descricao": "Reavaliar — quando houver evidência de cadência de mudanças nos fluxos do PJe (≥1×/mês) ou demanda de múltiplas seções judiciárias — a migração do catálogo de embarcado para servido pelo Worker (kanban.paidegua.ia.br/api/fluxos/catalogo). A interface CatalogoSource em fluxos-store.ts já abstrai a fonte; a troca exige ~4h de trabalho. Modelo híbrido (embarcado como baseline + cache-first contra Worker) é o sweet spot a longo prazo. Ver PLANO-BPMN.md §B.",
+      "categoria": "infra",
+      "prioridade": "P3",
+      "coluna": "triagem",
+      "origem": "sessão 06/05/2026 — decisão arquitetural pendente de gatilho",
+      "tags": [
+        "fluxos",
+        "consultor",
+        "worker",
+        "infra",
+        "futuro"
+      ],
+      "esforco": "M",
+      "depende": [
+        "FLUX-02"
+      ],
+      "aceitacao": [
+        "Decisão tomada: continua embarcado / migra para Worker / adota híbrido",
+        "Se migrar: Worker com endpoint GET /api/fluxos/catalogo + versionamento no KV",
+        "Se híbrido: cache-first em IndexedDB com fallback para asset embarcado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-06T23:30:00.000Z",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-06T23:30:00.000Z",
+          "comando": "criação do esforço 'Consultor de fluxos' — gatilho condicional"
+        }
+      ]
+    },
+    {
+      "id": "FLUX-07",
+      "titulo": "Modo dual no Consultor de fluxos (\"Para o usuário\" × \"Para o desenvolvedor\") + scroll interno",
+      "descricao": "Pivot crítico de UX após primeira validação visual: a linguagem do consultor estava técnica demais para o usuário comum do PJe (citava códigos jBPM, falava em swimlane/transição/decisão/subfluxo). Implementado seletor de modo no header da página (radiogroup com 2 pills) que troca: (a) system prompt — FLUXOS_SYSTEM_PROMPT_USUARIO orienta o LLM a falar em PT-BR fluido sem siglas/códigos vs FLUXOS_SYSTEM_PROMPT_DEV (técnico, atual); (b) quick actions — 6 perguntas em linguagem natural ('Como o processo caminha', 'Por que está parado?', 'Como termina?') vs 6 técnicas ('Caminho entre fluxos', 'Quem chama este fluxo?', 'Pontos de entrada'); (c) resumo do catálogo injetado no system prompt — getResumoParaPromptUsuario humaniza nomes, esconde código/lane/fase técnicas vs getResumoParaPrompt original; (d) busca lateral — só nome legível em modo usuário; (e) Mermaid lateral — caminhoParaMermaid agora aceita {mostrarCodigo} e em modo usuário renderiza só nomes limpos sem cor por lane; (f) mensagem de boas-vindas dinâmica via getMensagemBoasVindas(modo); (g) placeholder do textarea ajustado ao modo. Persistência da preferência em chrome.storage.local sob STORAGE_KEYS.FLUXOS_MODO. Default = 'usuario'. Trocar de modo reinicia a conversa (UX coerente). Em paralelo, refeito o layout CSS com scroll interno: html/body com height:100vh+overflow:hidden, .layout com overflow:hidden, cada coluna flex column com min-height:0+overflow:hidden, .quick-list com max-height fixo e .busca-list flex:1 — a página agora cabe sempre na tela, scrollbar customizada só dentro de cada coluna.",
+      "categoria": "ergonomia",
+      "prioridade": "P0",
+      "coluna": "qa",
+      "origem": "sessão 07/05/2026 — feedback do owner após primeira validação visual",
+      "tags": [
+        "fluxos",
+        "consultor",
+        "ux",
+        "linguagem",
+        "acessibilidade",
+        "scroll",
+        "i18n"
+      ],
+      "esforco": "M",
+      "depende": [
+        "FLUX-02"
+      ],
+      "aceitacao": [
+        "Seletor de modo visível no header com 2 opções acessíveis (radiogroup)",
+        "Default na primeira abertura = 'usuario'; preferência persiste entre sessões",
+        "Troca de modo reinicia a conversa e atualiza: subtítulo, placeholder, quick actions, busca lateral, mensagem de boas-vindas",
+        "Modo usuário: NENHUM código jBPM aparece na UI ou nos prompts visíveis",
+        "Modo dev: comportamento técnico anterior preservado integralmente",
+        "Mermaid sem códigos no modo usuário; com código + lane + cor no modo dev",
+        "Página com altura fixa de 100vh; scroll só dentro de quick-list/busca-list/chat-log/diagram-host",
+        "Build do paidegua sem erros TS após as adições"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-07T00:30:00.000Z",
+      "atualizadoEm": "2026-05-07T01:45:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-06-fluxos",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T00:30:00.000Z",
+          "comando": "criação após feedback — owner: 'A linguagem é pouco compreensível para o usuário comum do PJe. Precisamos criar um seletor do tipo modo, com as opções Para o usuário e Para o desenvolvedor.'"
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/fluxos-consultor/consultor.html", "src/fluxos-consultor/consultor.css", "src/fluxos-consultor/consultor.ts"],
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T01:00:00.000Z",
+          "comando": "Refinamento UX da sidebar após screenshot do owner: 'a relação de fluxos em Buscar Fluxo ficou com espaço mínimo'. Mudanças: (a) bloco 'Comece com…' virou <details> colapsável (cliclar em recolher dá todo espaço para a busca); (b) padding dos quick action buttons reduzido de 8x10 → 6x9, font-size 12.5 → 12, gap 4 → 3; (c) max-height da quick-list de 240 → 200; (d) busca-block envolvendo h2 + input + lista, com flex:1 para ocupar todo o espaço restante; (e) título e placeholder da busca também trocam por modo ('Buscar etapa' / 'digite parte do nome…' no modo usuário, 'Buscar fluxo' / 'código, nome, fase…' no modo dev); (f) chevron no summary do <details> roda 90° quando aberto."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/fluxos-consultor/consultor.html", "src/fluxos-consultor/consultor.css", "src/fluxos-consultor/consultor.ts"],
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T01:30:00.000Z",
+          "comando": "Refinamento UX do bloco mermaid na bolha após feedback do owner: 'Ao invés de _(diagrama renderizado ao lado)_ na resposta, prefira algo mais amigável, visual e com linguagem mais simples.'. Mudanças: (a) substituído o placeholder de texto cru por um chip visual estilizado (.bubble__diagram-hint) — pílula com fundo azul-claro institucional, ícone SVG de grafo (3 nós conectados), texto curto e seta '→' apontando para o painel lateral; (b) texto do chip varia por modo: 'Veja o caminho desenhado ao lado' (usuário) vs 'Diagrama do caminho ao lado' (dev); (c) implementado via sentinela DIAGRAM_HINT_TOKEN que sobrevive ao escape de HTML do markdown leve, depois substituído por HTML cru no final do pipeline; (d) placeholder lateral 'Sem diagrama ainda.' substituído por 'O desenho do caminho aparecerá aqui quando você pedir um trajeto.' (mais didático para usuário comum)."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/shared/fluxos-prompts.ts"],
+          "autor": "claude-code/sessao-2026-05-06-fluxos",
+          "data": "2026-05-07T01:45:00.000Z",
+          "comando": "Ajuste no FLUXOS_SYSTEM_PROMPT_USUARIO após feedback do owner: 'Não utilize caracteres de markdown na resposta para o usuário'. Removidas as instruções que mandavam o LLM usar negrito ou listas; adicionada instrução explícita para responder em texto corrido, sem asteriscos, sem crases, sem hífen-listas, sem cabeçalhos. Sequências passam a ser descritas por extenso ('primeiro... depois... por fim...'). Modo dev preservado (continua aceitando markdown técnico)."
+        }
       ]
     }
   ]

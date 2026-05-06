@@ -79,6 +79,7 @@ import {
 } from './gestao/gestao-bridge';
 import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
+import { abrirConsultorFluxos } from './fluxos/fluxos-coordinator';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { abrirPericiasPainel } from './pericias/pericias-coordinator';
 import { abrirComunicacaoPainel } from './comunicacao/comunicacao-coordinator';
@@ -2581,6 +2582,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     event.preventDefault();
     void handleMetasCnj();
   });
+
+  els.consultorFluxosButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleConsultorFluxos();
+  });
 }
 
 /**
@@ -3269,6 +3275,32 @@ async function handlePainelGerencial(): Promise<void> {
   } catch (err) {
     console.warn(`${LOG_PREFIX} handlePainelGerencial falhou:`, err);
     notice(`Falha no Painel Gerencial: ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Handler do botão "Consultor de fluxos" — abre a página estática em
+ * nova aba. A página é autossuficiente (catálogo embarcado, conversa
+ * com LLM via porta CHAT_STREAM com `systemPromptOverride`).
+ */
+async function handleConsultorFluxos(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo Consultor de fluxos em nova aba...');
+  try {
+    const result = await abrirConsultorFluxos();
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir o Consultor de fluxos.', 'error');
+      return;
+    }
+    notice('Consultor de fluxos aberto em nova aba.');
+    window.setTimeout(() => notice('', 'info'), 2500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleConsultorFluxos falhou:`, err);
+    notice(`Falha no Consultor de fluxos: ${errorMessage(err)}`, 'error');
   }
 }
 

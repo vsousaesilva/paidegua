@@ -56,7 +56,8 @@ module.exports = (_env, argv) => {
       'metas-painel/painel': './src/metas-painel/painel.ts',
       'metas-dashboard/dashboard': './src/metas-dashboard/dashboard.ts',
       'comunicacao-painel/painel': './src/comunicacao-painel/painel.ts',
-      'audiencia-painel/painel': './src/audiencia-painel/painel.ts'
+      'audiencia-painel/painel': './src/audiencia-painel/painel.ts',
+      'fluxos-consultor/consultor': './src/fluxos-consultor/consultor.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -138,6 +139,16 @@ module.exports = (_env, argv) => {
           { from: 'src/comunicacao-painel/painel.css', to: 'comunicacao-painel/painel.css' },
           { from: 'src/audiencia-painel/painel.html', to: 'audiencia-painel/painel.html' },
           { from: 'src/audiencia-painel/painel.css', to: 'audiencia-painel/painel.css' },
+          // Consultor de fluxos — página estática + catálogo embarcado.
+          // O catálogo é gerado offline pelo parser jPDL em
+          // `../fluxos-pje/scripts/parser-jpdl.mjs`.
+          { from: 'src/fluxos-consultor/consultor.html', to: 'fluxos-consultor/consultor.html' },
+          { from: 'src/fluxos-consultor/consultor.css', to: 'fluxos-consultor/consultor.css' },
+          {
+            from: 'assets/fluxos-catalogo.json',
+            to: 'assets/fluxos-catalogo.json',
+            noErrorOnMissing: true
+          },
           { from: 'src/content/content.css', to: 'content.css' },
           // PDF.js worker precisa ser servido como arquivo acessivel via
           // chrome.runtime.getURL. Listado em web_accessible_resources

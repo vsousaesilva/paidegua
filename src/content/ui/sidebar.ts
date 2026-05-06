@@ -82,6 +82,12 @@ export interface SidebarElements {
    * Nacionais 2026 do CNJ.
    */
   metasCnjButton: HTMLButtonElement;
+  /**
+   * Botão "Consultor de fluxos" — visível em todos os perfis. Não
+   * depende de processo aberto nem do painel do usuário. Abre uma
+   * nova aba estática com chat especializado nos fluxos jBPM do PJe.
+   */
+  consultorFluxosButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -670,6 +676,9 @@ export function mountSidebar(
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="prazos-fita" title="Coleta os expedientes abertos das tarefas de Controle de prazo e abre o painel Prazos na Fita" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Prazos na Fita pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Expedientes abertos por prazo</span></span></button>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="metas-cnj" title="Controle das Metas Nacionais 2026 do CNJ — acervo persistente, atualização incremental e aplicação de etiquetas em lote" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Controle Metas CNJ</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Acervo persistente das Metas 2026</span></span></button>
       <div data-profile-section="gestao" data-painel-section="fora-painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 12px; color: var(--paidegua-text-muted); line-height: 1.45; padding: 10px 12px; background: rgba(255,255,255,0.6); border: 1px dashed var(--paidegua-border); border-radius: var(--paidegua-radius-sm);">Abra o <strong>Painel do usuário</strong> do PJe para usar as ferramentas de Gestão.</div>
+      <div class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
+      <div class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Conhecimento</div>
+      <button type="button" data-paidegua="consultor-fluxos" title="Tire dúvidas sobre os fluxos do PJe — entradas, saídas, decisões, caminhos entre tarefas." style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Consultor de fluxos</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Como o processo caminha no PJe</span></span></button>
     </div>
 
     <div class="paidegua-sidebar__notice" data-paidegua="global-notice"></div>
@@ -732,6 +741,7 @@ export function mountSidebar(
   const painelGerencialButton = q<HTMLButtonElement>('painel-gerencial');
   const prazosFitaButton = q<HTMLButtonElement>('prazos-fita');
   const metasCnjButton = q<HTMLButtonElement>('metas-cnj');
+  const consultorFluxosButton = q<HTMLButtonElement>('consultor-fluxos');
   const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
@@ -788,6 +798,7 @@ export function mountSidebar(
     painelGerencialButton,
     prazosFitaButton,
     metasCnjButton,
+    consultorFluxosButton,
     providerLabel,
     globalNotice
   };

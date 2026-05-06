@@ -627,7 +627,15 @@ export const MESSAGE_CHANNELS = {
    */
   AUDIENCIA_OPEN_PAINEL: 'paidegua/audiencia/open-painel',
   AUDIENCIA_RUN_COLETA: 'paidegua/audiencia/run-coleta',
-  AUDIENCIA_APLICAR_ETIQUETAS: 'paidegua/audiencia/aplicar-etiquetas'
+  AUDIENCIA_APLICAR_ETIQUETAS: 'paidegua/audiencia/aplicar-etiquetas',
+
+  /**
+   * Canal do "Consultor de fluxos" — abre a página estática
+   * `fluxos-consultor/consultor.html` em uma nova aba. Diferente dos
+   * outros painéis, não depende de estado da aba PJe nem do painel do
+   * usuário: o catálogo é embarcado e a aba é autossuficiente.
+   */
+  FLUXOS_OPEN_CONSULTOR: 'paidegua/fluxos/open-consultor'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -675,6 +683,12 @@ export const STORAGE_KEYS = {
    * preserva nomes apenas localmente; o envio à LLM exige sanitização.
    */
   GESTAO_DASHBOARD_PAYLOAD: 'paidegua.gestao.dashboardPayload',
+  /**
+   * Modo preferido do "Consultor de fluxos" — 'usuario' (linguagem
+   * natural) ou 'dev' (técnico). Persistido em `chrome.storage.local`
+   * para que cada usuário mantenha sua escolha entre sessões.
+   */
+  FLUXOS_MODO: 'paidegua.fluxos.modo',
   /**
    * Chave em `chrome.storage.session` (volátil) com o payload JÁ ANONIMIZADO
    * do Painel Gerencial, pronto para enviar à LLM. Separado do

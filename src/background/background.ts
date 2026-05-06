@@ -1064,6 +1064,10 @@ function dispatchMessage(
         );
         return true;
 
+      case MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR:
+        void handleOpenFluxosConsultor(sendResponse);
+        return true;
+
       case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
         void handleAnalisarProcesso(
           message.payload as AnalisarProcessoRequest,
@@ -2955,7 +2959,7 @@ async function handleChatStart(
     const generator = provider.sendMessage({
       apiKey,
       model: payload.model,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: payload.systemPromptOverride ?? SYSTEM_PROMPT,
       messages: augmented,
       temperature: payload.temperature ?? settings.temperature,
       maxTokens: payload.maxTokens ?? settings.maxTokens,
@@ -3368,6 +3372,31 @@ async function handleOpenGestaoPainel(
     sendResponse({ ok: true, requestId });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handleOpenGestaoPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Abre a aba do "Consultor de fluxos". Sem state nem rota — a página
+ * é autossuficiente: lê o catálogo embarcado, conversa via porta
+ * CHAT_STREAM (mesma do chat normal) com `systemPromptOverride`.
+ */
+async function handleOpenFluxosConsultor(
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const url = chrome.runtime.getURL('fluxos-consultor/consultor.html');
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba do Consultor de fluxos.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenFluxosConsultor falhou:`, error);
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }

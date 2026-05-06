@@ -8,3 +8,9 @@ Thumbs.db
 .claude/
 *.zip
 .commit-msg.txt
+
+# Kanban: arquivos gerados localmente (sync/backup do KV)
+docs/kanban-massificacao/scripts/board-after-sync.json
+docs/kanban-massificacao/scripts/import-docs-state.json
+docs/kanban-massificacao/board-backup-*.json
+docs/kanban-massificacao/kv-atual.json

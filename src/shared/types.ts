@@ -230,6 +230,13 @@ export interface ChatStartPayload {
   numeroProcesso: string | null;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * System prompt alternativo. Quando presente, substitui o `SYSTEM_PROMPT`
+   * padrão do pAIdegua. Usado por módulos especializados (ex.: Consultor de
+   * fluxos) que precisam de instruções e papel diferentes do assistente
+   * processual genérico.
+   */
+  systemPromptOverride?: string;
 }
 
 /** Resultado de uma chamada de teste de conexão. */

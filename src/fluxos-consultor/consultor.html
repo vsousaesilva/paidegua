@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Consultor de fluxos · pAIdegua</title>
+<link rel="icon" type="image/png" href="../icons/icon32.png">
+<link rel="stylesheet" href="consultor.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="../icons/icon32.png" alt="" class="brand__logo" width="28" height="28">
+      <div class="brand__text">
+        <h1>Consultor de fluxos</h1>
+        <p id="brand-subtitulo" class="muted">Linguagem natural, sem códigos nem termos técnicos.</p>
+      </div>
+    </div>
+
+    <div class="modo-seletor" role="radiogroup" aria-label="Modo do consultor">
+      <button
+        type="button"
+        id="modo-usuario"
+        class="modo-pill is-active"
+        role="radio"
+        aria-checked="true"
+        title="Linguagem natural, sem códigos. Para servidor, magistrado ou parte."
+        data-modo="usuario">
+        Para o usuário
+      </button>
+      <button
+        type="button"
+        id="modo-dev"
+        class="modo-pill"
+        role="radio"
+        aria-checked="false"
+        title="Detalhe técnico — códigos jBPM, decisões EL/SQL, swimlanes."
+        data-modo="dev">
+        Para o desenvolvedor
+      </button>
+    </div>
+
+    <div class="topbar__actions">
+      <span id="catalogo-info" class="muted small">carregando…</span>
+      <button id="btn-limpar" type="button" class="btn-ghost" title="Limpar conversa">Limpar</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <details id="quick-block" class="quick-block" open>
+        <summary>
+          <h2>Comece com…</h2>
+          <span class="chevron" aria-hidden="true">▸</span>
+        </summary>
+        <ul id="quick-actions" class="quick-list"></ul>
+      </details>
+
+      <section class="busca-block">
+        <h2 id="busca-titulo">Buscar etapa</h2>
+        <input type="search" id="busca" placeholder="digite parte do nome…">
+        <ul id="busca-resultados" class="busca-list"></ul>
+      </section>
+    </aside>
+
+    <section class="chat-area">
+      <div id="chat-log" class="chat-log" role="log" aria-live="polite">
+        <!-- mensagem de boas-vindas inserida dinamicamente conforme o modo -->
+      </div>
+      <form id="form" class="composer">
+        <textarea id="input" rows="2" placeholder="Pergunte algo… (Enter para enviar, Shift+Enter para nova linha)" required></textarea>
+        <button id="btn-enviar" type="submit" class="btn-primary">Enviar</button>
+      </form>
+      <p id="status" class="status muted small"></p>
+    </section>
+
+    <section class="diagram-area">
+      <div class="diagram-area__header">
+        <h2>Diagrama</h2>
+        <span class="muted small">aparece quando o consultor desenhar um caminho</span>
+      </div>
+      <div id="diagram-host" class="diagram-host">
+        <p class="muted center">O desenho do caminho aparecerá aqui<br>quando você pedir um trajeto.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="muted small">pAIdegua · Inovajus JFCE — uso institucional. Toda decisão jurídica permanece humana.</span>
+  </footer>
+
+  <script src="consultor.js" type="module"></script>
+</body>
+</html>
