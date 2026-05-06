@@ -118,8 +118,8 @@ async function callBackend(payload: object): Promise<BackendResponse> {
     const response = await fetch(BACKEND_URL, {
       method: 'POST',
       // Mantem o request "simples" (sem preflight CORS): nao seta
-      // Content-Type explicito; o Apps Script trata como text/plain
-      // e faz JSON.parse no body.
+      // Content-Type explicito; o Worker (mesmo padrao do GAS legado)
+      // trata como text/plain e faz JSON.parse no body.
       body: JSON.stringify(payload),
       redirect: 'follow'
     });
