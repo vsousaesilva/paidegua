@@ -2633,6 +2633,7 @@
           "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
           "feito": false,
           "nota": "Em andamento — v1.3.1 foi aprovada pelo Google em 2026-05-06 mas estava com bundle publicado corrompido (BACKEND_URL ausente após DCE do Terser). Hotfix v1.3.2 submetido à CWS em 2026-05-06 via upload manual com zip local validado. Comunicar pilotos quando v1.3.2 for aprovada (~1-7 dias úteis), incluindo aviso de que a v1.3.1 nunca chegou a funcionar."
+        },
         {
           "id": "ext7",
           "texto": "Atualizar docs/index.md (política de privacidade)",
