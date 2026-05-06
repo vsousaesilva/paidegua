@@ -2560,11 +2560,13 @@
     {
       "id": "INFRA-EXT-AUTH",
       "titulo": "Migrar auth da extensão pAIdegua para o Worker (substitui Apps Script)",
-      "descricao": "Hoje a extensão usa backend em Google Apps Script com whitelist em planilha Google Sheets. Migrar para o Worker Cloudflare (kanban.paidegua.ia.br/api/auth/extension/*) usando a mesma lista team:members do KV (somente membros com 'extensao' em equipes podem logar). Alinha gestão de acessos do Kanban e da extensão, elimina dependência de Apps Script, reduz custo de operação, simplifica revogação.",
+      "descricao": "Hoje a extensão usa backend em Google Apps Script com whitelist em planilha Google Sheets. Migrar para o Worker Cloudflare (kanban.paidegua.ia.br/api/auth/extension) usando a mesma lista team:members do KV (somente membros com 'extensao' em equipes podem logar). Alinha gestão de acessos do Kanban e da extensão, elimina dependência de Apps Script, reduz custo de operação, simplifica revogação.\n\n**Concluído em 2026-05-06.** Validado ponta a ponta: Worker no ar, extensão local logou com sucesso, v1.3.1 submetida à revisão da Chrome Web Store. Pendentes não-bloqueantes do checklist (comunicação aos pilotos após aprovação CWS; desligar Apps Script após 30 dias) seguirão como follow-up agendado.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "owner": "vsousaesilva@jfce.jus.br",
+      "dataInicio": "2026-05-04T13:45:00.000Z",
+      "dataConclusao": "2026-05-06T19:00:00.000Z",
       "origem": "decisão sessão 04/05/2026 (gestão centralizada de membros)",
       "tags": [
         "auth",
@@ -2630,7 +2632,7 @@
           "id": "ext6",
           "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
           "feito": false,
-          "nota": "Pendente até release v1.3.0 ser distribuída"
+          "nota": "Em andamento — v1.3.1 submetida à revisão Google em 2026-05-06; comunicar pilotos quando aprovada (~1-7 dias úteis). Texto pronto: \"A extensão pAIdegua foi atualizada para v1.3.1. O Chrome instalará a atualização automaticamente em algumas horas. Na primeira vez que abrir o popup depois da atualização, será necessário fazer login novamente (e-mail institucional + código de 6 dígitos por e-mail). Sessão dura 90 dias.\""
         },
         {
           "id": "ext7",
@@ -2643,7 +2645,7 @@
           "id": "ext8",
           "texto": "Desligar Apps Script após 30 dias de validação",
           "feito": false,
-          "nota": "Pendente — agendar para 30 dias após release v1.3.0"
+          "nota": "Pendente — agendar para 30 dias após v1.3.1 ser aprovada na CWS. Data alvo: ~05/06/2026 a 06/06/2026 (30 dias após release pública)."
         }
       ],
       "historico": [
@@ -2671,10 +2673,31 @@
           "autor": "claude-code/sessao-2026-05-04",
           "data": "2026-05-04T14:00:00.000Z",
           "comando": "Backend, extensão (auth-config), política e script de migração implementados. Aguarda smoke test (cadastro de piloto + login real)."
+        },
+        {
+          "tipo": "incidente",
+          "autor": "claude-code/sessao-2026-05-06",
+          "data": "2026-05-06T17:00:00.000Z",
+          "comando": "Bug descoberto durante smoke test: zip da v1.3.0 (gerado pelo workflow no commit 80619d3) tinha regex em isBackendConfigured() que falhava após minificação do TerserPlugin em production mode. Resultado: extensão retornava 'backend_not_configured' mesmo com BACKEND_URL correto e bundle bem formado. Não reprodução com dist/ buildado localmente após a correção (substituição da regex por String.startsWith)."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["versao", "auth.ts", "auth-config.ts"],
+          "autor": "claude-code/sessao-2026-05-06",
+          "data": "2026-05-06T18:00:00.000Z",
+          "comando": "Fix definitivo: isBackendConfigured() simplificado para checagem typeof + length + startsWith (sem regex). Bump 1.3.0 → 1.3.1. Tag v1.3.1 push, workflow gerou novo zip CORRETO."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-06",
+          "data": "2026-05-06T19:00:00.000Z",
+          "comando": "Migração validada ponta a ponta. v1.3.1 submetida à revisão Google Chrome Web Store. Worker no ar; auth funcionando; whitelist KV ativa; política de privacidade pública atualizada (https://vsousaesilva.github.io/paidegua/)."
         }
       ],
-      "atualizadoEm": "2026-05-04T14:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-04"
+      "atualizadoEm": "2026-05-06T19:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-06"
     },
     {
       "id": "KAN-03",
