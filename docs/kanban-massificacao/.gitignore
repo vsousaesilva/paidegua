@@ -21,3 +21,8 @@ scripts/import-docs-state.json
 
 # Gerado por sprint planning ad-hoc (nao versionar)
 scripts/board-after-sprint.json
+
+# Gerado por scripts/migrar-whitelist-extensao.mjs (CSV pode ter PII)
+scripts/team-members-current.json
+scripts/team-members-after-migration.json
+scripts/whitelist-*.csv

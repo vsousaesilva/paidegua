@@ -2535,7 +2535,7 @@
       "descricao": "Hoje a extensão usa backend em Google Apps Script com whitelist em planilha Google Sheets. Migrar para o Worker Cloudflare (kanban.paidegua.ia.br/api/auth/extension/*) usando a mesma lista team:members do KV (somente membros com 'extensao' em equipes podem logar). Alinha gestão de acessos do Kanban e da extensão, elimina dependência de Apps Script, reduz custo de operação, simplifica revogação.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "triagem",
+      "coluna": "qa",
       "owner": "vsousaesilva@jfce.jus.br",
       "origem": "decisão sessão 04/05/2026 (gestão centralizada de membros)",
       "tags": [
@@ -2563,42 +2563,59 @@
         {
           "id": "ext1",
           "texto": "Definir endpoints /api/auth/extension/* no worker.js",
-          "feito": false
+          "feito": true,
+          "feitoPor": "claude-code/sessao-2026-05-04",
+          "feitoEm": "2026-05-04T04:30:00.000Z"
         },
         {
           "id": "ext2",
           "texto": "Decidir formato do bearer (token simples como o Kanban OU JWT igual ao GAS atual)",
-          "feito": false
+          "feito": true,
+          "feitoPor": "claude-code/sessao-2026-05-04",
+          "feitoEm": "2026-05-04T04:30:00.000Z",
+          "nota": "Token simples opaco (32 bytes hex), retornado como 'jwt' string para compat com AuthState atual"
         },
         {
           "id": "ext3",
           "texto": "Adicionar campo 'jwt' no membro (se manter compatibilidade GAS)",
-          "feito": false
+          "feito": true,
+          "feitoPor": "claude-code/sessao-2026-05-04",
+          "feitoEm": "2026-05-04T04:30:00.000Z",
+          "nota": "Não foi necessário — Worker mapeia bearer ↔ email via chave ext-token:<bearer> no KV"
         },
         {
           "id": "ext4",
           "texto": "Implementar import de planilha → team:members (script utilitário)",
-          "feito": false
+          "feito": true,
+          "feitoPor": "claude-code/sessao-2026-05-04",
+          "feitoEm": "2026-05-04T04:30:00.000Z",
+          "nota": "scripts/migrar-whitelist-extensao.mjs"
         },
         {
           "id": "ext5",
-          "texto": "Atualizar src/popup/popup.ts da extensão (URL de auth)",
-          "feito": false
+          "texto": "Atualizar src/shared/auth-config.ts da extensão (URL de auth)",
+          "feito": true,
+          "feitoPor": "claude-code/sessao-2026-05-04",
+          "feitoEm": "2026-05-04T04:30:00.000Z"
         },
         {
           "id": "ext6",
           "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
-          "feito": false
+          "feito": false,
+          "nota": "Pendente até release v1.3.0 ser distribuída"
         },
         {
           "id": "ext7",
           "texto": "Atualizar docs/index.md (política de privacidade)",
-          "feito": false
+          "feito": true,
+          "feitoPor": "claude-code/sessao-2026-05-04",
+          "feitoEm": "2026-05-04T04:30:00.000Z"
         },
         {
           "id": "ext8",
           "texto": "Desligar Apps Script após 30 dias de validação",
-          "feito": false
+          "feito": false,
+          "nota": "Pendente — agendar para 30 dias após release v1.3.0"
         }
       ],
       "historico": [
@@ -2610,10 +2627,26 @@
           "autor": "sprint-planning/2026-05-04",
           "data": "2026-05-04T04:22:55.625Z",
           "comando": "sprint planning 04/05/2026 — tags refinadas para deixar pronto para puxar"
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "dev",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-04T13:45:00.000Z",
+          "comando": "puxar para sprint atual"
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-05-04",
+          "data": "2026-05-04T14:00:00.000Z",
+          "comando": "Backend, extensão (auth-config), política e script de migração implementados. Aguarda smoke test (cadastro de piloto + login real)."
         }
       ],
-      "atualizadoEm": "2026-05-04T04:22:55.625Z",
-      "atualizadoPor": "sprint-planning/2026-05-04"
+      "atualizadoEm": "2026-05-04T14:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-04"
     },
     {
       "id": "KAN-03",

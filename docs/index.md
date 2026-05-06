@@ -38,13 +38,13 @@ Ficam exclusivamente em `chrome.storage.local`, **sem transmissão a qualquer se
 
 ### 3.2 Dados tratados pelo backend de autenticação do Inovajus
 
-Para uso da extensão é necessário login. O backend do Inovajus (Google Apps Script, restrito a domínios institucionais autorizados) recebe e trata:
+Para uso da extensão é necessário login. **A partir da versão 1.3.0**, o backend do Inovajus é um **Cloudflare Worker** em `https://kanban.paidegua.ia.br/api/auth/extension`, em substituição ao backend legado em Google Apps Script (que continua respondendo em paralelo apenas durante período de transição de 30 dias após a release da v1.3.0). Em ambos os casos, o backend recebe e trata:
 
-- **E-mail institucional do usuário** — comparado contra lista de autorização (whitelist) gerida pelo Inovajus;
-- **Código numérico de uso único** (OTP) enviado por e-mail — utilizado uma única vez para validar a posse da caixa institucional;
-- **JWT (token assinado)** gerado após verificação, com validade de 90 dias, armazenado **somente no navegador do usuário** — o servidor não mantém sessões.
+- **E-mail institucional do usuário** — comparado contra a lista de autorização (whitelist) gerida pelo Inovajus. Na arquitetura atual a lista vive no Cloudflare KV (chave `team:members`), administrada pela própria equipe Inovajus pelo painel "Equipe" do Kanban (`https://kanban.paidegua.ia.br`). Cada membro pode estar autorizado para o Kanban (gestão+desenvolvimento) e/ou para a extensão pAIdegua (uso) por meio do campo `equipes`;
+- **Código numérico de uso único** (OTP, 6 dígitos) enviado por e-mail — utilizado uma única vez para validar a posse da caixa institucional. Envio realizado pela Resend (provedor de e-mail transacional, com domínio `paidegua.ia.br` verificado em São Paulo);
+- **Token de sessão** (string opaca, 32 bytes aleatórios) gerado após verificação, com validade de 90 dias, armazenado **somente no navegador do usuário** — o servidor mantém apenas o mapeamento `token → e-mail` no KV para validação subsequente.
 
-O backend **não armazena** conteúdo de processos, documentos, prompts ou respostas da IA. Os únicos registros mantidos são: a linha do usuário na planilha de whitelist (e-mail, status, data, anotação administrativa) e códigos OTP temporários (descartados após uso ou em até 10 minutos).
+O backend **não armazena** conteúdo de processos, documentos, prompts ou respostas da IA. Os únicos registros mantidos são: a entrada do usuário em `team:members` (e-mail, nome, papel, equipes, ativo, datas administrativas) e códigos OTP temporários (descartados após uso ou em até 10 minutos). Tokens de sessão expiram automaticamente em 90 dias e podem ser revogados imediatamente pelo Inovajus marcando o membro como inativo (`ativo: false`) ou removendo a equipe `extensao` do membro pelo painel administrativo do Kanban.
 
 ### 3.3 Dados transmitidos a provedores externos de IA
 

@@ -7,8 +7,10 @@
  *   KANBAN_KV (KV Namespace)        chaves:
  *     board:state                   -> JSON consolidado (cards/colunas/categorias/prioridades + lanes)
  *     team:members                  -> JSON [{email, nome, papel, ativo}]
- *     otp:<email>                   -> {code, expiresAt}                (TTL 10 min)
- *     token:<token>                 -> {email, issuedAt}                (TTL 90 dias)
+ *     otp:<email>                   -> {code, expiresAt}                (TTL 10 min, kanban)
+ *     token:<token>                 -> {email, issuedAt}                (TTL 90 dias, kanban)
+ *     ext-otp:<email>               -> {code, expiresAt}                (TTL 10 min, extensão pAIdegua)
+ *     ext-token:<token>             -> {email, issuedAt}                (TTL 90 dias, extensão pAIdegua)
  *
  * Variáveis (wrangler.toml ou Dashboard):
  *   ALLOWED_DOMAINS  string CSV     domínios institucionais aceitos
@@ -47,6 +49,13 @@ export default {
       }
       if (url.pathname === '/api/auth/verify-otp' && request.method === 'POST') {
         return await handleVerifyOtp(request, env);
+      }
+
+      // ----- Auth da extensão pAIdegua (compat com contrato Apps Script) -----
+      // Endpoint único que despacha por {action} no body. Mesmo contrato que
+      // o backend legado (Google Apps Script) — extensão apenas troca a URL.
+      if (url.pathname === '/api/auth/extension' && request.method === 'POST') {
+        return await handleExtensionAuth(request, env);
       }
 
       // ----- A partir daqui, exige bearer válido -----
@@ -293,17 +302,173 @@ async function handleLogout(request, env) {
   return json({ ok: true });
 }
 
-async function sendOtpEmailResend(to, code, env) {
+// ============== Auth da extensão pAIdegua (compat Apps Script) ==============
+//
+// Contrato espelhado de docs/backend/apps-script/Code.gs (legado), pra que a
+// extensão atual só precise trocar BACKEND_URL em src/shared/auth-config.ts.
+// Aceita 3 actions:
+//   {action:'requestCode', email}
+//   {action:'verifyCode',  email, code}
+//   {action:'me',          jwt}
+// Erros usam mesmos códigos que a extensão entende (AuthErrorCode em src/shared/types.ts):
+//   invalid_email | not_whitelisted | rate_limited | missing_fields | no_code |
+//   expired | wrong_code | too_many_attempts | invalid_jwt | revoked | server_error
+async function handleExtensionAuth(request, env) {
+  // O Apps Script não exige Content-Type específico (extensão envia text/plain
+  // pra evitar preflight CORS). Aceitar JSON e text aqui.
+  let payload = null;
+  try {
+    payload = await request.json();
+  } catch (_) {
+    try {
+      const text = await request.clone().text();
+      payload = JSON.parse(text);
+    } catch (__) { /* */ }
+  }
+  if (!payload || typeof payload !== 'object') {
+    return json({ ok: false, error: 'missing_fields' }, 400);
+  }
+
+  const action = String(payload.action || '').trim();
+  switch (action) {
+    case 'requestCode': return await extRequestCode(payload, env);
+    case 'verifyCode':  return await extVerifyCode(payload, env);
+    case 'me':          return await extMe(payload, env);
+    default:            return json({ ok: false, error: 'missing_fields' }, 400);
+  }
+}
+
+async function extRequestCode(payload, env) {
+  const email = String(payload.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ ok: false, error: 'invalid_email' });
+  }
+
+  // Gate: precisa estar em team:members com 'extensao' em equipes E ativo
+  const list = await loadMembers(env);
+  const m = list.find((x) => x.email.toLowerCase() === email);
+  const equipes = Array.isArray(m?.equipes) ? m.equipes : [];
+  if (!m || m.ativo === false || !equipes.includes('extensao')) {
+    return json({ ok: false, error: 'not_whitelisted' });
+  }
+
+  // Rate limit leve: se já existe OTP válido emitido há menos de 30s, recusa
+  const existing = await env.KANBAN_KV.get(`ext-otp:${email}`);
+  if (existing) {
+    try {
+      const prev = JSON.parse(existing);
+      if (prev?.issuedAt && Date.now() - prev.issuedAt < 30_000) {
+        return json({ ok: false, error: 'rate_limited' });
+      }
+    } catch (_) { /* */ }
+  }
+
+  const code = generateOtp();
+  await env.KANBAN_KV.put(
+    `ext-otp:${email}`,
+    JSON.stringify({ code, expiresAt: Date.now() + OTP_TTL_SECONDS * 1000, issuedAt: Date.now(), tentativas: 0 }),
+    { expirationTtl: OTP_TTL_SECONDS }
+  );
+
+  try {
+    await sendOtpEmailResend(email, code, env, /* origem */ 'extensão pAIdegua');
+  } catch (err) {
+    console.error('Falha Resend (extensão):', err.message);
+    return json({ ok: false, error: 'server_error' });
+  }
+  return json({ ok: true });
+}
+
+async function extVerifyCode(payload, env) {
+  const email = String(payload.email || '').trim().toLowerCase();
+  const code = String(payload.code || '').trim();
+  if (!email || !/^\d{6}$/.test(code)) {
+    return json({ ok: false, error: 'missing_fields' });
+  }
+
+  const raw = await env.KANBAN_KV.get(`ext-otp:${email}`);
+  if (!raw) return json({ ok: false, error: 'no_code' });
+  let stored;
+  try { stored = JSON.parse(raw); } catch (_) { return json({ ok: false, error: 'no_code' }); }
+  if (Date.now() > stored.expiresAt) return json({ ok: false, error: 'expired' });
+
+  if (stored.code !== code) {
+    const tentativas = (stored.tentativas || 0) + 1;
+    if (tentativas >= 5) {
+      await env.KANBAN_KV.delete(`ext-otp:${email}`);
+      return json({ ok: false, error: 'too_many_attempts' });
+    }
+    await env.KANBAN_KV.put(
+      `ext-otp:${email}`,
+      JSON.stringify({ ...stored, tentativas }),
+      { expirationTtl: Math.max(60, Math.ceil((stored.expiresAt - Date.now()) / 1000)) }
+    );
+    return json({ ok: false, error: 'wrong_code' });
+  }
+
+  // Revalida que o membro continua ativo na equipe extensão (defesa em
+  // profundidade — pode ter sido removido entre requestCode e verifyCode)
+  const list = await loadMembers(env);
+  const m = list.find((x) => x.email.toLowerCase() === email);
+  const equipes = Array.isArray(m?.equipes) ? m.equipes : [];
+  if (!m || m.ativo === false || !equipes.includes('extensao')) {
+    await env.KANBAN_KV.delete(`ext-otp:${email}`);
+    return json({ ok: false, error: 'not_whitelisted' });
+  }
+
+  const token = generateToken();
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + TOKEN_TTL_SECONDS * 1000;
+  await env.KANBAN_KV.put(
+    `ext-token:${token}`,
+    JSON.stringify({ email, issuedAt }),
+    { expirationTtl: TOKEN_TTL_SECONDS }
+  );
+  await env.KANBAN_KV.delete(`ext-otp:${email}`);
+
+  // Resposta no formato que a extensão atual espera (jwt + expiresAt em ms)
+  return json({ ok: true, jwt: token, email, expiresAt });
+}
+
+async function extMe(payload, env) {
+  const token = String(payload.jwt || '').trim();
+  if (!token) return json({ ok: false, error: 'invalid_jwt' });
+  const raw = await env.KANBAN_KV.get(`ext-token:${token}`);
+  if (!raw) return json({ ok: false, error: 'invalid_jwt' });
+  let stored;
+  try { stored = JSON.parse(raw); } catch (_) { return json({ ok: false, error: 'invalid_jwt' }); }
+
+  // Revalida estado vivo do membro: revogação imediata se ativo=false ou
+  // 'extensao' tirado das equipes
+  const list = await loadMembers(env);
+  const m = list.find((x) => x.email.toLowerCase() === stored.email.toLowerCase());
+  const equipes = Array.isArray(m?.equipes) ? m.equipes : [];
+  if (!m || m.ativo === false || !equipes.includes('extensao')) {
+    await env.KANBAN_KV.delete(`ext-token:${token}`);
+    return json({ ok: false, error: 'revoked' });
+  }
+
+  const expiresAt = stored.issuedAt + TOKEN_TTL_SECONDS * 1000;
+  return json({ ok: true, email: stored.email, expiresAt });
+}
+
+async function sendOtpEmailResend(to, code, env, origem) {
   if (!env.RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY não configurado no Worker');
   }
   const from = env.MAIL_FROM || 'noreply@paidegua.ia.br';
   const fromName = env.MAIL_FROM_NAME || 'pAIdegua / Inovajus';
-  const subject = `pAIdegua Kanban — código de acesso ${code}`;
+  const isExtension = origem === 'extensão pAIdegua';
+  const subject = isExtension
+    ? `pAIdegua — código de acesso ${code}`
+    : `pAIdegua Kanban — código de acesso ${code}`;
+  const linhaContexto = isExtension
+    ? `Seu código de acesso à extensão pAIdegua (Chrome/Edge) é: ${code}`
+    : `Seu código de acesso ao Kanban de Massificação do pAIdegua é: ${code}`;
   const text = [
     'Olá,',
     '',
-    `Seu código de acesso ao Kanban de Massificação do pAIdegua é: ${code}`,
+    linhaContexto,
     '',
     'O código expira em 10 minutos. Se você não solicitou este acesso, ignore este e-mail.',
     '',
