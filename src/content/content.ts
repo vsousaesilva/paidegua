@@ -148,7 +148,7 @@ import { startRecording, blobToBase64, type RecorderHandle } from './audio-recor
 import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
 import type { BaseAdapter } from './adapters/base-adapter';
 import { derivarAnomaliasProcesso } from './adapters/pje-legacy';
-import { installExtensionContextSilencer } from '../shared/extension-context';
+import { installExtensionContextSilencer, isExtensionContextInvalidated } from '../shared/extension-context';
 
 // Silencia "Extension context invalidated" globalmente — esse erro acontece
 // quando a extensão é recarregada/atualizada com este content script ainda
@@ -3518,7 +3518,7 @@ async function handlePrazosFitaRunColeta(
       `Coleta concluída: ${resultado.consolidado.length} processo(s) únicos em ${(resultado.tempoTotalMs / 1000).toFixed(1)}s.`
     );
   } catch (err) {
-    if (isContextInvalidatedError(err)) {
+    if (isExtensionContextInvalidated(err)) {
       // Extensao recarregada no meio da coleta: a aba-painel ja foi
       // reiniciada junto, nao ha para quem reportar. Silencio total.
       return;
@@ -3705,7 +3705,7 @@ async function handleGestaoRunColeta(
       }).catch(() => { /* aba-painel pode ter sido fechada */ });
     }
   } catch (err) {
-    if (isContextInvalidatedError(err)) {
+    if (isExtensionContextInvalidated(err)) {
       return;
     }
     console.warn(`${LOG_PREFIX} handleGestaoRunColeta falhou:`, err);
@@ -3823,7 +3823,7 @@ async function handlePericiasRunColeta(
       }).catch(() => { /* aba-painel pode ter sido fechada */ });
     }
   } catch (err) {
-    if (isContextInvalidatedError(err)) return;
+    if (isExtensionContextInvalidated(err)) return;
     console.warn(`${LOG_PREFIX} handlePericiasRunColeta falhou:`, err);
     try {
       await chrome.runtime.sendMessage({
@@ -4956,17 +4956,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Detecta o erro "Extension context invalidated" que o Chrome emite quando
- * a extensao e recarregada/atualizada com um content script ainda rodando.
- * Nao e um bug do nosso codigo — apenas a aba antiga que perdeu o runtime.
- * Evita poluir o console com stacks vermelhos em um cenario esperado.
- */
-function isContextInvalidatedError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /extension context invalidated/i.test(msg);
-}
-
 function base64ToBlob(b64: string, mime: string): Blob {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -5066,7 +5055,7 @@ async function handleMetasRunColeta(payload: {
       })
       .catch(() => { /* fechada */ });
   } catch (err) {
-    if (isContextInvalidatedError(err)) return;
+    if (isExtensionContextInvalidated(err)) return;
     console.warn(`${LOG_PREFIX} handleMetasRunColeta falhou:`, err);
     chrome.runtime
       .sendMessage({

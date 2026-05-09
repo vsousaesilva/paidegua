@@ -5089,24 +5089,24 @@
     {
       "id": "ERG-13",
       "titulo": "Deduplicar isContextInvalidatedError — migrar 4 call sites de content.ts + 1 de pje-auth-interceptor.ts pro util compartilhado",
-      "descricao": "Após ERG-12, há duplicação: `src/shared/extension-context.ts` exporta `isExtensionContextInvalidated`, mas content.ts:4953 ainda tem `isContextInvalidatedError` local (usado em 4 sítios) e pje-auth-interceptor.ts:72 ainda usa regex inline. Migrar todos pro util compartilhado:\n\n1. Em `content.ts`: importar `isExtensionContextInvalidated` do shared, substituir os 4 usos da função local, deletar a função local (linhas ~4953-4956).\n2. Em `pje-auth-interceptor.ts:72`: trocar `if (/extension context invalidated/i.test(msg)) return;` por `if (isExtensionContextInvalidated(err)) return;` + import.\n3. Validar build sem TS errors.\n\nNão é blocker — só dívida técnica de consistência. Útil pra reduzir risco de divergência futura na regex.",
+      "descricao": "Após ERG-12, havia duplicação: `src/shared/extension-context.ts` exportava `isExtensionContextInvalidated`, mas content.ts ainda tinha `isContextInvalidatedError` local (usado em 4 sítios) e pje-auth-interceptor.ts:72 ainda usava regex inline. Tudo migrado para o util compartilhado em 09/05/2026 (mesma sessão de criação do card). A regex `/extension context invalidated/i` agora vive em **single source of truth** em `src/shared/extension-context.ts:16`. Build TS verde após o refactor (refator puro, mesma assinatura `(err: unknown) => boolean`).",
       "categoria": "ergonomia",
       "prioridade": "P3",
-      "coluna": "triagem",
+      "coluna": "lancado",
       "origem": "sessão 09/05/2026 — após ERG-12",
       "tags": ["divida-tecnica", "refatoracao", "extension-context", "ergonomia"],
       "esforco": "S",
       "depende": ["ERG-12"],
       "aceitacao": [
-        "isContextInvalidatedError local em content.ts:4953 deletada",
+        "isContextInvalidatedError local em content.ts deletada (10 linhas a menos, incluindo JSDoc)",
         "4 call sites em content.ts usam isExtensionContextInvalidated do shared",
-        "pje-auth-interceptor.ts:72 usa isExtensionContextInvalidated do shared (sem regex inline)",
+        "pje-auth-interceptor.ts usa isExtensionContextInvalidated do shared (sem regex inline)",
         "Build do paidegua sem erros TS",
-        "Smoke do cenário de recarga continua silenciando"
+        "Single source of truth: regex /extension context invalidated/i só em src/shared/extension-context.ts:16"
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-09T20:00:00.000Z",
-      "atualizadoEm": "2026-05-09T20:00:00.000Z",
+      "atualizadoEm": "2026-05-09T22:30:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
       "historico": [
         {
@@ -5114,6 +5114,21 @@
           "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
           "data": "2026-05-09T20:00:00.000Z",
           "comando": "Card P3 aberto após ERG-12 — registra dívida técnica de deduplicação. Não bloqueia release."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/content/content.ts", "src/content/auth/pje-auth-interceptor.ts"],
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T22:25:00.000Z",
+          "comando": "Refactor aplicado. content.ts: import expandido para incluir isExtensionContextInvalidated; replace_all de 4 chamadas isContextInvalidatedError(err) → isExtensionContextInvalidated(err); função local + bloco JSDoc deletados (10 linhas a menos). pje-auth-interceptor.ts: import adicionado; regex inline /extension context invalidated/i.test(msg) substituída por isExtensionContextInvalidated(err); cálculo de msg também removido (não é mais necessário). Build TS verde sem erros."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-09T22:30:00.000Z",
+          "comando": "Refactor concluído + build verde. Single source of truth da regex agora em src/shared/extension-context.ts:16."
         }
       ]
     }

@@ -13,6 +13,7 @@
  */
 
 import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../../shared/constants';
+import { isExtensionContextInvalidated } from '../../shared/extension-context';
 import type { PJeAuthSnapshot } from '../../shared/types';
 
 const MIN_INTERVAL_MS = 5_000;
@@ -68,8 +69,7 @@ async function persistirProbeKeycloak(novo: unknown): Promise<void> {
     if (scoreProbe(novoObj) < scoreProbe(anterior)) return;
     await chrome.storage.local.set({ [STORAGE_KEYS.KEYCLOAK_PROBE]: novo });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/extension context invalidated/i.test(msg)) return;
+    if (isExtensionContextInvalidated(err)) return;
     console.warn(`${LOG_PREFIX} persistencia do probe Keycloak falhou:`, err);
   }
 }
