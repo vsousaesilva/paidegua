@@ -1,0 +1,185 @@
+{
+  "lane": "Comum",
+  "versao": "1",
+  "geradoEm": "2026-05-07",
+  "validadoPor": "PENDENTE — designar 1 servidor sênior cível + 1 criminal",
+  "_nota": "Versão inicial cobrindo o macro-fluxo das varas comuns federais (cível ordinário e criminal). Estruturação unificada porque o catálogo coletado não distingue fluxos exclusivamente criminais — ambos usam as mesmas rotinas de comunicação/audiência/decisão/arquivo. Tarefas com prefixo [PREVJUD] cobrem o caso previdenciário com cumprimento por INSS. Tarefas-âncora confirmadas via Grep no catálogo embarcado (134 tarefas Comum). Sujeito a curadoria por sêniores cível e criminal antes do release definitivo (FLUX-13).",
+  "trilhas": [
+    {
+      "id": "citacao-comunicacao",
+      "nome": "Citação e comunicação",
+      "descricaoCurta": "Citação do réu/executado por correios, mandado, edital ou outros meios. Acompanhamento das devoluções e do cumprimento.",
+      "icone": "users-round",
+      "cor": "var(--comum)",
+      "agrupamento": "distribuicao",
+      "estacoes": [
+        { "tarefa": "Elaboração de comunicação", "papel": "principal" },
+        { "tarefa": "Comunicação - Selecionar central de mandados", "papel": "principal" },
+        { "tarefa": "Comunicação - Imprimir correspondência", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "instrucao",
+      "nome": "Instrução: audiência e perícia",
+      "descricaoCurta": "Designação, realização e registro de audiências e perícias; cancelamentos e conversões em diligência.",
+      "icone": "stethoscope",
+      "cor": "var(--comum)",
+      "agrupamento": "instrucao",
+      "estacoes": [
+        { "tarefa": "Audiências do dia", "papel": "principal" },
+        { "tarefa": "Audiência do dia", "papel": "principal" },
+        { "tarefa": "Audiência - Cancelada", "papel": "ramificacao" },
+        { "tarefa": "Audiência - Convertidas em diligência", "papel": "ramificacao" },
+        { "tarefa": "Audiência - Canceladas", "papel": "ramificacao" },
+        { "tarefa": "Audiência - Intimar do cancelamento", "papel": "ramificacao" },
+        { "tarefa": "Elaboração de ata de audiência", "papel": "principal" },
+        { "tarefa": "Perícias canceladas", "papel": "ramificacao" },
+        { "tarefa": "Perícia - Intimar do cancelamento", "papel": "ramificacao" }
+      ]
+    },
+    {
+      "id": "decisao-sentenca",
+      "nome": "Decisão e sentença",
+      "descricaoCurta": "Atos do magistrado: despacho, decisão, decisão urgente e sentença.",
+      "icone": "gavel",
+      "cor": "var(--comum)",
+      "agrupamento": "decisao",
+      "estacoes": [
+        { "tarefa": "Elaboração de despacho", "papel": "principal" },
+        { "tarefa": "Elaboração de decisão", "papel": "principal" },
+        { "tarefa": "Elaboração de decisão urgente", "papel": "ramificacao" },
+        { "tarefa": "Elaboração de sentença", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "transito-cumprimento",
+      "nome": "Trânsito em julgado e cumprimento",
+      "descricaoCurta": "Certificação do trânsito, expedição de RPV ou precatório, e remessa ao TRF5 quando há recurso.",
+      "icone": "wallet",
+      "cor": "var(--comum)",
+      "agrupamento": "transito",
+      "estacoes": [
+        { "tarefa": "Trânsito em julgado - Informar data", "papel": "principal" },
+        { "tarefa": "Trânsito em julgado - Transitados", "papel": "principal" },
+        { "tarefa": "Elaboração de RPV-PRC", "papel": "principal" },
+        { "tarefa": "Remessa para o TRF5", "papel": "ramificacao" },
+        { "tarefa": "[PREVJUD] Controle de intimação do INSS", "papel": "ramificacao" },
+        { "tarefa": "[PREVJUD] Aguardar cumprimento de demanda judicial", "papel": "ramificacao" },
+        { "tarefa": "[PREVJUD] Demanda judicial cumprida", "papel": "ramificacao" }
+      ]
+    },
+    {
+      "id": "sobrestamento-arquivo",
+      "nome": "Sobrestamento e arquivo",
+      "descricaoCurta": "Suspensão da tramitação por força de lei ou decisão, e arquivamento provisório ou definitivo.",
+      "icone": "wallet",
+      "cor": "var(--comum)",
+      "agrupamento": "arquivo",
+      "estacoes": [
+        { "tarefa": "Sobrestar", "papel": "principal" },
+        { "tarefa": "Arquivamento - Analisar pendência", "papel": "ramificacao" },
+        { "tarefa": "Arquivamento - Analisar audiência", "papel": "ramificacao" },
+        { "tarefa": "Arquivamento - Analisar perícia", "papel": "ramificacao" },
+        { "tarefa": "Arquivamento - Fechar expediente", "papel": "principal" },
+        { "tarefa": "Arquivamento - Arquivados", "papel": "principal" },
+        { "tarefa": "Arquivamento sem baixa", "papel": "ramificacao" },
+        { "tarefa": "Arquivar processo", "papel": "principal" }
+      ]
+    }
+  ],
+  "agrupamentos": [
+    {
+      "id": "distribuicao",
+      "nome": "Distribuição e citação",
+      "descricaoCurta": "Recebimento da inicial e citação do réu (cível) ou réu/acusado (criminal).",
+      "faseInicial": "distribuicao",
+      "faseFinal": "triagem",
+      "fasesCanonicas": ["Distribuição", "Triagem"],
+      "tarefasPrincipais": [
+        "Elaboração de comunicação",
+        "Comunicação - Selecionar central de mandados",
+        "Comunicação - Imprimir correspondência"
+      ],
+      "fluxosPrincipais": ["INICIAL", "ANSEC", "ANCOM"],
+      "ordem": 1
+    },
+    {
+      "id": "instrucao",
+      "nome": "Instrução probatória",
+      "descricaoCurta": "Audiência, perícia, manifestações das partes — coração da instrução das varas comuns.",
+      "faseInicial": "instrucao",
+      "faseFinal": "pericia",
+      "fasesCanonicas": ["Instrução", "Audiência", "Perícia"],
+      "tarefasPrincipais": [
+        "Audiências do dia",
+        "Audiência - Convertidas em diligência",
+        "Elaboração de ata de audiência",
+        "Perícia - Intimar do cancelamento",
+        "Perícias canceladas"
+      ],
+      "fluxosPrincipais": ["AUD", "AUDCANC", "AUDCONVDIL"],
+      "ordem": 2
+    },
+    {
+      "id": "decisao",
+      "nome": "Decisão e sentença",
+      "descricaoCurta": "Atos do magistrado nas varas comuns federais: despacho, decisão e sentença.",
+      "faseInicial": "sentenca",
+      "faseFinal": "sentenca",
+      "fasesCanonicas": ["Sentença"],
+      "tarefasPrincipais": [
+        "Elaboração de despacho",
+        "Elaboração de decisão",
+        "Elaboração de decisão urgente",
+        "Elaboração de sentença"
+      ],
+      "fluxosPrincipais": ["ELDESP", "ELDEC", "ELSENT"],
+      "ordem": 3
+    },
+    {
+      "id": "transito",
+      "nome": "Trânsito em julgado, recurso e cumprimento",
+      "descricaoCurta": "Certificação do trânsito, expedição de RPV ou precatório, intimação do INSS em ações previdenciárias e remessa para o TRF5 quando há recurso.",
+      "faseInicial": "recurso",
+      "faseFinal": "cumprimento",
+      "fasesCanonicas": ["Recurso", "Cumprimento"],
+      "tarefasPrincipais": [
+        "Trânsito em julgado - Informar data",
+        "Trânsito em julgado - Transitados",
+        "Elaboração de RPV-PRC",
+        "Remessa para o TRF5",
+        "[PREVJUD] Controle de intimação do INSS"
+      ],
+      "fluxosPrincipais": ["CERTTRANSJULG", "ELRPVPRC"],
+      "ordem": 4
+    },
+    {
+      "id": "arquivo",
+      "nome": "Sobrestamento e arquivo",
+      "descricaoCurta": "Suspensão da tramitação e arquivamento provisório ou definitivo.",
+      "faseInicial": "arquivo",
+      "faseFinal": "arquivo",
+      "fasesCanonicas": ["Arquivo"],
+      "tarefasPrincipais": [
+        "Sobrestar",
+        "Arquivamento - Analisar pendência",
+        "Arquivamento - Arquivados",
+        "Arquivamento sem baixa",
+        "Arquivar processo"
+      ],
+      "fluxosPrincipais": ["ARQ", "ARQ2", "SOB"],
+      "ordem": 5
+    }
+  ],
+  "fasesCanonicas": [
+    { "id": "distribuicao", "nome": "Distribuição", "ordem": 1 },
+    { "id": "triagem", "nome": "Triagem", "ordem": 2 },
+    { "id": "instrucao", "nome": "Instrução", "ordem": 3 },
+    { "id": "audiencia", "nome": "Audiência", "ordem": 4 },
+    { "id": "pericia", "nome": "Perícia", "ordem": 5 },
+    { "id": "sentenca", "nome": "Sentença", "ordem": 6 },
+    { "id": "recurso", "nome": "Recurso", "ordem": 7 },
+    { "id": "cumprimento", "nome": "Cumprimento", "ordem": 8 },
+    { "id": "arquivo", "nome": "Arquivo", "ordem": 9 }
+  ]
+}

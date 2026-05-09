@@ -1,0 +1,193 @@
+{
+  "lane": "EF",
+  "versao": "1",
+  "geradoEm": "2026-05-07",
+  "validadoPor": "PENDENTE — designar servidor sênior da Execução Fiscal",
+  "_nota": "Versão inicial criada com tarefas-âncora reais confirmadas via Grep no catálogo. Macro-fluxo da EF: citação → convênios/penhora online → audiência (rara) → ato judicial e cálculo → sobrestamento/arquivo. Sujeito a curadoria pelo sênior da EF antes do release definitivo (FLUX-12).",
+  "trilhas": [
+    {
+      "id": "distribuicao-citacao",
+      "nome": "Distribuição e citação",
+      "descricaoCurta": "Recebimento da inicial, redistribuição quando necessária, e citação do executado por correios, mandado, carta precatória ou outros meios.",
+      "icone": "users-round",
+      "cor": "var(--ef)",
+      "agrupamento": "distribuicao",
+      "estacoes": [
+        { "tarefa": "[EF] Redistribuição - Analisar conclusão aberta", "papel": "origem" },
+        { "tarefa": "[EF] Redistribuição - Analisar pendência", "papel": "ramificacao" },
+        { "tarefa": "[EF] Comunicação - Correios - Enviar expediente", "papel": "principal" },
+        { "tarefa": "[EF] Comunicação - Correios - Aguardar devolução de A.R.", "papel": "principal" },
+        { "tarefa": "[EF] Comunicação - Mandado - Aguardar devolução", "papel": "principal" },
+        { "tarefa": "[EF] Comunicação - Mandado - Avaliar devolução", "papel": "principal" },
+        { "tarefa": "[EF] Comunicação - Carta precatória - Remeter", "papel": "ramificacao" },
+        { "tarefa": "[EF] Comunicação - Carta precatória - Aguardar devolução", "papel": "ramificacao" },
+        { "tarefa": "[EF] Comunicação - Outros meios - Enviar", "papel": "ramificacao" }
+      ]
+    },
+    {
+      "id": "penhora-online",
+      "nome": "Convênios e penhora online",
+      "descricaoCurta": "Busca de ativos financeiros e bens via SISBAJUD, RENAJUD e INFOJUD — coração da execução fiscal moderna.",
+      "icone": "wallet",
+      "cor": "var(--ef)",
+      "agrupamento": "penhora",
+      "estacoes": [
+        { "tarefa": "[EF] Convênios - Consultar SISBAJUD", "papel": "principal" },
+        { "tarefa": "[EF] Convênios - Aguardar resultado SISBAJUD", "papel": "principal" },
+        { "tarefa": "[EF] Convênios - Consultar RENAJUD", "papel": "principal" },
+        { "tarefa": "[EF] Convênios - Consultar INFOJUD", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "audiencia",
+      "nome": "Audiência (rara em EF)",
+      "descricaoCurta": "Designação e realização de audiência — incomum na execução fiscal, mas pode ocorrer em embargos ou exceções.",
+      "icone": "users-round",
+      "cor": "var(--ef)",
+      "agrupamento": "audiencia",
+      "estacoes": [
+        { "tarefa": "[EF] Audiência - Designar e administrar", "papel": "principal" },
+        { "tarefa": "[EF] Audiência - Aguardar", "papel": "principal" },
+        { "tarefa": "[EF] Audiência - Aguardar - Analisar petição", "papel": "ramificacao" },
+        { "tarefa": "[EF] Audiência - Avaliar partes não intimadas", "papel": "ramificacao" },
+        { "tarefa": "[EF] Audiência - Do dia", "papel": "principal" },
+        { "tarefa": "[EF] Audiência - Minutar ata", "papel": "principal" },
+        { "tarefa": "[EF] Audiência - Assinar ata", "papel": "principal" },
+        { "tarefa": "[EF] Audiência - Anexar ata", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "decisao-calculo",
+      "nome": "Decisão e cálculo",
+      "descricaoCurta": "Atos do magistrado e elaboração/revisão de cálculos da execução.",
+      "icone": "gavel",
+      "cor": "var(--ef)",
+      "agrupamento": "decisao",
+      "estacoes": [
+        { "tarefa": "[EF] Ato judicial - Revisar", "papel": "principal" },
+        { "tarefa": "[EF] Ato judicial - Revisar - Ato específico", "papel": "ramificacao" },
+        { "tarefa": "[EF] Cálculo - Elaborar", "papel": "principal" },
+        { "tarefa": "[EF] Cálculo - Revisar", "papel": "principal" },
+        { "tarefa": "[EF] Cálculo - Assinar", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "sobrestamento-arquivo",
+      "nome": "Sobrestamento e arquivo",
+      "descricaoCurta": "Suspensão da execução por parcelamento, embargos, recurso ou outros motivos, e arquivamento provisório ou definitivo.",
+      "icone": "wallet",
+      "cor": "var(--ef)",
+      "agrupamento": "arquivo",
+      "estacoes": [
+        { "tarefa": "[EF] Sobrestamento - Definir tipo e prazo", "papel": "principal" },
+        { "tarefa": "[EF] Suspenso ou sobrestado", "papel": "principal" },
+        { "tarefa": "[EF] Sobrestamento - Avaliar petição", "papel": "ramificacao" },
+        { "tarefa": "[EF] Sobrestamento - Prazo decorrido", "papel": "principal" },
+        { "tarefa": "[EF] Arquivo provisório - sem baixa", "papel": "principal" },
+        { "tarefa": "[EF] Arquivo sem baixa - Definir prazo", "papel": "principal" },
+        { "tarefa": "[EF] Arquivo sem baixa - Arquivados", "papel": "principal" },
+        { "tarefa": "[EF] Arquivo sem baixa - Arquivados - Avaliar petição", "papel": "ramificacao" },
+        { "tarefa": "[EF] Arquivo - Analisar petição", "papel": "ramificacao" },
+        { "tarefa": "[EF] Arquivo - Encerrar prazos em aberto", "papel": "principal" },
+        { "tarefa": "[EF] Arquivo definitivo", "papel": "principal" }
+      ]
+    }
+  ],
+  "agrupamentos": [
+    {
+      "id": "distribuicao",
+      "nome": "Distribuição e citação",
+      "descricaoCurta": "Recebimento da inicial, redistribuição quando necessária, e citação do executado.",
+      "faseInicial": "distribuicao",
+      "faseFinal": "triagem",
+      "fasesCanonicas": ["Distribuição", "Triagem"],
+      "tarefasPrincipais": [
+        "[EF] Redistribuição - Analisar conclusão aberta",
+        "[EF] Comunicação - Correios - Enviar expediente",
+        "[EF] Comunicação - Mandado - Aguardar devolução",
+        "[EF] Comunicação - Carta precatória - Remeter",
+        "[EF] Comunicação - Outros meios - Enviar"
+      ],
+      "fluxosPrincipais": ["EF_JF"],
+      "ordem": 1
+    },
+    {
+      "id": "penhora",
+      "nome": "Penhora online (convênios)",
+      "descricaoCurta": "Consultas a convênios para localização de ativos: SISBAJUD (financeiros), RENAJUD (veículos), INFOJUD (declarações fiscais).",
+      "faseInicial": "instrucao",
+      "faseFinal": "instrucao",
+      "fasesCanonicas": ["Instrução"],
+      "tarefasPrincipais": [
+        "[EF] Convênios - Consultar SISBAJUD",
+        "[EF] Convênios - Aguardar resultado SISBAJUD",
+        "[EF] Convênios - Consultar RENAJUD",
+        "[EF] Convênios - Consultar INFOJUD"
+      ],
+      "fluxosPrincipais": ["EF_CONS_CONVEN_SISBAJUD", "EF_CONS_CONVEN_RENAJUD", "EF_CONS_CONVEN_INFOJUD"],
+      "ordem": 2
+    },
+    {
+      "id": "audiencia",
+      "nome": "Audiência",
+      "descricaoCurta": "Designação e realização de audiência — incomum na execução fiscal, mas previsto em embargos.",
+      "faseInicial": "audiencia",
+      "faseFinal": "pericia",
+      "fasesCanonicas": ["Audiência", "Perícia"],
+      "tarefasPrincipais": [
+        "[EF] Audiência - Designar e administrar",
+        "[EF] Audiência - Aguardar",
+        "[EF] Audiência - Do dia",
+        "[EF] Audiência - Minutar ata",
+        "[EF] Audiência - Anexar ata"
+      ],
+      "fluxosPrincipais": ["EF_AUD"],
+      "ordem": 3
+    },
+    {
+      "id": "decisao",
+      "nome": "Decisão e cálculo",
+      "descricaoCurta": "Atos do magistrado (decisão, despacho, sentença) e elaboração/revisão de cálculos.",
+      "faseInicial": "sentenca",
+      "faseFinal": "sentenca",
+      "fasesCanonicas": ["Sentença"],
+      "tarefasPrincipais": [
+        "[EF] Ato judicial - Revisar",
+        "[EF] Ato judicial - Revisar - Ato específico",
+        "[EF] Cálculo - Elaborar",
+        "[EF] Cálculo - Revisar",
+        "[EF] Cálculo - Assinar"
+      ],
+      "fluxosPrincipais": ["EF_PAJ", "EF_CALCULO"],
+      "ordem": 4
+    },
+    {
+      "id": "arquivo",
+      "nome": "Sobrestamento e arquivo",
+      "descricaoCurta": "Suspensão da execução (parcelamento, recurso, prescrição) e arquivamento provisório ou definitivo.",
+      "faseInicial": "cumprimento",
+      "faseFinal": "arquivo",
+      "fasesCanonicas": ["Cumprimento", "Arquivo"],
+      "tarefasPrincipais": [
+        "[EF] Sobrestamento - Definir tipo e prazo",
+        "[EF] Suspenso ou sobrestado",
+        "[EF] Arquivo provisório - sem baixa",
+        "[EF] Arquivo sem baixa - Arquivados",
+        "[EF] Arquivo definitivo"
+      ],
+      "fluxosPrincipais": ["EF_SOBREST", "EF_ARQ", "EF_ARQ_SEM_BAIXA"],
+      "ordem": 5
+    }
+  ],
+  "fasesCanonicas": [
+    { "id": "distribuicao", "nome": "Distribuição", "ordem": 1 },
+    { "id": "triagem", "nome": "Triagem", "ordem": 2 },
+    { "id": "instrucao", "nome": "Instrução", "ordem": 3 },
+    { "id": "audiencia", "nome": "Audiência", "ordem": 4 },
+    { "id": "pericia", "nome": "Perícia", "ordem": 5 },
+    { "id": "sentenca", "nome": "Sentença", "ordem": 6 },
+    { "id": "recurso", "nome": "Recurso", "ordem": 7 },
+    { "id": "cumprimento", "nome": "Cumprimento", "ordem": 8 },
+    { "id": "arquivo", "nome": "Arquivo", "ordem": 9 }
+  ]
+}
