@@ -2682,7 +2682,7 @@
           "id": "ext6",
           "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
           "feito": false,
-          "nota": "Em andamento — v1.3.1 foi aprovada pelo Google em 2026-05-06 mas estava com bundle publicado corrompido (BACKEND_URL ausente após DCE do Terser). Hotfix v1.3.2 submetido à CWS em 2026-05-06 via upload manual com zip local validado. Comunicar pilotos quando v1.3.2 for aprovada (~1-7 dias úteis), incluindo aviso de que a v1.3.1 nunca chegou a funcionar."
+          "nota": "Decisão 09/05/2026: comunicação CONSOLIDADA com a release v1.5.0 (estratégia B). Razão: v1.3.2 aprovada em 06/05/2026 (já no ar via auto-update do Chrome) e v1.5.0 submetida à CWS em 09/05/2026 (em revisão). Em vez de 2 e-mails em ~1 semana, aguardar aprovação da v1.5.0 e enviar 1 e-mail único cobrindo: (a) infra de auth nova (Worker Cloudflare); (b) features novas da v1.5.0 (Mapas de Jornada + melhorias Consultor); (c) pedido de logout+login até 05/06/2026 antes do desligamento do Apps Script (ext8). Destinatários conhecidos hoje: 13 pilotos (excluindo owner) — 9 jfce.jus.br + 4 jfal.jus.br. Texto rascunho do e-mail mantido na conversa da sessão 2026-05-09; final será compilado na sessão pós-aprovação."
         },
         {
           "id": "ext7",
@@ -2695,7 +2695,7 @@
           "id": "ext8",
           "texto": "Desligar Apps Script após 30 dias de validação",
           "feito": false,
-          "nota": "Pendente — agendar para 30 dias após v1.3.2 (hotfix) ser aprovada na CWS. Data alvo recalculada para ~05-12/06/2026, condicionada à aprovação da v1.3.2. v1.3.1 não conta como release válida (bundle publicado estava sem auth)."
+          "nota": "Data alvo confirmada: 2026-06-05 (30 dias após aprovação CWS da v1.3.2 em 06/05/2026). Janela operacional 05-12/06/2026 para acomodar pilotos que demorarem a relogar. Pré-condição: comunicação aos pilotos enviada (ext6, agora consolidada com release v1.5.0)."
         }
       ],
       "historico": [
@@ -2763,9 +2763,15 @@
           "autor": "vsousaesilva@jfce.jus.br",
           "data": "2026-05-06T23:00:00.000Z",
           "comando": "v1.3.2 aprovada pela Chrome Web Store. Listing público: https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk. Aguardando smoke test do owner antes de comunicar os 2 pilotos. ext8 (desligar Apps Script) re-agendado para ~05-12/06/2026 (30 dias após esta data)."
+        },
+        {
+          "tipo": "decisao",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-09T22:00:00.000Z",
+          "comando": "Estratégia B confirmada: comunicação ext6 consolidada com release v1.5.0 (em revisão CWS). Em vez de 2 e-mails (v1.3.2 hoje + v1.5.0 quando aprovar), 1 e-mail único cobrindo infra de auth + features novas + pedido de logout+login até 05/06/2026. Lista de destinatários congelada hoje em 13 pilotos (9 jfce + 4 jfal). Data alvo ext8 confirmada para 2026-06-05 (janela operacional 05-12/06)."
         }
       ],
-      "atualizadoEm": "2026-05-06T23:00:00.000Z",
+      "atualizadoEm": "2026-05-09T22:00:00.000Z",
       "atualizadoPor": "vsousaesilva@jfce.jus.br"
     },
     {
