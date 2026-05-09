@@ -1,0 +1,1141 @@
+/* Mapas de Jornada — paleta gov.br/PJe-CNJ herdada do Consultor de fluxos.
+ * Identidade visual unificada (mesmas cores, mesma tipografia). Cores das
+ * lanes seguem o padrão do consultor.css: JEF=azul claro, EF=amarelo claro,
+ * Comum=índigo claro, Shared=verde claro. */
+
+:root {
+  --bg: #f4f7fc;
+  --bg-card: #ffffff;
+  --bg-mapa: linear-gradient(180deg, #fcfdff 0%, #f1f5fb 100%);
+  --primary: #1351b4;
+  --primary-dark: #0c326f;
+  --primary-light: #e6eef9;
+  --accent: #ffcd07;
+  --text: #1f2933;
+  --text-muted: #6b7785;
+  --border: #d9dee3;
+  --border-strong: #c4ccd4;
+
+  /* Lanes — tokens iguais aos do consultor.css. */
+  --jef: #dbeafe;
+  --jef-strong: #1d4ed8;
+  --ef: #fef3c7;
+  --ef-strong: #b45309;
+  --comum: #e0e7ff;
+  --comum-strong: #4338ca;
+  --shared: #d1fae5;
+  --shared-strong: #047857;
+
+  /* Severidades de alerta. */
+  --warn: #d97706;
+  --danger: #b42318;
+  --ok: #0f8a4f;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow: 0 2px 6px rgba(12, 50, 111, 0.06);
+  --shadow-lg: 0 6px 18px rgba(12, 50, 111, 0.10);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+.muted { color: var(--text-muted); }
+.small { font-size: 12px; }
+
+/* ─── Topbar ──────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.brand { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.brand__logo { border-radius: 8px; flex-shrink: 0; }
+.brand__text h1 { margin: 0; font-size: 16px; color: var(--primary-dark); }
+.brand__text p { margin: 2px 0 0; font-size: 12px; }
+
+.topbar__actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+/* Lanes nav (igual ao .lanes-seletor do consultor — pílulas coloridas). */
+.lanes-nav {
+  display: inline-flex;
+  gap: 6px;
+  padding: 3px;
+  background: var(--primary-light);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.lane-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--primary-dark);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.lane-chip:hover:not([aria-disabled="true"]):not(.is-active) {
+  background: rgba(255, 255, 255, 0.55);
+}
+.lane-chip.is-active {
+  background: var(--bg-card);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(12, 50, 111, 0.12);
+}
+.lane-chip.is-jef.is-active   { color: var(--jef-strong); }
+.lane-chip.is-ef.is-active    { color: var(--ef-strong); }
+.lane-chip.is-comum.is-active { color: var(--comum-strong); }
+.lane-chip[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.lane-chip .badge {
+  font-size: 10px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+/* Botões ghost iguais ao consultor.css. */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 4px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+}
+.btn-ghost:hover { background: var(--primary-light); border-color: var(--primary); }
+.btn-ghost[aria-pressed="true"] {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* ─── Layout ──────────────────────────────────────────────────────── */
+.layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 24px 32px;
+  max-width: 1480px;
+  width: 100%;
+  align-self: center;
+}
+
+.camada {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  box-shadow: var(--shadow);
+}
+.camada__header { margin-bottom: 14px; }
+.camada__header h2 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--primary);
+  letter-spacing: 0.5px;
+}
+.camada__header p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+
+/* ─── Camada 1 — Mapa unificado (CSS Grid HTML) ────────────────────── */
+.mapa-host {
+  background: var(--bg-mapa);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 18px 16px 22px;
+  overflow-x: auto;
+  position: relative;
+  min-height: 320px;
+}
+.mapa-host .loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+/* Grade compartilhada: linha 1 = régua de fases, linha 2 = cards. */
+.mapa-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--num-fases, 9), minmax(140px, 1fr));
+  grid-auto-rows: auto;
+  column-gap: 10px;
+  row-gap: 14px;
+  align-items: stretch;
+  min-width: 980px;
+}
+
+/* Régua de fases (linha 1). */
+.fase-cell {
+  grid-row: 1;
+  text-align: center;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  font-weight: 600;
+  padding: 4px 4px 8px;
+  border-bottom: 2px solid var(--primary-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Card de agrupamento (HTML <button>). */
+.agrupamento-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  background: var(--jef);
+  color: var(--primary-dark);
+  border: 1.5px solid var(--jef-strong);
+  border-radius: 10px;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  min-height: 150px;
+}
+.agrupamento-card.lane-ef    { background: var(--ef);    border-color: var(--ef-strong);    color: var(--ef-strong); }
+.agrupamento-card.lane-comum { background: var(--comum); border-color: var(--comum-strong); color: var(--comum-strong); }
+.agrupamento-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(12, 50, 111, 0.18);
+}
+.agrupamento-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.agrupamento-card__titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  /* Cor herda do card; sobrescreve com primary-dark para contraste consistente. */
+  color: var(--primary-dark);
+}
+.agrupamento-card__desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.agrupamento-card__fluxos {
+  margin: 4px 0 0;
+  padding: 0 0 0 14px;
+  list-style: disc;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.agrupamento-card__fluxos li {
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agrupamento-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(12, 50, 111, 0.18);
+}
+.card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--primary-dark);
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.card-badge--fantasma_downstream { background: #fee2e2; color: var(--danger); }
+.card-badge--prazo_paralelo      { background: #fef3c7; color: var(--warn); }
+.card-badge--decisao_automatica  { background: var(--primary-light); color: var(--primary-dark); }
+.card-badge--hub                 { background: rgba(255,255,255,0.85); }
+.card-badge--loop                { background: #ede9fe; color: #5b21b6; }
+.card-badge--subfluxo_shared     { background: #d1fae5; color: var(--shared-strong); }
+
+/* Legenda. */
+.legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.legenda__item { display: inline-flex; align-items: center; gap: 6px; }
+.dot {
+  width: 22px;
+  height: 0;
+  border-top: 2px solid var(--primary);
+}
+.dot-ramificacao { border-top-style: dashed; opacity: 0.7; }
+.dot-retorno     { border-top-style: dotted; border-color: var(--text-muted); opacity: 0.7; }
+
+/* ─── Camada 2 — Trilhas ──────────────────────────────────────────── */
+.trilhas-host {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 18px;
+}
+
+.trilha {
+  background: linear-gradient(180deg, var(--bg-card) 0%, #fafcff 100%);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--jef-strong);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.trilha__cabecalho { display: flex; align-items: baseline; gap: 8px; }
+.trilha__icone {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  background: var(--jef);
+  color: var(--jef-strong);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.trilha__titulo { margin: 0; font-size: 14px; font-weight: 700; color: var(--primary-dark); }
+.trilha__resumo { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+
+.estacoes {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 0 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(19, 81, 180, 0.25) transparent;
+}
+.estacoes::-webkit-scrollbar { height: 6px; }
+.estacoes::-webkit-scrollbar-thumb {
+  background: rgba(19, 81, 180, 0.22);
+  border-radius: 6px;
+}
+.estacao {
+  flex: 0 0 auto;
+  min-width: 130px;
+  max-width: 170px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--jef-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.estacao:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+.estacao--ramificacao { border-top-style: dashed; opacity: 0.85; }
+.estacao--retorno { border-top-style: dotted; opacity: 0.85; }
+.estacao--origem { background: var(--primary-light); }
+.estacao__papel {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.estacao__rotulo {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary-dark);
+  line-height: 1.25;
+}
+.estacao__frase {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.estacao__alertas {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.alerta-pill {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.alerta-pill.severidade-alta   { background: #fee2e2; color: var(--danger); }
+.alerta-pill.severidade-media  { background: #fef3c7; color: var(--warn); }
+
+/* Modo técnico — exibe códigos jBPM e contagens. Por default oculto. */
+body[data-tecnico="false"] .tecnico-only { display: none; }
+body[data-tecnico="true"] .estacao__codigo {
+  display: block;
+  margin-top: 4px;
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ─── Breadcrumb (Camadas 3 e 4) ─────────────────────────────────── */
+.breadcrumb {
+  margin-bottom: 12px;
+}
+.breadcrumb__voltar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  transition: background 140ms ease;
+}
+.breadcrumb__voltar:hover { background: var(--primary-light); }
+
+/* ─── Camada 3 — Vista de estação (página por fluxo) ───────────────
+ * IMPORTANTE: prefixo `.fluxo-page__` para isolar da Camada 2 (cards
+ * de trilha) que usa `.estacao__*` para outra coisa. Não fundir. */
+.fluxo-page__cabecalho {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+.fluxo-page__metas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.fluxo-page__meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+}
+.fluxo-page__meta-pill.lane-jef    { background: var(--jef);   color: var(--jef-strong); }
+.fluxo-page__meta-pill.lane-ef     { background: var(--ef);    color: var(--ef-strong); }
+.fluxo-page__meta-pill.lane-comum  { background: var(--comum); color: var(--comum-strong); }
+.fluxo-page__meta-pill.lane-shared { background: var(--shared); color: var(--shared-strong); }
+.fluxo-page__titulo {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  line-height: 1.2;
+}
+.fluxo-page__codigo-tecnico {
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.fluxo-page__frase {
+  background: linear-gradient(135deg, var(--primary-light) 0%, #f4f7fc 100%);
+  border-left: 4px solid var(--primary);
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--primary-dark);
+}
+
+.fluxo-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.fluxo-page__bloco {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.fluxo-page__bloco-titulo {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  font-weight: 700;
+}
+.fluxo-page__vizinho {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  margin-bottom: 4px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.fluxo-page__vizinho:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+.fluxo-page__vizinho-nome {
+  font-size: 13px;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fluxo-page__vizinho-contagem {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: var(--surface-50, #f5f6f8);
+  padding: 2px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* Próximas tarefas — grid de cards "ação → destino". */
+.fluxo-page__transicoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.fluxo-page__transicao {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fluxo-page__transicao-acao {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-dark);
+  line-height: 1.3;
+}
+.fluxo-page__transicao-destino {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.fluxo-page__transicao-destino::before {
+  content: "→ ";
+  color: var(--primary);
+  font-weight: 700;
+}
+
+/* Outras tarefas da mesma rotina — pílulas clicáveis em wrap. */
+.fluxo-page__irmas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.fluxo-page__irma {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  color: var(--primary-dark);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  text-align: left;
+}
+.fluxo-page__irma:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.fluxo-page__alertas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.fluxo-page__alerta {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--primary-light);
+  border-left: 4px solid var(--primary);
+}
+.fluxo-page__alerta--alta   { background: #fee2e2; border-color: var(--danger); }
+.fluxo-page__alerta--media  { background: #fef3c7; border-color: var(--warn); }
+.fluxo-page__alerta--baixa  { background: var(--primary-light); border-color: var(--primary); }
+.fluxo-page__alerta-icone {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.fluxo-page__alerta-texto {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.fluxo-page__alerta-detalhes {
+  margin-top: 6px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.fluxo-page__tecnico {
+  background: var(--bg-card);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.fluxo-page__tecnico-summary {
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  list-style: none;
+}
+.fluxo-page__tecnico-summary::-webkit-details-marker { display: none; }
+.fluxo-page__tecnico-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 160ms ease;
+}
+.fluxo-page__tecnico[open] .fluxo-page__tecnico-summary::before { transform: rotate(90deg); }
+.fluxo-page__tecnico-corpo {
+  padding-top: 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.fluxo-page__tecnico-corpo dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.fluxo-page__tecnico-corpo dt {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.fluxo-page__tecnico-corpo dd { margin: 0; }
+
+.fluxo-page__acoes {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.fluxo-page__acao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 13px;
+}
+.fluxo-page__acao:hover { background: var(--primary-dark); }
+.fluxo-page__acao--ghost {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+.fluxo-page__acao--ghost:hover { background: var(--primary-light); }
+
+/* ─── Camada 4 — Catálogo navegável ──────────────────────────────── */
+.catalogo-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.catalogo-filtros input[type="search"],
+.catalogo-filtros select {
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+}
+.catalogo-filtros input[type="search"] { min-width: 240px; flex: 1; }
+.catalogo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.catalogo-toggle input { accent-color: var(--primary); }
+
+.catalogo-host {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.catalogo-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.catalogo-tabela thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-50, #f5f6f8);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  padding: 10px 12px;
+}
+.catalogo-tabela tbody tr {
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.catalogo-tabela tbody tr:hover { background: var(--primary-light); }
+.catalogo-tabela td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.catalogo-tabela td:nth-child(2) { color: var(--text-muted); font-family: 'Consolas', monospace; font-size: 11.5px; }
+.catalogo-tabela td:nth-child(5) { display: flex; flex-wrap: wrap; gap: 4px; }
+.catalogo-vazio { padding: 24px; text-align: center; color: var(--text-muted); }
+
+/* ─── Ctrl+K palette ─────────────────────────────────────────────── */
+.palette {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: 720px;
+  width: 90%;
+  margin: 8vh auto auto;
+}
+.palette::backdrop {
+  background: rgba(31, 41, 51, 0.40);
+  backdrop-filter: blur(2px);
+}
+.palette__inner {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+  overflow: hidden;
+}
+.palette__input {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+}
+.palette__results {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.palette__results li {
+  padding: 8px 18px;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  border-left: 3px solid transparent;
+}
+.palette__results li.is-selected {
+  background: var(--primary-light);
+  border-left-color: var(--primary);
+}
+.palette__results li strong {
+  font-size: 13.5px;
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+.palette__results li small {
+  grid-column: 1;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.palette__results li .palette__lane {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.palette__results li .palette__lane.lane-jef    { background: var(--jef);    color: var(--jef-strong); }
+.palette__results li .palette__lane.lane-ef     { background: var(--ef);     color: var(--ef-strong); }
+.palette__results li .palette__lane.lane-comum  { background: var(--comum);  color: var(--comum-strong); }
+.palette__results li .palette__lane.lane-shared { background: var(--shared); color: var(--shared-strong); }
+.palette__footer {
+  display: flex;
+  gap: 16px;
+  padding: 8px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-50, #f5f6f8);
+}
+.palette__vazio { padding: 24px; text-align: center; color: var(--text-muted); }
+
+/* Tecla de atalho visual. */
+.kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font: inherit;
+  font-family: 'Consolas', monospace;
+  font-size: 10.5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+/* ─── Footer ──────────────────────────────────────────────────────── */
+.footer {
+  text-align: center;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+/* ─── Print A3 paisagem (FLUX-11 prepara, mas começa cedo) ────────── */
+/* ─── Print A3 paisagem (FLUX-11) ───────────────────────────────────
+ * Estratégia: oculta controles interativos, expande tudo, força
+ * page-break entre seções para impressão limpa em A3 paisagem. */
+@media print {
+  @page { size: A3 landscape; margin: 12mm; }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  /* Esconder elementos de interação que não fazem sentido no papel. */
+  .topbar__actions,
+  .lanes-nav,
+  .breadcrumb,
+  .palette,
+  .footer,
+  #btn-buscar, #btn-catalogo, #btn-imprimir, #btn-tecnico {
+    display: none !important;
+  }
+
+  /* Cabeçalho impresso compacto. */
+  .topbar {
+    border-bottom: 1px solid #999;
+    padding: 0 0 8px;
+    margin-bottom: 12px;
+  }
+  .brand__logo { display: none; }
+  .brand__text h1 { font-size: 16pt; color: #000; }
+  .brand__text p { color: #555; }
+
+  /* Layout sem sombras nem bordas decorativas. */
+  .layout { padding: 0; max-width: none; }
+  .camada {
+    box-shadow: none;
+    border: 0;
+    padding: 0 0 14px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .camada__header h2 { color: #000; }
+
+  /* Mapa unificado: desfaz overflow para imprimir tudo. */
+  .mapa-host {
+    overflow: visible;
+    background: #fff;
+    border: 1px solid #999;
+    padding: 8px;
+  }
+  .mapa-grid { min-width: 0; }
+  .agrupamento-card {
+    background: #fff !important;
+    border: 1px solid #444 !important;
+    color: #000 !important;
+    page-break-inside: avoid;
+  }
+  .card-badge {
+    background: #fff !important;
+    color: #000 !important;
+    border: 1px solid #888;
+  }
+
+  /* Trilhas: 2 colunas no A3 paisagem; cada trilha não quebra entre páginas. */
+  .trilhas-host { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .trilha {
+    border: 1px solid #999;
+    background: #fff;
+    page-break-inside: avoid;
+  }
+  /* Estações imprimem todas (sem scroll) lado a lado em wrap. */
+  .estacoes { flex-wrap: wrap; overflow: visible; }
+  .estacao {
+    page-break-inside: avoid;
+    background: #fff;
+    border: 1px solid #888;
+  }
+
+  /* Vista de fluxo (Camada 3): força detalhes técnicos abertos. */
+  .fluxo-page__tecnico[open] { /* já open */ }
+  .fluxo-page__tecnico:not([open]) > *:not(summary) { display: block; }
+  .fluxo-page__tecnico-summary { font-weight: 700; }
+  .fluxo-page__frase {
+    background: #f5f5f5 !important;
+    border-left: 4px solid #000 !important;
+    color: #000 !important;
+  }
+  .fluxo-page__alerta {
+    background: #f0f0f0 !important;
+    border-left: 4px solid #000 !important;
+  }
+  .fluxo-page__acoes { display: none; }
+
+  /* Catálogo: tabela imprime na íntegra, sem scroll. */
+  .catalogo-filtros { display: none; }
+  .catalogo-host { border: 0; }
+  .catalogo-tabela {
+    border-collapse: collapse;
+    font-size: 9.5pt;
+  }
+  .catalogo-tabela th,
+  .catalogo-tabela td {
+    border: 1px solid #888;
+    padding: 4px 8px;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .catalogo-tabela tbody tr {
+    page-break-inside: avoid;
+  }
+
+  /* Page-break entre as principais camadas se ambas estiverem visíveis. */
+  #camada-mapa { page-break-after: always; }
+  #camada-trilhas { page-break-before: avoid; }
+}
+
+/* ─── Responsivo ──────────────────────────────────────────────────
+ * 3 breakpoints:
+ *   ≤ 1100px  tablet — trilhas em 1 coluna; mapa ainda horizontal com scroll.
+ *   ≤  720px  mobile — topbar empilha; mapa vira LISTA VERTICAL (régua some,
+ *             cada agrupamento full-width); catálogo tabela vira cards;
+ *             palette ocupa toda a tela.
+ *   ≤  420px  mobile pequeno — paddings menores, tipografia ajustada.
+ */
+@media (max-width: 1100px) {
+  .layout { padding: 14px 14px 24px; }
+  .trilhas-host { grid-template-columns: 1fr; }
+  .topbar__actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  .brand { justify-content: flex-start; }
+  .brand__text h1 { font-size: 15px; }
+  .brand__text p { font-size: 11px; }
+  .lanes-nav {
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .lane-chip { flex: 1 1 auto; justify-content: center; font-size: 12px; padding: 6px 10px; }
+  .lane-chip .badge { display: none; }
+  .topbar__actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .btn-ghost { font-size: 12px; padding: 4px 10px; }
+  .btn-ghost .kbd { display: none; }
+
+  /* Mapa unificado vira lista vertical, sem régua de fases.
+   * Cada agrupamento ocupa a largura toda; min-width do grid é zerado. */
+  .mapa-host { padding: 12px 10px; min-height: auto; }
+  .mapa-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+  .fase-cell { display: none; }
+  .agrupamento-card {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    min-height: auto;
+    padding: 12px 14px;
+  }
+  .agrupamento-card__titulo { font-size: 13.5px; }
+  .agrupamento-card__desc { -webkit-line-clamp: 4; }
+
+  /* Trilhas em 1 coluna, estações com scroll horizontal mais compacto. */
+  .trilhas-host { gap: 12px; }
+  .trilha { padding: 12px 14px; }
+  .estacao { min-width: 140px; max-width: 180px; }
+
+  /* Camada 3 — vista de fluxo: blocos empilhados, ações em coluna. */
+  .fluxo-page__titulo { font-size: 18px; }
+  .fluxo-page__frase { font-size: 14px; padding: 12px 14px; }
+  .fluxo-page__grid { grid-template-columns: 1fr; gap: 12px; }
+  .fluxo-page__acoes { flex-direction: column; }
+  .fluxo-page__acao { justify-content: center; }
+
+  /* Camada 4 — catálogo: tabela vira cards verticais usando data-attrs.
+   * Mantemos <table> para acessibilidade; CSS reflowa em mobile. */
+  .catalogo-filtros { gap: 8px; }
+  .catalogo-filtros input[type="search"] { min-width: 0; width: 100%; }
+  .catalogo-filtros select { flex: 1; min-width: 120px; }
+  .catalogo-host { border: 0; }
+  .catalogo-tabela, .catalogo-tabela tbody, .catalogo-tabela tr {
+    display: block;
+    width: 100%;
+  }
+  .catalogo-tabela thead { display: none; }
+  .catalogo-tabela tbody tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+  }
+  .catalogo-tabela td {
+    display: block;
+    padding: 2px 0;
+    border-bottom: 0;
+  }
+  .catalogo-tabela td:nth-child(1) { font-weight: 700; font-size: 14px; }
+  .catalogo-tabela td:nth-child(2) { font-size: 11px; }
+  .catalogo-tabela td:nth-child(3),
+  .catalogo-tabela td:nth-child(4) { display: inline-block; margin-right: 8px; font-size: 11.5px; color: var(--text-muted); }
+  .catalogo-tabela td:nth-child(5) { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+  /* Palette ocupa toda a tela em mobile (mais usável com touch). */
+  .palette { max-width: 100%; width: 100%; margin: 0; }
+  .palette__inner { max-height: 100vh; min-height: 100vh; border-radius: 0; }
+}
+
+@media (max-width: 420px) {
+  .layout { padding: 10px 10px 20px; }
+  .camada { padding: 14px 14px; }
+  .brand__text h1 { font-size: 14px; }
+  .lane-chip { font-size: 11px; padding: 5px 8px; }
+  .btn-ghost { font-size: 11px; padding: 4px 8px; }
+  .legenda { gap: 8px 14px; font-size: 11px; }
+  .agrupamento-card { padding: 10px 12px; }
+  .agrupamento-card__titulo { font-size: 13px; }
+  .estacao { min-width: 130px; }
+  .fluxo-page__titulo { font-size: 16px; }
+}

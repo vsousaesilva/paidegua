@@ -93,6 +93,17 @@
       "matches": [
         "https://*.jus.br/*"
       ]
+    },
+    {
+      "resources": [
+        "assets/fluxos-catalogo.json",
+        "assets/jornadas-jef.json",
+        "assets/jornadas-ef.json",
+        "assets/jornadas-comum.json"
+      ],
+      "matches": [
+        "https://*.jus.br/*"
+      ]
     }
   ]
 }

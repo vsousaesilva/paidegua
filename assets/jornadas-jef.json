@@ -1,0 +1,196 @@
+{
+  "lane": "JEF",
+  "versao": "2",
+  "geradoEm": "2026-05-07",
+  "validadoPor": "vsousaesilva@jfce.jus.br",
+  "_nota": "Versão 2 (FLUX-17 / pivot 2026-05-07): cada estação de trilha agora referencia uma TAREFA humana real do PJe (com prefixo [JEF]), não mais um fluxo. Cada agrupamento ganha tarefasPrincipais com 4-5 tarefas-âncora confirmadas no catálogo.",
+  "trilhas": [
+    {
+      "id": "conciliacao-audiencia",
+      "nome": "Conciliação e audiência",
+      "descricaoCurta": "Como o processo passa pelo CEJUSC e chega à audiência se não houver acordo.",
+      "icone": "users-round",
+      "cor": "var(--jef)",
+      "agrupamento": "instrucao",
+      "estacoes": [
+        { "tarefa": "[JEF] Triagem da conciliação", "papel": "principal" },
+        { "tarefa": "[JEF] Audiência - Designar", "papel": "principal" },
+        { "tarefa": "[JEF] Audiência - Pendente de comunicação", "papel": "principal" },
+        { "tarefa": "[JEF] Audiência - Aguardar", "papel": "principal" },
+        { "tarefa": "[JEF] Audiência - Cancelada", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Audiência - Convertida em diligência", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Audiência - Realizada", "papel": "principal" },
+        { "tarefa": "[JEF] Audiência - Elaborar ata", "papel": "principal" },
+        { "tarefa": "[JEF] Audiência - Assinar ata", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "pericia",
+      "nome": "Perícia médica e social",
+      "descricaoCurta": "Designação do perito, controle do laudo e manifestações — caminho típico em ações previdenciárias.",
+      "icone": "stethoscope",
+      "cor": "var(--jef)",
+      "agrupamento": "instrucao",
+      "estacoes": [
+        { "tarefa": "[JEF] Analisar inicial - Perícia", "papel": "origem" },
+        { "tarefa": "[JEF] Perícia - Aguardar laudo", "papel": "principal" },
+        { "tarefa": "[JEF] Perícia - Cobrar laudo", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Perícia - Analisar laudo", "papel": "principal" },
+        { "tarefa": "[JEF] Perícia - Aguardar esclarecimentos periciais", "papel": "ramificacao" }
+      ]
+    },
+    {
+      "id": "sentenca-transito",
+      "nome": "Caminho da sentença",
+      "descricaoCurta": "Da conclusão para o gabinete até a certificação do trânsito em julgado.",
+      "icone": "gavel",
+      "cor": "var(--jef)",
+      "agrupamento": "decisao",
+      "estacoes": [
+        { "tarefa": "[JEF] Analisar - Secretaria", "papel": "origem" },
+        { "tarefa": "[JEF] Ato do magistrado - Despacho", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Ato do magistrado - Decisão", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Ato do magistrado - Urgente", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Ato do magistrado - Sentença", "papel": "principal" },
+        { "tarefa": "[JEF] Ato do magistrado - Sentença de extinção", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Comunicação - Elaborar", "papel": "principal" },
+        { "tarefa": "[JEF] Trânsito em julgado", "papel": "principal" }
+      ]
+    },
+    {
+      "id": "recursos",
+      "nome": "Recursos",
+      "descricaoCurta": "Da interposição do recurso à remessa para a Turma Recursal, com contrarrazões e admissibilidade.",
+      "icone": "arrow-up-right",
+      "cor": "var(--jef)",
+      "agrupamento": "recurso",
+      "estacoes": [
+        { "tarefa": "[JEF] Análise de manifestação de recurso", "papel": "principal" },
+        { "tarefa": "[JEF] Intimar Automaticamente para Contrarrazões", "papel": "principal" },
+        { "tarefa": "[JEF] Intimar o polo passivo para contrarrazão", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Intimar o polo ativo para contrarrazão", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Expediente de contrarrazões com manifestação", "papel": "principal" },
+        { "tarefa": "[JEF] Expediente de recurso com manifestação", "papel": "principal" },
+        { "tarefa": "[JEF] Pendente de envio para Turma Recursal", "papel": "principal" },
+        { "tarefa": "[JEF] Intimação - Embargos", "papel": "ramificacao" }
+      ]
+    },
+    {
+      "id": "cumprimento-rpv",
+      "nome": "Cumprimento e RPV/Precatório",
+      "descricaoCurta": "Após o trânsito, do cálculo dos valores devidos à expedição da requisição e arquivamento.",
+      "icone": "wallet",
+      "cor": "var(--jef)",
+      "agrupamento": "cumprimento",
+      "estacoes": [
+        { "tarefa": "[JEF] Cumprir sentença", "papel": "principal" },
+        { "tarefa": "[JEF] Cumprimento de sentença", "papel": "principal" },
+        { "tarefa": "[JEF] RPV-PRC - Autuar requisitório", "papel": "principal" },
+        { "tarefa": "[JEF] RPV-PRC - Expediente - Com manifestação", "papel": "principal" },
+        { "tarefa": "[JEF] RPV-PRC - Expediente - Sem manifestação", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Arquivar - Analisar conclusão aberta", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Arquivar - Analisar pendência", "papel": "ramificacao" },
+        { "tarefa": "[JEF] Arquivamento", "papel": "principal" },
+        { "tarefa": "[JEF] Arquivo", "papel": "principal" }
+      ]
+    }
+  ],
+  "agrupamentos": [
+    {
+      "id": "distribuicao",
+      "nome": "Distribuição e triagem",
+      "descricaoCurta": "Recebimento da inicial, triagem da secretaria e definição do tipo de instrução (perícia ou audiência).",
+      "faseInicial": "distribuicao",
+      "faseFinal": "triagem",
+      "fasesCanonicas": ["Distribuição", "Triagem"],
+      "tarefasPrincipais": [
+        "[JEF] Analisar inicial",
+        "[JEF] Analisar inicial - Audiência",
+        "[JEF] Analisar inicial - Perícia",
+        "[JEF] Analisar - Secretaria",
+        "[JEF] Triagem da conciliação"
+      ],
+      "fluxosPrincipais": ["JEF", "JEF_ANSECR", "JEF_TRIAGINCEJUSC"],
+      "ordem": 1
+    },
+    {
+      "id": "instrucao",
+      "nome": "Instrução probatória",
+      "descricaoCurta": "Onde acontecem perícia, audiência e conciliação. Maior tempo do processo costuma ser gasto aqui.",
+      "faseInicial": "instrucao",
+      "faseFinal": "pericia",
+      "fasesCanonicas": ["Instrução", "Audiência", "Perícia"],
+      "tarefasPrincipais": [
+        "[JEF] Audiência - Designar",
+        "[JEF] Audiência - Aguardar",
+        "[JEF] Perícia - Aguardar laudo",
+        "[JEF] Perícia - Analisar laudo",
+        "[JEF] Comunicação - Elaborar"
+      ],
+      "fluxosPrincipais": ["JEF_OPPER", "JEF_OPAUD", "JEF_REMINTCEJUSC"],
+      "ordem": 2
+    },
+    {
+      "id": "decisao",
+      "nome": "Decisão e sentença",
+      "descricaoCurta": "Conclusão para o gabinete, elaboração de despacho/decisão/sentença e comunicação às partes.",
+      "faseInicial": "sentenca",
+      "faseFinal": "sentenca",
+      "fasesCanonicas": ["Sentença"],
+      "tarefasPrincipais": [
+        "[JEF] Ato do magistrado - Despacho",
+        "[JEF] Ato do magistrado - Decisão",
+        "[JEF] Ato do magistrado - Urgente",
+        "[JEF] Ato do magistrado - Sentença",
+        "[JEF] Ato do magistrado - Sentença de extinção"
+      ],
+      "fluxosPrincipais": ["JEF_ELDESP", "JEF_ELDEC", "JEF_ELSENT"],
+      "ordem": 3
+    },
+    {
+      "id": "recurso",
+      "nome": "Recursos",
+      "descricaoCurta": "Caminho dos recursos da sentença até a Turma Recursal, com contrarrazões e admissibilidade.",
+      "faseInicial": "recurso",
+      "faseFinal": "recurso",
+      "fasesCanonicas": ["Recurso"],
+      "tarefasPrincipais": [
+        "[JEF] Análise de manifestação de recurso",
+        "[JEF] Intimar Automaticamente para Contrarrazões",
+        "[JEF] Expediente de contrarrazões com manifestação",
+        "[JEF] Pendente de envio para Turma Recursal",
+        "[JEF] Intimação - Embargos"
+      ],
+      "fluxosPrincipais": ["JEF_ANMANREC", "JEF_REMTURMREC"],
+      "ordem": 4
+    },
+    {
+      "id": "cumprimento",
+      "nome": "Cumprimento e arquivo",
+      "descricaoCurta": "Após o trânsito, cálculo dos valores devidos, expedição de RPV ou precatório e arquivamento.",
+      "faseInicial": "cumprimento",
+      "faseFinal": "arquivo",
+      "fasesCanonicas": ["Cumprimento", "Arquivo"],
+      "tarefasPrincipais": [
+        "[JEF] Trânsito em julgado",
+        "[JEF] Cumprir sentença",
+        "[JEF] RPV-PRC - Autuar requisitório",
+        "[JEF] Arquivar - Analisar conclusão aberta",
+        "[JEF] Arquivo"
+      ],
+      "fluxosPrincipais": ["JEF_CERTTRANSJULG", "JEF_CUMPRSENT", "JEF_ELRPVPRC", "JEF_ARQ"],
+      "ordem": 5
+    }
+  ],
+  "fasesCanonicas": [
+    { "id": "distribuicao", "nome": "Distribuição", "ordem": 1 },
+    { "id": "triagem", "nome": "Triagem", "ordem": 2 },
+    { "id": "instrucao", "nome": "Instrução", "ordem": 3 },
+    { "id": "audiencia", "nome": "Audiência", "ordem": 4 },
+    { "id": "pericia", "nome": "Perícia", "ordem": 5 },
+    { "id": "sentenca", "nome": "Sentença", "ordem": 6 },
+    { "id": "recurso", "nome": "Recurso", "ordem": 7 },
+    { "id": "cumprimento", "nome": "Cumprimento", "ordem": 8 },
+    { "id": "arquivo", "nome": "Arquivo", "ordem": 9 }
+  ]
+}

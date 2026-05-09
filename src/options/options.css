@@ -162,6 +162,23 @@ button {
   gap: 9px;
 }
 
+/* Toggle inline para telemetria dos Mapas de Jornada (FLUX-11). */
+.paidegua-jornadas-tel__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--primary-dark);
+}
+.paidegua-jornadas-tel__toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary, #1351b4);
+  cursor: pointer;
+}
+
 .paidegua-options__btn {
   background: rgba(255, 255, 255, 0.85);
   color: var(--primary-dark);

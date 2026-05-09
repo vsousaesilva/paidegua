@@ -517,7 +517,14 @@ const AUTH_FREE_CHANNELS: ReadonlySet<string> = new Set<string>([
   MESSAGE_CHANNELS.AUTH_VERIFY_CODE,
   MESSAGE_CHANNELS.AUTH_GET_STATUS,
   MESSAGE_CHANNELS.AUTH_REVALIDATE,
-  MESSAGE_CHANNELS.AUTH_LOGOUT
+  MESSAGE_CHANNELS.AUTH_LOGOUT,
+  // Os canais abaixo apenas fazem `chrome.tabs.create` para uma página
+  // HTML estática embarcada (Consultor de fluxos / Mapas de Jornada).
+  // Não chamam provider de IA nem tocam dados do PJe, então faz sentido
+  // ficarem fora do gate de autenticação. O CHAT dentro dessas páginas
+  // continua protegido pelos canais CHAT_* que NÃO estão nesta lista.
+  MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR,
+  MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS
 ]);
 
 /**
@@ -1066,6 +1073,13 @@ function dispatchMessage(
 
       case MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR:
         void handleOpenFluxosConsultor(sendResponse);
+        return true;
+
+      case MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS:
+        void handleOpenFluxosJornadas(
+          message.payload as { lane?: 'jef' | 'ef' | 'comum' },
+          sendResponse
+        );
         return true;
 
       case MESSAGE_CHANNELS.ANALISAR_PROCESSO:
@@ -3397,6 +3411,38 @@ async function handleOpenFluxosConsultor(
     sendResponse({ ok: true });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handleOpenFluxosConsultor falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Abre a aba dos "Mapas de Jornada" (FLUX-09 / FLUX-04). Lane vem por
+ * query string (?lane=jef|ef|comum); opcionalmente uma tarefa específica
+ * pode ser passada (?tarefa=<id>) para abrir direto na vista da tarefa.
+ */
+async function handleOpenFluxosJornadas(
+  payload:
+    | { lane?: 'jef' | 'ef' | 'comum'; tarefa?: string; fluxo?: string }
+    | undefined,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const lane = payload?.lane ?? 'jef';
+    const params = new URLSearchParams({ lane });
+    if (payload?.tarefa) params.set('tarefa', payload.tarefa);
+    else if (payload?.fluxo) params.set('fluxo', payload.fluxo);
+    const url = chrome.runtime.getURL(`fluxos-jornadas/jornadas.html?${params.toString()}`);
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba dos Mapas de Jornada.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenFluxosJornadas falhou:`, error);
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }

@@ -635,7 +635,15 @@ export const MESSAGE_CHANNELS = {
    * outros painéis, não depende de estado da aba PJe nem do painel do
    * usuário: o catálogo é embarcado e a aba é autossuficiente.
    */
-  FLUXOS_OPEN_CONSULTOR: 'paidegua/fluxos/open-consultor'
+  FLUXOS_OPEN_CONSULTOR: 'paidegua/fluxos/open-consultor',
+
+  /**
+   * Canal dos "Mapas de Jornada" (FLUX-09) — abre a página estática
+   * `fluxos-jornadas/jornadas.html?lane=<jef|ef|comum>` em uma nova
+   * aba. Mesma topologia do Consultor: catálogo embarcado, aba
+   * autossuficiente, sem estado de aba PJe.
+   */
+  FLUXOS_OPEN_JORNADAS: 'paidegua/fluxos/open-jornadas'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -689,6 +697,14 @@ export const STORAGE_KEYS = {
    * para que cada usuário mantenha sua escolha entre sessões.
    */
   FLUXOS_MODO: 'paidegua.fluxos.modo',
+  /**
+   * Telemetria dos Mapas de Jornada (FLUX-11). Default `false`. Quando
+   * `true`, registra eventos agregados (timestamp + tipo + ids de fluxo
+   * visitado) em `JORNADAS_TELEMETRIA_DADOS`, sem conteúdo. NUNCA envia
+   * a backend até acordo formal com a SETIC.
+   */
+  JORNADAS_TELEMETRIA_OPT_IN: 'paidegua.jornadas.telemetria.optIn',
+  JORNADAS_TELEMETRIA_DADOS:  'paidegua.jornadas.telemetria.dados',
   /**
    * Chave em `chrome.storage.session` (volátil) com o payload JÁ ANONIMIZADO
    * do Painel Gerencial, pronto para enviar à LLM. Separado do

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mapas de Jornada · pAIdegua</title>
+<link rel="icon" type="image/png" href="../icons/icon32.png">
+<link rel="stylesheet" href="jornadas.css">
+</head>
+<body>
+  <header class="topbar" role="banner">
+    <div class="brand">
+      <img src="../icons/icon32.png" alt="" class="brand__logo" width="28" height="28">
+      <div class="brand__text">
+        <h1 id="page-titulo">Mapa de Jornada — JEF</h1>
+        <p id="page-subtitulo" class="muted">Por onde o processo caminha, quais são as possibilidades e o que merece atenção.</p>
+      </div>
+    </div>
+
+    <nav class="lanes-nav" aria-label="Trocar de lane">
+      <a href="?lane=jef"   class="lane-chip is-jef"   data-lane="jef">JEF</a>
+      <a href="?lane=ef"    class="lane-chip is-ef"    data-lane="ef">EF</a>
+      <a href="?lane=comum" class="lane-chip is-comum" data-lane="comum">Cível e Criminal</a>
+    </nav>
+
+    <div class="topbar__actions">
+      <button id="btn-buscar"   type="button" class="btn-ghost" title="Buscar fluxo (Ctrl+K)">
+        <span aria-hidden="true">⌕</span> Buscar <kbd class="kbd">Ctrl K</kbd>
+      </button>
+      <button id="btn-catalogo" type="button" class="btn-ghost" title="Ver catálogo completo dos fluxos">Catálogo</button>
+      <button id="btn-imprimir" type="button" class="btn-ghost" title="Imprimir esta vista">Imprimir</button>
+      <button id="btn-tecnico"  type="button" class="btn-ghost" aria-pressed="false" title="Mostrar dados técnicos (códigos, swimlanes, BPMN)">Modo técnico</button>
+    </div>
+  </header>
+
+  <main class="layout" id="layout">
+    <!-- Camada 1 — Mapa unificado (homepage da visualização). -->
+    <section id="camada-mapa" class="camada camada-mapa" aria-labelledby="hd-mapa">
+      <header class="camada__header">
+        <h2 id="hd-mapa">Mapa unificado</h2>
+        <p class="muted">Visão panorâmica das fases do processo. Clique em um agrupamento para abrir a trilha.</p>
+      </header>
+      <div id="mapa-host" class="mapa-host" role="img" aria-label="Mapa de jornadas do JEF">
+        <div class="loading">Carregando catálogo e jornadas…</div>
+      </div>
+      <footer class="legenda" aria-label="Legenda do mapa">
+        <span class="legenda__item"><span class="dot dot-principal"></span>Caminho típico</span>
+        <span class="legenda__item"><span class="dot dot-ramificacao"></span>Ramificação</span>
+        <span class="legenda__item"><span class="dot dot-retorno"></span>Retorno</span>
+        <span class="legenda__item"><span class="badge-icon icon-clock" aria-hidden="true"></span>Prazo paralelo</span>
+        <span class="legenda__item"><span class="badge-icon icon-bot" aria-hidden="true"></span>Decisão automática</span>
+        <span class="legenda__item"><span class="badge-icon icon-hub" aria-hidden="true"></span>Ponto de convergência</span>
+      </footer>
+    </section>
+
+    <!-- Camada 2 — Trilhas temáticas. Renderizadas em coluna abaixo do mapa. -->
+    <section id="camada-trilhas" class="camada camada-trilhas" aria-labelledby="hd-trilhas">
+      <header class="camada__header">
+        <h2 id="hd-trilhas">Trilhas temáticas</h2>
+        <p class="muted">Cada trilha resume um caminho típico de tarefas. Clique em qualquer tarefa para ver o detalhe.</p>
+      </header>
+      <div id="trilhas-host" class="trilhas-host">
+        <!-- preenchido por jornadas.ts -->
+      </div>
+    </section>
+
+    <!-- Camada 3 — Vista de estação (página por fluxo). Mostrada quando ?fluxo=CODIGO. -->
+    <section id="camada-estacao" class="camada camada-estacao" aria-labelledby="hd-estacao" hidden>
+      <nav class="breadcrumb" aria-label="Navegação">
+        <a href="?lane=jef" class="breadcrumb__voltar">← Mapa de Jornada</a>
+      </nav>
+      <div id="estacao-host">
+        <!-- preenchido por jornadas.ts -->
+      </div>
+    </section>
+
+    <!-- Camada 4 — Catálogo navegável. Mostrada quando ?lista=1. -->
+    <section id="camada-catalogo" class="camada camada-catalogo" aria-labelledby="hd-catalogo" hidden>
+      <nav class="breadcrumb" aria-label="Navegação">
+        <a href="?lane=jef" class="breadcrumb__voltar">← Mapa de Jornada</a>
+      </nav>
+      <header class="camada__header">
+        <h2 id="hd-catalogo">Catálogo de tarefas</h2>
+        <p class="muted">Lista de todas as tarefas humanas do JEF — os mesmos nomes que aparecem na fila de trabalho do PJe. Clique em qualquer linha para abrir o detalhe.</p>
+      </header>
+      <div class="catalogo-filtros" id="catalogo-filtros">
+        <input type="search" id="catalogo-busca" placeholder="Buscar por nome da tarefa, responsável…" autocomplete="off">
+        <select id="catalogo-lane">
+          <option value="">Todas as lanes</option>
+        </select>
+        <select id="catalogo-swimlane">
+          <option value="">Todos os responsáveis</option>
+        </select>
+        <span id="catalogo-contagem" class="muted small"></span>
+      </div>
+      <div id="catalogo-host" class="catalogo-host">
+        <!-- preenchido por jornadas.ts -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Ctrl+K — palette de busca rápida. -->
+  <dialog id="palette" class="palette" aria-label="Buscar fluxo">
+    <div class="palette__inner">
+      <input
+        type="search"
+        id="palette-input"
+        class="palette__input"
+        placeholder="Digite parte do nome ou do código…"
+        autocomplete="off"
+        spellcheck="false">
+      <ul id="palette-results" class="palette__results" role="listbox"></ul>
+      <footer class="palette__footer muted small">
+        <span><kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> navegar</span>
+        <span><kbd class="kbd">Enter</kbd> abrir</span>
+        <span><kbd class="kbd">Esc</kbd> fechar</span>
+      </footer>
+    </div>
+  </dialog>
+
+  <footer class="footer" role="contentinfo">
+    <span class="muted small">pAIdegua · Inovajus JFCE — uso institucional. Toda decisão jurídica permanece humana.</span>
+  </footer>
+
+  <script src="jornadas.js" type="module"></script>
+</body>
+</html>

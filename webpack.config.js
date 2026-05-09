@@ -57,7 +57,10 @@ module.exports = (_env, argv) => {
       'metas-dashboard/dashboard': './src/metas-dashboard/dashboard.ts',
       'comunicacao-painel/painel': './src/comunicacao-painel/painel.ts',
       'audiencia-painel/painel': './src/audiencia-painel/painel.ts',
-      'fluxos-consultor/consultor': './src/fluxos-consultor/consultor.ts'
+      'fluxos-consultor/consultor': './src/fluxos-consultor/consultor.ts',
+      // Mapas de Jornada (FLUX-09) — visualização estruturada
+      // complementar ao Consultor. Lane por query string (?lane=jef).
+      'fluxos-jornadas/jornadas': './src/fluxos-jornadas/jornadas.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -147,6 +150,26 @@ module.exports = (_env, argv) => {
           {
             from: 'assets/fluxos-catalogo.json',
             to: 'assets/fluxos-catalogo.json',
+            noErrorOnMissing: true
+          },
+          // Mapas de Jornada (FLUX-09) — visualização estruturada.
+          // Página + estilos copiados; jornadas-<lane>.json é o JSON
+          // curado das trilhas e agrupamentos de cada lane.
+          { from: 'src/fluxos-jornadas/jornadas.html', to: 'fluxos-jornadas/jornadas.html' },
+          { from: 'src/fluxos-jornadas/jornadas.css', to: 'fluxos-jornadas/jornadas.css' },
+          {
+            from: 'assets/jornadas-jef.json',
+            to: 'assets/jornadas-jef.json',
+            noErrorOnMissing: true
+          },
+          {
+            from: 'assets/jornadas-ef.json',
+            to: 'assets/jornadas-ef.json',
+            noErrorOnMissing: true
+          },
+          {
+            from: 'assets/jornadas-comum.json',
+            to: 'assets/jornadas-comum.json',
             noErrorOnMissing: true
           },
           { from: 'src/content/content.css', to: 'content.css' },
