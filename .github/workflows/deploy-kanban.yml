@@ -54,14 +54,41 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.pages == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # `contents: write` é necessário para o passo final commitar o seed.js
+    # regenerado de volta na main quando seed.json muda.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Garante que o seed.js servido pelo Pages reflita o seed.json
+      # atual. O Pages serve arquivos estáticos; sem este passo o
+      # window.__PAIDEGUA_SEED__ (fallback de file://) ficaria desatualizado.
+      - name: Regerar seed.js a partir de seed.json
+        working-directory: docs/kanban-massificacao
+        run: node scripts/regenerar-seed-js.mjs
       - name: Deploy Pages (paidegua-kanban)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy "docs/kanban-massificacao" --project-name=paidegua-kanban --branch=main --commit-dirty=true
+      # Commit de volta para o repo, para que o seed.js no working tree
+      # nunca fique defasado em relação ao seed.json. `[skip ci]` evita
+      # loop de workflow (este push voltaria a casar com `paths:`).
+      # Só roda em push; em workflow_dispatch a etapa é pulada.
+      - name: Commitar seed.js regenerado (se mudou)
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/kanban-massificacao/seed.js
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(kanban): regenera seed.js a partir de seed.json [skip ci]"
+            git push
+          fi
 
   deploy-worker:
     needs: detect-changes
