@@ -51,7 +51,25 @@ const elLog = document.getElementById('log') as HTMLElement;
 
 let requestId = '';
 
-void main();
+// MET-07: desativação temporária do "Controle Metas CNJ" para revisão.
+// Substitui a UI por um aviso e impede a coleta. Reverter alterando para
+// `false` quando a revisão acabar.
+const METAS_CNJ_EM_REVISAO = true;
+
+if (METAS_CNJ_EM_REVISAO) {
+  document.body.innerHTML =
+    '<main style="max-width: 640px; margin: 80px auto; padding: 32px; ' +
+    'font-family: system-ui, sans-serif; line-height: 1.55; color: #1f2937;">' +
+    '<h1 style="font-size: 22px; margin: 0 0 12px;">Controle Metas CNJ — em revisão</h1>' +
+    '<p style="margin: 0 0 12px;">Esta funcionalidade está temporariamente ' +
+    'fora do ar para revisão. Os dados já coletados em sessões anteriores ' +
+    'continuam preservados localmente e voltarão a ficar disponíveis assim ' +
+    'que a revisão for concluída.</p>' +
+    '<p style="margin: 0; color: #6b7280; font-size: 13px;">Pode fechar esta aba.</p>' +
+    '</main>';
+} else {
+  void main();
+}
 
 async function main(): Promise<void> {
   try {
