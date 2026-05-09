@@ -39,6 +39,33 @@
       </button>
     </div>
 
+    <nav class="lanes-seletor" aria-label="Mapas de Jornada">
+      <button
+        type="button"
+        id="lane-jef"
+        class="lane-pill is-jef"
+        data-lane="jef"
+        title="Abrir o Mapa de Jornada do JEF em nova aba">
+        Mapa JEF
+      </button>
+      <button
+        type="button"
+        id="lane-ef"
+        class="lane-pill is-ef"
+        data-lane="ef"
+        title="Abrir o Mapa de Jornada da Execução Fiscal em nova aba">
+        Mapa EF
+      </button>
+      <button
+        type="button"
+        id="lane-comum"
+        class="lane-pill is-comum"
+        data-lane="comum"
+        title="Abrir o Mapa de Jornada das varas comuns (Cível e Criminal) em nova aba">
+        Cível e Criminal
+      </button>
+    </nav>
+
     <div class="topbar__actions">
       <span id="catalogo-info" class="muted small">carregando…</span>
       <button id="btn-limpar" type="button" class="btn-ghost" title="Limpar conversa">Limpar</button>
@@ -56,7 +83,7 @@
       </details>
 
       <section class="busca-block">
-        <h2 id="busca-titulo">Buscar etapa</h2>
+        <h2 id="busca-titulo">Buscar tarefa</h2>
         <input type="search" id="busca" placeholder="digite parte do nome…">
         <ul id="busca-resultados" class="busca-list"></ul>
       </section>
@@ -87,6 +114,27 @@
   <footer class="footer">
     <span class="muted small">pAIdegua · Inovajus JFCE — uso institucional. Toda decisão jurídica permanece humana.</span>
   </footer>
+
+  <!-- Modal de zoom do diagrama Mermaid (FLUX-14): click no painel
+       Diagrama abre o diagrama em tela cheia com pan/zoom interativo. -->
+  <dialog id="diagram-zoom" class="diagram-zoom" aria-labelledby="diagram-zoom-titulo">
+    <header class="diagram-zoom__head">
+      <h2 id="diagram-zoom-titulo" class="diagram-zoom__titulo">Diagrama do caminho</h2>
+      <div class="diagram-zoom__tools" role="toolbar" aria-label="Controles do diagrama">
+        <button type="button" id="diagram-zoom-out"   class="diagram-zoom__btn" title="Reduzir (−)">−</button>
+        <span     id="diagram-zoom-level" class="diagram-zoom__level" aria-live="polite">100%</span>
+        <button type="button" id="diagram-zoom-in"    class="diagram-zoom__btn" title="Ampliar (+)">+</button>
+        <button type="button" id="diagram-zoom-reset" class="diagram-zoom__btn diagram-zoom__btn--ghost" title="Ajustar à tela">Ajustar</button>
+        <button type="button" id="diagram-zoom-close" class="diagram-zoom__btn diagram-zoom__btn--close" title="Fechar (Esc)" aria-label="Fechar">✕</button>
+      </div>
+    </header>
+    <div id="diagram-zoom-body" class="diagram-zoom__body">
+      <div id="diagram-zoom-stage" class="diagram-zoom__stage"></div>
+    </div>
+    <p class="diagram-zoom__hint muted small">
+      Arraste para mover · Scroll com <kbd>Ctrl</kbd> para zoom · <kbd>Esc</kbd> fecha
+    </p>
+  </dialog>
 
   <script src="consultor.js" type="module"></script>
 </body>

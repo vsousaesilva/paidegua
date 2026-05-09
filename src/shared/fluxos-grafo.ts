@@ -176,16 +176,18 @@ export function caminhoParaMermaid(
   for (const code of caminho) {
     const f = grafo.nos.get(code);
     const lane = f?.lane ?? '?';
-    const nomeLegivel = limparNomeUsuario(f?.nome ?? code);
+    const nomeOficial = nomeOficialUsuario(f?.nome ?? code);
     const id = sanitizarId(code);
     if (opcoes.mostrarCodigo) {
       linhas.push(
         `  ${id}["${escaparMermaid(code)}<br/><i>${escaparMermaid(
-          nomeLegivel
+          nomeOficial
         ).slice(0, 40)}</i><br/>${lane}"]`
       );
     } else {
-      linhas.push(`  ${id}["${escaparMermaid(nomeLegivel).slice(0, 50)}"]`);
+      // Modo usuário: usa o nome oficial completo da tarefa (com [JEF])
+      // para casar com o que o servidor vê na tela do PJe.
+      linhas.push(`  ${id}["${escaparMermaid(nomeOficial).slice(0, 60)}"]`);
     }
   }
   // Edges
@@ -221,11 +223,18 @@ export function caminhoParaMermaid(
   return linhas.join('\n');
 }
 
-function limparNomeUsuario(nome: string): string {
+/**
+ * Nome OFICIAL da tarefa para o modo usuário — preserva o prefixo
+ * "[JEF]" (ou "[EF]" / "[COMUM]") porque é assim que aparece na tela
+ * do PJe. O servidor precisa dessa pista para casar o que o consultor
+ * diz com o que ele vê. Higieniza apenas underscores literais, aspas
+ * que quebram o Mermaid e crases. Colchetes do prefixo são mantidos.
+ */
+function nomeOficialUsuario(nome: string): string {
   return nome
-    .replace(/^\s*\[(?:JEF|EF|COMUM)\]\s*/i, '')
     .replace(/_+/g, ' ')
-    .replace(/[\[\]"`]/g, '')
+    .replace(/["`]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -250,6 +259,10 @@ function sanitizarId(code: string): string {
 }
 
 function escaparMermaid(s: string): string {
+  // Aspas, < > e | quebram o parser do Mermaid; colchetes do prefixo
+  // "[JEF]" precisam ser preservados (são parte do nome oficial). Para
+  // não confundir com a sintaxe `id["label"]`, tratamos o conteúdo como
+  // string normal — Mermaid aceita colchetes dentro de aspas.
   return s.replace(/"/g, "'").replace(/[<>]/g, '').replace(/\|/g, '/');
 }
 
