@@ -12,6 +12,7 @@
 
 import {
   CHAT_PORT_MSG,
+  MESSAGE_CHANNELS,
   PORT_NAMES,
   PROVIDER_MODELS,
   STORAGE_KEYS,
@@ -85,6 +86,7 @@ async function inicializar(): Promise<void> {
   bindBuscaInput();
   bindFormulario();
   bindLimpar();
+  bindLanesSeletor();
 
   aplicarModoNaUi(memoria.modo, { silencioso: true });
   renderBoasVindas();
@@ -175,11 +177,11 @@ function aplicarModoNaUi(modo: ConsultorModo, opts: { silencioso: boolean }): vo
   const buscaTit = $('busca-titulo');
   const buscaInput = $('busca') as HTMLInputElement;
   if (modo === 'usuario') {
-    buscaTit.textContent = 'Buscar etapa';
-    buscaInput.placeholder = 'digite parte do nome…';
+    buscaTit.textContent = 'Buscar tarefa';
+    buscaInput.placeholder = 'digite parte do nome da tarefa…';
   } else {
-    buscaTit.textContent = 'Buscar fluxo';
-    buscaInput.placeholder = 'código, nome, fase…';
+    buscaTit.textContent = 'Buscar tarefa ou fluxo';
+    buscaInput.placeholder = 'tarefa, código de fluxo, fase…';
   }
   // Quick actions
   renderQuickActions();
@@ -306,6 +308,32 @@ function bindLimpar(): void {
     $('diagram-host').innerHTML = '<p class="muted center">O desenho do caminho aparecerá aqui<br>quando você pedir um trajeto.</p>';
     setStatus('');
   });
+}
+
+/**
+ * Atalhos para os Mapas de Jornada (FLUX-09). Cada pílula no header
+ * dispara `FLUXOS_OPEN_JORNADAS` no background, que abre a aba estática
+ * `fluxos-jornadas/jornadas.html?lane=<lane>`. Botões disabled (EF e
+ * Cível e Criminal na v1) ignoram o clique pelo atributo nativo.
+ */
+function bindLanesSeletor(): void {
+  const pills = document.querySelectorAll<HTMLButtonElement>('.lane-pill');
+  for (const pill of Array.from(pills)) {
+    pill.addEventListener('click', async () => {
+      if (pill.disabled) return;
+      const lane = pill.dataset.lane as 'jef' | 'ef' | 'comum' | undefined;
+      if (!lane) return;
+      try {
+        await chrome.runtime.sendMessage({
+          channel: MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS,
+          payload: { lane }
+        });
+      } catch (e) {
+        console.warn('[consultor] FLUXOS_OPEN_JORNADAS falhou:', e);
+        setStatus('Não consegui abrir o Mapa de Jornada — verifique se a extensão está habilitada.');
+      }
+    });
+  }
 }
 
 async function enviarPergunta(texto: string): Promise<void> {
@@ -568,15 +596,215 @@ async function renderizarMermaid(src: string): Promise<void> {
     const mod = await import(/* webpackChunkName: "mermaid" */ 'mermaid');
     const mermaid = (mod as { default: typeof import('mermaid')['default'] }).default;
     mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict' });
+
+    // ERG-11: valida sintaxe ANTES de render. Mermaid v11 injeta o SVG
+    // "syntax error" no <body> durante o pipeline de render — o try/catch
+    // pega a rejeição, mas o orfão já ficou plantado. parse() com
+    // suppressErrors: true retorna false sem injetar nada.
+    const parsed = await mermaid.parse(src, { suppressErrors: true });
+    if (parsed === false) {
+      throw new Error('Mermaid syntax inválido — bloco ignorado');
+    }
+
     const id = `mmd-${Math.random().toString(36).slice(2, 9)}`;
     const { svg } = await mermaid.render(id, src);
     host.innerHTML = svg;
+    host.setAttribute('role', 'button');
+    host.setAttribute('tabindex', '0');
+    host.setAttribute('aria-label', 'Diagrama do caminho — clique para ampliar');
+    host.onclick = () => abrirDiagramaZoom();
+    host.onkeydown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        abrirDiagramaZoom();
+      }
+    };
   } catch (e) {
     host.innerHTML = `<pre class="muted small">${escaparHtml(src)}</pre>
       <p class="muted small">Falha ao renderizar diagrama: ${escaparHtml(
         (e as Error).message ?? 'erro desconhecido'
       )}</p>`;
+    host.removeAttribute('role');
+    host.removeAttribute('tabindex');
+    host.onclick = null;
+    host.onkeydown = null;
+    // Defesa em profundidade: se mesmo assim sobrar bomb no body, limpa.
+    limparOrfaosMermaid();
   }
+}
+
+/**
+ * ERG-11: remove SVGs/divs órfãos que o Mermaid v11 deixa no <body>
+ * quando render falha. parse() suppressErrors deveria evitar, mas
+ * mantemos cleanup como cinto-e-suspensórios.
+ */
+function limparOrfaosMermaid(): void {
+  const orfaos = document.querySelectorAll(
+    'body > svg[id^="d"], body > svg[id^="mmd-"], body > div[id^="d"]'
+  );
+  orfaos.forEach((el) => {
+    if (el.parentElement === document.body) el.remove();
+  });
+}
+
+/* ─── Modal de zoom do diagrama (FLUX-14) ────────────────────────── */
+
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 1.25;
+
+interface DiagramZoomState {
+  level: number;
+  bound: boolean;
+}
+const diagramZoom: DiagramZoomState = { level: 1, bound: false };
+
+function abrirDiagramaZoom(): void {
+  const dlg = document.getElementById('diagram-zoom') as HTMLDialogElement | null;
+  const stage = document.getElementById('diagram-zoom-stage');
+  if (!dlg || !stage) return;
+
+  // Pega o SVG vivo do painel lateral. Clonar (em vez de mover) preserva
+  // o painel original intacto. innerHTML do SVG cru não funciona bem
+  // porque o Mermaid emite `style="max-width:Xpx; max-height:Ypx"` inline,
+  // que combinado com transform: scale + transform-origin: 0 0 do stage
+  // resulta em SVG renderizado em 0×0.
+  const original = document.querySelector<SVGSVGElement>('#diagram-host svg');
+  if (!original) {
+    stage.innerHTML = '<p class="muted small">Sem diagrama renderizado.</p>';
+  } else {
+    const clone = original.cloneNode(true) as SVGSVGElement;
+    // ATENÇÃO: NÃO removemos o id do SVG clonado. O Mermaid emite uma tag
+    // <style> interna com seletores prefixados pelo id raiz (#mmd-xxxxx
+    // .node rect { fill: ... }) — apagar o id deixa esses seletores
+    // órfãos e os nós renderizam com fill default (preto). Aceitar a
+    // duplicação de id com o original é tecnicamente inválido, mas
+    // visualmente correto e sem efeito colateral conhecido.
+    // Limpa apenas style inline restritivo do Mermaid (max-width/height)
+    // e força dimensões intrínsecas a partir do viewBox para que
+    // transform: scale() funcione no stage.
+    clone.removeAttribute('style');
+    const vb = clone.getAttribute('viewBox');
+    if (vb) {
+      const parts = vb.split(/\s+/).map(Number);
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        const [, , w, h] = parts;
+        clone.setAttribute('width', String(w));
+        clone.setAttribute('height', String(h));
+        clone.style.width = `${w}px`;
+        clone.style.height = `${h}px`;
+      }
+    }
+    clone.style.display = 'block';
+    clone.style.maxWidth = 'none';
+    clone.style.maxHeight = 'none';
+    stage.innerHTML = '';
+    stage.appendChild(clone);
+  }
+
+  diagramZoom.level = 1;
+  aplicarZoomDiagrama();
+  bindDiagramaZoomUmaVez();
+  if (!dlg.open) dlg.showModal();
+  // Centra o conteúdo após render.
+  requestAnimationFrame(() => centralizarZoomBody());
+}
+
+function bindDiagramaZoomUmaVez(): void {
+  if (diagramZoom.bound) return;
+  diagramZoom.bound = true;
+
+  const dlg = document.getElementById('diagram-zoom') as HTMLDialogElement | null;
+  const body = document.getElementById('diagram-zoom-body');
+  const btnIn = document.getElementById('diagram-zoom-in');
+  const btnOut = document.getElementById('diagram-zoom-out');
+  const btnReset = document.getElementById('diagram-zoom-reset');
+  const btnClose = document.getElementById('diagram-zoom-close');
+  if (!dlg || !body) return;
+
+  btnIn?.addEventListener('click', () => setZoomDiagrama(diagramZoom.level * ZOOM_STEP));
+  btnOut?.addEventListener('click', () => setZoomDiagrama(diagramZoom.level / ZOOM_STEP));
+  btnReset?.addEventListener('click', () => { diagramZoom.level = 1; aplicarZoomDiagrama(); centralizarZoomBody(); });
+  btnClose?.addEventListener('click', () => dlg.close());
+
+  // Click fora do dialog (no backdrop) fecha.
+  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) dlg.close(); });
+
+  // Wheel + Ctrl para zoom (não interfere com scroll normal).
+  body.addEventListener(
+    'wheel',
+    (ev: WheelEvent) => {
+      if (!ev.ctrlKey) return;
+      ev.preventDefault();
+      const fator = ev.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      setZoomDiagrama(diagramZoom.level * fator);
+    },
+    { passive: false }
+  );
+
+  // Pan via drag (mouse).
+  let arrastando = false;
+  let xInicial = 0;
+  let yInicial = 0;
+  let scrollLeftInicial = 0;
+  let scrollTopInicial = 0;
+  body.addEventListener('mousedown', (ev: MouseEvent) => {
+    arrastando = true;
+    body.classList.add('is-grabbing');
+    xInicial = ev.clientX;
+    yInicial = ev.clientY;
+    scrollLeftInicial = body.scrollLeft;
+    scrollTopInicial = body.scrollTop;
+    ev.preventDefault();
+  });
+  window.addEventListener('mousemove', (ev: MouseEvent) => {
+    if (!arrastando) return;
+    body.scrollLeft = scrollLeftInicial - (ev.clientX - xInicial);
+    body.scrollTop = scrollTopInicial - (ev.clientY - yInicial);
+  });
+  window.addEventListener('mouseup', () => {
+    arrastando = false;
+    body.classList.remove('is-grabbing');
+  });
+
+  // Pan via touch (1 dedo).
+  body.addEventListener('touchstart', (ev: TouchEvent) => {
+    if (ev.touches.length !== 1) return;
+    arrastando = true;
+    xInicial = ev.touches[0].clientX;
+    yInicial = ev.touches[0].clientY;
+    scrollLeftInicial = body.scrollLeft;
+    scrollTopInicial = body.scrollTop;
+  }, { passive: true });
+  body.addEventListener('touchmove', (ev: TouchEvent) => {
+    if (!arrastando || ev.touches.length !== 1) return;
+    body.scrollLeft = scrollLeftInicial - (ev.touches[0].clientX - xInicial);
+    body.scrollTop = scrollTopInicial - (ev.touches[0].clientY - yInicial);
+  }, { passive: true });
+  body.addEventListener('touchend', () => { arrastando = false; });
+}
+
+function setZoomDiagrama(novo: number): void {
+  diagramZoom.level = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, novo));
+  aplicarZoomDiagrama();
+}
+
+function aplicarZoomDiagrama(): void {
+  const stage = document.getElementById('diagram-zoom-stage');
+  const lbl = document.getElementById('diagram-zoom-level');
+  if (stage) stage.style.transform = `scale(${diagramZoom.level})`;
+  if (lbl) lbl.textContent = `${Math.round(diagramZoom.level * 100)}%`;
+}
+
+function centralizarZoomBody(): void {
+  const body = document.getElementById('diagram-zoom-body');
+  const stage = document.getElementById('diagram-zoom-stage');
+  if (!body || !stage) return;
+  // Centraliza horizontal e verticalmente o conteúdo no viewport do body.
+  const sx = (stage.scrollWidth * diagramZoom.level - body.clientWidth) / 2;
+  const sy = (stage.scrollHeight * diagramZoom.level - body.clientHeight) / 2;
+  body.scrollLeft = Math.max(0, sx);
+  body.scrollTop = Math.max(0, sy);
 }
 
 /**

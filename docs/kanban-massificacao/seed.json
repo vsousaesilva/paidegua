@@ -4997,24 +4997,24 @@
     {
       "id": "ERG-11",
       "titulo": "Bug — Mermaid bomb vaza pro rodapé quando LLM produz bloco mermaid inválido na resposta",
-      "descricao": "Identificado durante o smoke do v1.5 (sessão 09/05/2026) no Consultor de fluxos em modo Dev. Sintoma: ao final da página, abaixo do footer institucional, aparece um SVG enorme do Mermaid 11.14.0 com ícone de bomba e texto 'Syntax error in text'. Visualmente parece que a extensão quebrou.\n\n**Diagnóstico:** o renderizador determinístico (`caminhoParaMermaid` no painel direito) funciona corretamente — o diagrama do caminho 'JEF_ELDESP até CERTTRANSJULG' aparece bonito. A bomba é um SEGUNDO render do Mermaid, disparado por algum bloco ```` ```mermaid ```` que o LLM produziu na resposta com sintaxe inválida (provavelmente node id com caractere proibido, flecha esquecida, ou sintaxe v9 vs v10 confusa). Como o markdown renderer chama `mermaid.render()` sem container válido (ou com container que falha), o Mermaid v11 dumpa o SVG de erro no fim do `<body>`.\n\n**Reprodução:** modo Dev no Consultor, perguntar 'do JEF_ELDESP até CERTTRANSJULG' (ou outro caminho que faça o LLM tentar gerar Mermaid próprio). Bomb aparece no rodapé.\n\n**Fix proposto:**\n\n1. Envolver chamadas a `mermaid.render`/`mermaid.run` dentro do pipeline de markdown da resposta com `try/catch`.\n2. Em caso de erro, fallback: mostrar o código Mermaid bruto numa `<pre>` com classe `.mermaid-fallback` (e talvez um aviso discreto 'diagrama inválido').\n3. Garantir que o Mermaid SEMPRE recebe um container target — nunca deixar a lib auto-decidir onde dumpar erro.\n4. Considerar: instruir o LLM no system prompt a NÃO produzir blocos Mermaid próprios (deixar isso só pro renderizador determinístico) — pode reduzir frequência do bug a quase zero.",
+      "descricao": "Identificado durante o smoke do v1.5 (sessão 09/05/2026) no Consultor de fluxos em modo Dev. Sintoma: ao final da página, abaixo do footer institucional, aparece um SVG enorme do Mermaid 11.14.0 com ícone de bomba e texto 'Syntax error in text'. Visualmente parece que a extensão quebrou.\n\n**Diagnóstico:** o renderizador determinístico (`caminhoParaMermaid` no painel direito) funciona corretamente — o diagrama do caminho 'JEF_ELDESP até CERTTRANSJULG' aparece bonito. A bomba é um SEGUNDO render do Mermaid, disparado por algum bloco ```` ```mermaid ```` que o LLM produziu na resposta com sintaxe inválida (provavelmente node id com caractere proibido, flecha esquecida, ou sintaxe v9 vs v10 confusa). Como o markdown renderer chama `mermaid.render()` sem container válido (ou com container que falha), o Mermaid v11 dumpa o SVG de erro no fim do `<body>`.\n\n**Reprodução:** modo Dev no Consultor, perguntar 'do JEF_ELDESP até CERTTRANSJULG' (ou outro caminho que faça o LLM tentar gerar Mermaid próprio). Bomb aparece no rodapé.\n\n**Fix aplicado em 2026-05-09 (consultor.ts):** `mermaid.parse(src, { suppressErrors: true })` antes de `mermaid.render()` — se parse retorna false, lança exceção sem nunca tentar render (que é o que cria o orfão). `try/catch` mantém fallback `<pre>` no painel direito. Defesa em profundidade: `limparOrfaosMermaid()` no catch remove qualquer SVG órfão que tenha escapado. Smoke passou — bomba não aparece mais.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "triagem",
+      "coluna": "lancado",
       "origem": "sessão de smoke 09/05/2026 — Consultor modo Dev",
       "tags": ["bug", "consultor", "mermaid", "ux", "ergonomia"],
       "esforco": "S",
       "depende": [],
       "aceitacao": [
-        "Mermaid render no pipeline de markdown da resposta envolvido em try/catch",
-        "Em erro, código Mermaid aparece como <pre> dentro da bolha de resposta — nada vaza pro fim do body",
-        "Smoke da reprodução não exibe mais a bomba",
-        "Avaliar (e talvez aplicar) instrução no FLUXOS_SYSTEM_PROMPT_DEV pra LLM não gerar blocos Mermaid próprios",
+        "mermaid.parse() chamado antes de mermaid.render() para evitar injeção de bomb no body",
+        "Em parse error, fallback <pre> no painel direito (host) — nada vaza pro fim do body",
+        "limparOrfaosMermaid() roda no catch como defesa em profundidade",
+        "Smoke da reprodução (do JEF_ELDESP até CERTTRANSJULG em modo Dev) não exibe mais a bomba",
         "Build do paidegua sem erros TS"
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-09T18:00:00.000Z",
-      "atualizadoEm": "2026-05-09T18:00:00.000Z",
+      "atualizadoEm": "2026-05-09T20:00:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
       "historico": [
         {
@@ -5022,6 +5022,92 @@
           "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
           "data": "2026-05-09T18:00:00.000Z",
           "comando": "Bug identificado pelo owner durante smoke do FLUX-14 (modo Dev). Não bloqueante — diagrama determinístico funciona. P2 por ser visualmente assustador (parece que quebrou tudo) mas sem impacto funcional."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/fluxos-consultor/consultor.ts"],
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T19:30:00.000Z",
+          "comando": "Fix aplicado em renderizarMermaid(): mermaid.parse(src, {suppressErrors: true}) antes de mermaid.render(). Se parse=false, lança exceção sem chamar render (evita injeção do SVG de erro no body). Adicionada função limparOrfaosMermaid() chamada no catch como defesa em profundidade. Build passou sem erros TS."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-09T20:00:00.000Z",
+          "comando": "Smoke passou — owner reproduziu cenário (modo Dev, do JEF_ELDESP até CERTTRANSJULG) e confirmou que a bomba não aparece mais."
+        }
+      ]
+    },
+    {
+      "id": "ERG-12",
+      "titulo": "Silenciar 'Extension context invalidated' globalmente no content script",
+      "descricao": "Identificado durante o smoke da v1.5 (sessão 09/05/2026). Sintoma: erro vermelho `Uncaught Error: Extension context invalidated` no console do PJe, vindo de `content.js:1 (função anônima)`. Reportado em https://pje1g.trf5.jus.br/pje/ng2/dev.seam#/painel-usuario-interno após recarregar a extensão pelo chrome://extensions.\n\n**Diagnóstico:** cenário esperado do ciclo de vida de extensões — quando a extensão é recarregada (manualmente em dev OU automaticamente via update da CWS), o content script vivo na aba perde o `chrome.runtime` mas continua rodando. Qualquer callback subsequente (timer, listener, MutationObserver, port handler) que use `chrome.*` dispara o erro. NÃO é bug do nosso código.\n\n**Cobertura existente:** `isContextInvalidatedError` em content.ts:4953 trata 4 sítios via try/catch local; `pje-auth-interceptor.ts:72` trata 1. Mas há outros sítios não cobertos — daí o 'Uncaught'.\n\n**Fix aplicado em 2026-05-09:**\n\n1. Criado `src/shared/extension-context.ts` com `isExtensionContextInvalidated(err)` (utilitário compartilhado) e `installExtensionContextSilencer({onInvalidated})` (instala handlers globais de `error` + `unhandledrejection` que silenciam SÓ esse padrão específico).\n2. Em `content.ts` (após imports), chamada a `installExtensionContextSilencer()` que loga uma única vez 'extensão recarregada — recarregue esta aba para retomar o pAIdegua' em vez do stack vermelho.\n\nNão silencia outros erros — filtra estritamente pelo regex `/extension context invalidated/i`. Em produção (CWS auto-update), usuário não vê mais erro vermelho assustador.\n\n**Smoke 2026-05-09:** sequência correta = build → reload extensão → F5 na aba PJe (carrega novo content.js com silencer) → reload extensão de novo (invalida context) → interagir com PJe. Resultado: zero `Uncaught Error` em vermelho; aparece apenas o log discreto azul `[pAIdegua] extensão recarregada — recarregue esta aba para retomar o pAIdegua`.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "lancado",
+      "origem": "sessão de smoke 09/05/2026 — console PJe pós-recarga da extensão",
+      "tags": ["bug", "extension-context", "content-script", "ux", "ergonomia"],
+      "esforco": "S",
+      "depende": [],
+      "aceitacao": [
+        "src/shared/extension-context.ts criado com isExtensionContextInvalidated + installExtensionContextSilencer",
+        "content.ts chama installExtensionContextSilencer() logo após imports",
+        "Reproduzir cenário (recarregar extensão com PJe aberto) não exibe mais 'Uncaught Error: Extension context invalidated' no console",
+        "Em vez do stack vermelho, aparece um único log info azul 'extensão recarregada — recarregue esta aba para retomar o pAIdegua'",
+        "Outros erros do console NÃO são silenciados (filtro estrito pelo regex)",
+        "Build do paidegua sem erros TS"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-09T20:00:00.000Z",
+      "atualizadoEm": "2026-05-09T21:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T20:00:00.000Z",
+          "comando": "Bug reportado pelo owner durante smoke da v1.5. Fix aplicado na mesma sessão. Aguarda smoke do owner antes de mover pra lancado."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-09T21:00:00.000Z",
+          "comando": "Smoke passou — owner reproduziu cenário com a sequência correta (F5 na aba PJe entre as duas recargas da extensão) e confirmou que o stack vermelho foi substituído pelo log discreto."
+        }
+      ]
+    },
+    {
+      "id": "ERG-13",
+      "titulo": "Deduplicar isContextInvalidatedError — migrar 4 call sites de content.ts + 1 de pje-auth-interceptor.ts pro util compartilhado",
+      "descricao": "Após ERG-12, há duplicação: `src/shared/extension-context.ts` exporta `isExtensionContextInvalidated`, mas content.ts:4953 ainda tem `isContextInvalidatedError` local (usado em 4 sítios) e pje-auth-interceptor.ts:72 ainda usa regex inline. Migrar todos pro util compartilhado:\n\n1. Em `content.ts`: importar `isExtensionContextInvalidated` do shared, substituir os 4 usos da função local, deletar a função local (linhas ~4953-4956).\n2. Em `pje-auth-interceptor.ts:72`: trocar `if (/extension context invalidated/i.test(msg)) return;` por `if (isExtensionContextInvalidated(err)) return;` + import.\n3. Validar build sem TS errors.\n\nNão é blocker — só dívida técnica de consistência. Útil pra reduzir risco de divergência futura na regex.",
+      "categoria": "ergonomia",
+      "prioridade": "P3",
+      "coluna": "triagem",
+      "origem": "sessão 09/05/2026 — após ERG-12",
+      "tags": ["divida-tecnica", "refatoracao", "extension-context", "ergonomia"],
+      "esforco": "S",
+      "depende": ["ERG-12"],
+      "aceitacao": [
+        "isContextInvalidatedError local em content.ts:4953 deletada",
+        "4 call sites em content.ts usam isExtensionContextInvalidated do shared",
+        "pje-auth-interceptor.ts:72 usa isExtensionContextInvalidated do shared (sem regex inline)",
+        "Build do paidegua sem erros TS",
+        "Smoke do cenário de recarga continua silenciando"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-09T20:00:00.000Z",
+      "atualizadoEm": "2026-05-09T20:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T20:00:00.000Z",
+          "comando": "Card P3 aberto após ERG-12 — registra dívida técnica de deduplicação. Não bloqueia release."
         }
       ]
     }

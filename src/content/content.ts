@@ -80,6 +80,14 @@ import {
 import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirConsultorFluxos } from './fluxos/fluxos-coordinator';
+import {
+  dispensarTarefaContextual,
+  instalarDetectorTarefaContextual
+} from './fluxos/tarefa-contextual-detector';
+import {
+  mostrarToastTarefaContextual,
+  removerToastTarefaContextual
+} from './ui/tarefa-contextual-toast';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { abrirPericiasPainel } from './pericias/pericias-coordinator';
 import { abrirComunicacaoPainel } from './comunicacao/comunicacao-coordinator';
@@ -140,6 +148,18 @@ import { startRecording, blobToBase64, type RecorderHandle } from './audio-recor
 import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
 import type { BaseAdapter } from './adapters/base-adapter';
 import { derivarAnomaliasProcesso } from './adapters/pje-legacy';
+import { installExtensionContextSilencer } from '../shared/extension-context';
+
+// Silencia "Extension context invalidated" globalmente — esse erro acontece
+// quando a extensão é recarregada/atualizada com este content script ainda
+// vivo na aba (cenário esperado, não bug). Demais erros passam normalmente.
+installExtensionContextSilencer({
+  onInvalidated: () => {
+    console.info(
+      `${LOG_PREFIX} extensão recarregada — recarregue esta aba para retomar o pAIdegua.`
+    );
+  }
+});
 
 interface MountedUI {
   sidebar: SidebarController;
@@ -3840,6 +3860,36 @@ function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
   );
 }
 
+/**
+ * FLUX-04 — Detector contextual proativo. Instala o observer de DOM
+ * que reconhece tarefas humanas conhecidas (com prefixo `[XXX]`) na
+ * página e dispara o toast oferecendo abrir a vista da tarefa nos
+ * Mapas de Jornada. Independente do mountUI: roda em qualquer página
+ * `*.jus.br` reconhecida como host do PJe, mesmo sem login.
+ */
+function instalarDetectorContextualGlobal(): void {
+  instalarDetectorTarefaContextual({
+    onTarefaDetectada: (t) => {
+      // Lane do mapa segue a lane da tarefa detectada (JEF, EF, Comum
+      // → 'comum', Shared → 'jef' como fallback porque Shared não tem
+      // mapa próprio). Permite que tarefas '[EF]' abram o Mapa EF.
+      const lane: 'jef' | 'ef' | 'comum' =
+        t.lane === 'EF' ? 'ef' : t.lane === 'Comum' ? 'comum' : 'jef';
+      mostrarToastTarefaContextual(t.nome, {
+        onAbrir: () => {
+          void chrome.runtime
+            .sendMessage({
+              channel: MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS,
+              payload: { lane, tarefa: t.id }
+            })
+            .catch((e) => console.warn(`${LOG_PREFIX} FLUXOS_OPEN_JORNADAS falhou:`, e));
+        },
+        onDispensar: () => dispensarTarefaContextual(t.nome)
+      });
+    }
+  });
+}
+
 function unmountUI(): void {
   if (!mounted) {
     return;
@@ -3863,6 +3913,7 @@ function unmountUI(): void {
   mounted.docList?.destroy();
   mounted.chat?.destroy();
   mounted.sidebar.destroy();
+  removerToastTarefaContextual();
   mounted = null;
   memory.adapter = null;
   memory.detection = null;
@@ -4801,6 +4852,11 @@ async function bootstrap(): Promise<void> {
       // Bridge isolated-world: relaya o snapshot de auth do PJe que o
       // interceptor page-world (pje-auth-page.js) dispara via CustomEvent.
       instalarBridgeInterceptorAuth();
+      // FLUX-04: o seletor `.nome-tarefa` do PJe v2 vive aqui dentro
+      // (Angular cross-origin). Instalar o detector também no iframe;
+      // o toast aparece dentro do iframe (que ocupa praticamente toda a
+      // viewport quando o usuário entra numa tarefa).
+      instalarDetectorContextualGlobal();
     }
     return;
   }
@@ -4824,6 +4880,11 @@ async function bootstrap(): Promise<void> {
   if (extensionEnabled) {
     mountGlobalNavbarButton();
     runDetection();
+    // FLUX-04: detector contextual roda independente do mountUI —
+    // serve em qualquer tela do PJe, com ou sem processo carregado,
+    // com ou sem login no backend Inovajus (o canal FLUXOS_OPEN_JORNADAS
+    // está fora do gate de auth).
+    instalarDetectorContextualGlobal();
   }
   observeDom();
 }
@@ -4922,11 +4983,24 @@ function base64ToBlob(b64: string, mime: string): Blob {
 import { abrirMetasPainel } from './metas-cnj/abrir-metas-painel';
 import { varrerMetasCnj } from './metas-cnj/metas-coordinator';
 
+// MET-07: desativação temporária do "Controle Metas CNJ" para revisão.
+// Mantém o handler ligado como defesa caso o usuário tenha UI cacheada com
+// o botão visível. Reverter alterando para `false` quando a revisão acabar.
+const METAS_CNJ_EM_REVISAO = true;
+
 async function handleMetasCnj(): Promise<void> {
   if (!mounted) return;
   const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
     mounted?.sidebar.setGlobalNotice(msg, kind);
   };
+
+  if (METAS_CNJ_EM_REVISAO) {
+    notice(
+      '"Controle Metas CNJ" está temporariamente em revisão e indisponível.',
+      'error'
+    );
+    return;
+  }
 
   notice('Abrindo "Controle Metas CNJ" em nova aba...');
   try {
