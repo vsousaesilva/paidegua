@@ -2791,7 +2791,7 @@
       "descricao": "Script Node.js (fluxos-pje/scripts/parser-jpdl.mjs) que lê os 210 XMLs jBPM 3.2 coletados de pje1gta.trf5 e gera três artefatos: paidegua/assets/fluxos-catalogo.json (embarcado no build da extensão), fluxos-pje/grafo.json (grafo dirigido das chamadas incluirNovoFluxo) e fluxos-pje/analise-topologica.md (entradas, saídas, hubs, fantasmas, ilhas, distribuição por lane/fase). Usa fast-xml-parser. Heurísticas de classificação por lane (JEF, EF, Comum, Shared) e fase (Distribuição → Arquivo) em fluxos-pje/scripts/heuristicas.mjs.",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — discovery dos fluxos do PJe",
       "tags": [
         "fluxos",
@@ -3100,7 +3100,7 @@
       "descricao": "Pivot crítico de UX após primeira validação visual: a linguagem do consultor estava técnica demais para o usuário comum do PJe (citava códigos jBPM, falava em swimlane/transição/decisão/subfluxo). Implementado seletor de modo no header da página (radiogroup com 2 pills) que troca: (a) system prompt — FLUXOS_SYSTEM_PROMPT_USUARIO orienta o LLM a falar em PT-BR fluido sem siglas/códigos vs FLUXOS_SYSTEM_PROMPT_DEV (técnico, atual); (b) quick actions — 6 perguntas em linguagem natural ('Como o processo caminha', 'Por que está parado?', 'Como termina?') vs 6 técnicas ('Caminho entre fluxos', 'Quem chama este fluxo?', 'Pontos de entrada'); (c) resumo do catálogo injetado no system prompt — getResumoParaPromptUsuario humaniza nomes, esconde código/lane/fase técnicas vs getResumoParaPrompt original; (d) busca lateral — só nome legível em modo usuário; (e) Mermaid lateral — caminhoParaMermaid agora aceita {mostrarCodigo} e em modo usuário renderiza só nomes limpos sem cor por lane; (f) mensagem de boas-vindas dinâmica via getMensagemBoasVindas(modo); (g) placeholder do textarea ajustado ao modo. Persistência da preferência em chrome.storage.local sob STORAGE_KEYS.FLUXOS_MODO. Default = 'usuario'. Trocar de modo reinicia a conversa (UX coerente). Em paralelo, refeito o layout CSS com scroll interno: html/body com height:100vh+overflow:hidden, .layout com overflow:hidden, cada coluna flex column com min-height:0+overflow:hidden, .quick-list com max-height fixo e .busca-list flex:1 — a página agora cabe sempre na tela, scrollbar customizada só dentro de cada coluna.",
       "categoria": "ergonomia",
       "prioridade": "P0",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 07/05/2026 — feedback do owner após primeira validação visual",
       "tags": [
         "fluxos",
@@ -3165,7 +3165,7 @@
       "descricao": "Sprint 1 do produto 'Mapas de Jornada' (visualização estruturada complementar ao Consultor de fluxos). Enriquece o catálogo embarcado com (a) frase_humana — 1 linha por fluxo redigida à mão para os 30 fluxos com grau ≥ 15 e gerada por template para o resto; (b) top_origens e top_destinos — top 5 calculados a partir do grafo dirigido; (c) alertas[] computados das regras: hub (grau ≥ 20), decisão automática invisível (extraída de <decision expression='EL'> ou SQL), loop conhecido (ciclo no grafo passando pelo nó), prazo paralelo (subfluxo JEF_FLUX_CONTR_*), fluxo fantasma a jusante (chama código ausente), subfluxo Shared (ANSEC/ANCOM/ELDESP/ELDEC/ELSENT). Adiciona enriquecedor em fluxos-pje/scripts/enriquecer-catalogo.mjs que lê catalogo + grafo e escreve catalogo enriquecido. Cria paidegua/assets/jornadas-jef.json com 5 trilhas pré-modeladas para JEF: conciliação/audiência, perícia, sentença/trânsito, recursos, cumprimento+RPV/precatório. Owner (Vinícius, servidor sênior do JEF) valida o conteúdo na própria sessão. Plano completo: fluxos-pje/PLANO-VIS-JEF.md.",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — Sprint 1 dos Mapas de Jornada (PLANO-VIS-JEF.md)",
       "tags": [
         "fluxos",
@@ -3217,7 +3217,7 @@
       "descricao": "Cria nova entry webpack 'fluxos-jornadas/jornadas' na extensão paidegua, com paidegua/src/fluxos-jornadas/{jornadas.html, jornadas.css, jornadas.ts}. A página renderiza dois níveis: Camada 1 — mapa panorâmico horizontal (eixo X = 9 fases canônicas; eixo Y = trilhas; JEF em destaque na rota ?lane=jef; agrupamentos como cards SVG clicáveis; setas sólidas = caminho típico, tracejadas = ramificação, pontilhadas = retorno; marcadores: relógio, robô, hub) — e Camada 2 — 5 trilhas pré-renderizadas com 8–15 estações cada como cards horizontais com scroll. Reusa fluxos-store, fluxos-search e tokens CSS gov.br do consultor.css (--primary, --jef, --ef, --comum, --shared). Decisão técnica: SVG puro + DOM nativo na primeira passada (sem D3) — leve (~0KB extra), auditável; D3 só entra se aparecer necessidade real de zoom/pan. Em paralelo, adiciona ao header de paidegua/src/fluxos-consultor/consultor.html um novo grupo .lanes-seletor à direita do .modo-seletor com 3 botões: 'Mapa JEF' (ativo), 'Mapa EF' e 'Cível e Criminal' (ambos disabled com badge 'em breve'). Clique dispara MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS no background, que faz chrome.tabs.create com 'fluxos-jornadas/jornadas.html?lane=jef'.",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — Sprint 2 dos Mapas de Jornada (PLANO-VIS-JEF.md)",
       "tags": [
         "fluxos",
@@ -3295,7 +3295,7 @@
       "descricao": "Camada 3 — página por fluxo (115 + 4 Shared para JEF) gerada em runtime a partir do catálogo enriquecido, rota ?fluxo=JEF_OPPER. Estrutura fixa: cabeçalho (nome humano, lane/fase/hub badges), bloco 'Em uma frase' (frase humana destacada), dois blocos 'De onde vem' / 'Para onde vai' (top 5 vizinhos navegáveis), bloco 'Pontos de atenção' (alertas com mensagens completas e detalhes), bloco 'Detalhes técnicos' colapsável com swimlanes, contagens, decisões traduzidas e placeholder do BPMN drill-down. Decisão fixada com o owner: APENAS BPMN limpo, sem expor o XML jPDL cru — implementação do BPMN movida para FLUX-10b (sub-card) por escopo. Camada 4 — catálogo navegável: tabela filtrável por lane/fase/hub/descontinuado com chips dos alertas; Ctrl+K abre command palette estilo VSCode com fuzzy search em nomes, descrições, transições e variáveis — reusa fluxos-search.buscar() já existente.",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — Sprint 3 dos Mapas de Jornada (PLANO-VIS-JEF.md)",
       "tags": [
         "fluxos",
@@ -3411,7 +3411,7 @@
       "descricao": "Polimento final da v1. (a) @media print que oculta controles interativos (lanes-nav, palette, breadcrumb, botões de ação), expande a vista, força page-breaks entre seções, otimiza para A3 paisagem; trilhas imprimem em 2 colunas; tabelas/cards monocromáticos. (b) Telemetria estritamente opt-in: módulo paidegua/src/shared/jornadas-telemetria.ts com getOptIn/setOptIn/registrarEvento/getEventos/limparEventos; chaves STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN (default false) e JORNADAS_TELEMETRIA_DADOS; truncamento circular em 500 eventos; eventos restritos a metadata (timestamp, tipo, lane, ids agregados, comprimento da busca — NUNCA o termo digitado, NUNCA conteúdo de processo); pontos instrumentados em jornadas.ts (pagina_carregada, mapa_aberto, agrupamento_clicado, estacao_aberta, palette_aberta, palette_busca, catalogo_aberto, modo_tecnico_toggled, imprimir_clicado, consultor_aberto_da_estacao). (c) UI nas Opções: nova section 'Mapas de Jornada — telemetria local' com toggle on/off, contador de eventos coletados (com data do primeiro), botão 'Limpar dados coletados' com confirm; texto explicativo deixa claro que está pendente de acordo com a SETIC. (d) Sessão de revisão pelo owner para refinar frases humanas e alertas falsos positivos — pendente. (e) Modo escuro opcional via prefers-color-scheme — não implementado nesta sprint, fica como possível sub-card.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — Sprint 4 dos Mapas de Jornada (PLANO-VIS-JEF.md)",
       "tags": [
         "fluxos",
@@ -3474,7 +3474,7 @@
       "descricao": "Melhoria de UX no Consultor de fluxos (FLUX-02 v1.4.0 já em produção). Sintoma reportado pelo owner via screenshot: o diagrama Mermaid renderizado no painel lateral 'Diagrama' fica espremido na coluna direita (~1/3 da tela), praticamente ilegível para caminhos longos. Solução: ao clicar no SVG do diagrama, abre um modal full-screen (95vw × 92vh em desktop, 100vw × 100vh em mobile) com toolbar (zoom in, zoom out, indicador %, 'Ajustar à tela', fechar), pan via drag (mouse + touch single-finger), wheel + Ctrl para zoom contínuo, ESC para fechar, click no backdrop também fecha. Acessibilidade: o painel ganha role='button' + tabindex=0 + aria-label, abre via Enter/Space também. Hint visual no canto superior direito do painel '⤢ clique para ampliar' aparece automaticamente quando há SVG (CSS :has(svg)). Sem dep nova: implementação 100% nativa (transform: scale + scroll natural do container).",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — feedback owner: 'quando se forma um diagrama, quase não se enxerga de tão pequeno. Vamos encontrar uma solução para quando clicar a imagem cobrir a tela inteira e num outro clique recolher.'",
       "tags": [
         "consultor",
@@ -3555,7 +3555,7 @@
       "descricao": "Ajuste de nomenclatura no modo 'Para o usuário' do Consultor de fluxos (FLUX-02 v1.4.0). Sintoma reportado pelo owner: o assistente referenciava as etapas com nomes 'humanizados' (ex.: 'Análise inicial', 'Operação de perícia') que não casavam com o que o servidor vê na tela do PJe ('[JEF] Análise inicial', '[JEF] Operação de perícia'). O servidor está olhando a tela e precisa do nome EXATO para se localizar. Solução: três frentes coordenadas — (1) shared/fluxos-store.ts: função `limparNomeParaUsuario` virou `nomeOficialDaTarefa` e PRESERVA o prefixo entre colchetes ([JEF], [EF], [COMUM]); apenas higieniza underscores literais e espaços extras. O bloco de instruções dentro de getResumoParaPromptUsuario foi reescrito explicando que cada etapa tem nome OFICIAL + código interno, e que o LLM DEVE usar o nome oficial e NÃO mencionar o código. (2) shared/fluxos-grafo.ts: função `limparNomeUsuario` virou `nomeOficialUsuario` e também preserva colchetes; passada para `caminhoParaMermaid` no modo usuário renderiza `[JEF] Análise inicial` direto nos nós do diagrama. (3) shared/fluxos-prompts.ts: bloco 'Como você fala' do FLUXOS_SYSTEM_PROMPT_USUARIO reescrito com instrução explícita 'Use sempre o nome OFICIAL da tarefa, exatamente como ele aparece na tela do PJe — com o prefixo entre colchetes' + exemplo no estilo do owner ('o processo sai da tarefa [JEF] Análise inicial e a partir dela pode ir para [JEF] Elaborar comunicação se for o caso de citar o réu, ou para [JEF] Designar perícia quando o pedido envolver perícia médica'); proibição mantida apenas para os códigos internos no formato SIGLA_PALAVRA (JEF_OPPER, JEF_ANSECR); exemplo do bloco Mermaid também atualizado com [JEF] nos rótulos.",
       "categoria": "ergonomia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — feedback owner: 'Ainda que o consultor para o usuário tenha que apresentar textos mais claros e menos técnicos, estou sentindo falta do nome das tarefas, tal como aparece para os usuários.'",
       "tags": [
         "consultor",
@@ -3595,7 +3595,7 @@
       "descricao": "Lacuna identificada pelo owner ao testar o consultor: tarefas como '[JEF] Análise inicial', '[JEF] Análise inicial - Audiência' e '[JEF] Análise inicial - Perícia' (que aparecem em volume na fila de trabalho — vide screenshot do PJe com 71+49+710 ocorrências respectivamente) nunca eram mencionadas pelo assistente. Causa raiz: o resumo enviado ao LLM (getResumoParaPrompt e getResumoParaPromptUsuario em paidegua/src/shared/fluxos-store.ts) listava apenas os FLUXOS (210 entradas) e seus subfluxos chamados (incluirNovoFluxo), mas omitia as task-nodes — exatamente os nomes de tarefa humana que o servidor vê na fila do PJe. Essas task-nodes existem no catálogo (ex.: dentro do fluxo JEF — '[JEF] Juizado Especial Federal' — há 14 task-nodes), só não estavam sendo expostas ao LLM. Solução: nova função listarTaskNodes(fluxo, limite) que extrai os nomes legíveis das task-nodes de um fluxo, deduplica e limita (modo dev: 10; modo usuário: 8) com sufixo '… (+N)' quando há mais. getResumoParaPrompt e getResumoParaPromptUsuario agora emitem uma linha 'tarefas que o servidor vê na fila: ...' para cada fluxo. O cabeçalho do resumo do modo usuário foi reescrito para deixar claro que cada etapa tem nome OFICIAL + código + tarefas internas, todas devendo ser referenciadas pelo nome oficial. Bloco 'Etapas vs tarefas' adicionado ao FLUXOS_SYSTEM_PROMPT_USUARIO instruindo o LLM a (a) reconhecer que uma etapa contém tarefas, (b) usar o nome da tarefa específica quando o usuário citar uma e (c) usar o nome da etapa quando o usuário perguntar algo amplo, em ambos os casos mantendo nomenclatura oficial do PJe sem códigos.",
       "categoria": "ergonomia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — feedback owner: 'em nenhum momento ele faz menção as tarefas de Analise inicial, tambem conhecido como triagem, dos JEF (tela anexa). Dai eu pergunto, em que fluxo elas estão? Por que não se houve falar delas?'",
       "tags": [
         "consultor",
@@ -4930,6 +4930,98 @@
           "autor": "claude-code/sessao-2026-05-06-retrospectiva",
           "data": "2026-05-06T20:00:00.000Z",
           "comando": "Reconstrução retrospectiva — Cofre, Documentos e admin de Equipe no ar e em uso."
+        }
+      ]
+    },
+    {
+      "id": "ERG-09",
+      "titulo": "Refatorar página de Opções em abas (Modelos / Mapas de Jornada / Geral)",
+      "descricao": "Dívida de design herdada do FLUX-11. A página `src/options/options.html` é historicamente monotemática (`<title>` e `<h1>` = 'pAIdegua — Modelos de Minuta', subtítulo descreve apenas configuração de pasta de modelos), mas o FLUX-11 inseriu nela uma seção 'Mapas de Jornada — telemetria local' que fica deslocada do contexto, levando o usuário a não encontrá-la na primeira tentativa. A correção é transformar o options.html em um shell com abas internas:\n\n1. Aba **Modelos de Minuta** — preserva os 3 cards atuais (Pasta de modelos, Modelos indexados, Como funciona).\n2. Aba **Mapas de Jornada** — recebe o card de telemetria local (do FLUX-11) e cresce conforme novos toggles desse módulo.\n3. Aba **Geral** — placeholder pra futuras configurações comuns (ex.: tema escuro, idioma).\n\nMudar também `<title>` e `<h1>` pra 'pAIdegua — Configurações'. Atualizar subtítulo pra refletir escopo geral. Padrão de UX: tabs como em Bitwarden/uBlock — keyboard-navegáveis (Tab + setas), persistir aba ativa em chrome.storage.local.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão de smoke 09/05/2026 — feedback owner ao validar FLUX-11",
+      "tags": ["ergonomia", "options", "abas", "ux", "divida-tecnica"],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "options.html refatorado com 3 abas (Modelos de Minuta, Mapas de Jornada, Geral)",
+        "Telemetria do FLUX-11 vive na aba 'Mapas de Jornada', não mais misturada com Modelos",
+        "Aba ativa persistida em chrome.storage.local — recarregar a página mantém a aba",
+        "Navegação por teclado entre abas (Tab, setas)",
+        "Título da janela e h1 trocados pra 'pAIdegua — Configurações'",
+        "Build do paidegua sem erros TS"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-09T18:00:00.000Z",
+      "atualizadoEm": "2026-05-09T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T18:00:00.000Z",
+          "comando": "Card aberto durante smoke do FLUX-11. Owner identificou que a seção 'Mapas de Jornada — telemetria local' está deslocada na página de Opções (que historicamente era 100% Modelos de Minuta). Decisão: aceitar FLUX-11 como entregue (critério estrito 'toggle visível em options/options.html, OFF por default' atendido) e abrir este card P2 para refatorar a página em abas (opção B do triplo Renomear/Abas/Páginas-separadas)."
+        }
+      ]
+    },
+    {
+      "id": "ERG-10",
+      "titulo": "Revisar fronteira popup vs options — que features pertencem a cada lugar",
+      "descricao": "Hoje as configurações da extensão estão mal distribuídas entre o popup (`popup.html`) e a página de Opções (`options.html`):\n\n- **Popup**: perfis de trabalho, OCR, Triagem Inteligente, Etiquetas Inteligentes, ciência LGPD, provedor de IA + chave de API, link pra Modelos de Minuta.\n- **Options**: hoje só Modelos de Minuta + telemetria de Mapas de Jornada (após FLUX-11) — futuramente abas (após ERG-09).\n\nFaz sentido o popup ser 'configuração de sessão rápida + status' e options ser 'configuração persistente complexa'? Ou tudo deveria migrar pro options refatorado em abas? Avaliar:\n\n1. Quais features funcionam melhor em popup (acesso rápido, contexto da página atual, on/off de extensão).\n2. Quais demandam mais espaço vertical e merecem options (Triagem Inteligente, Etiquetas, modelos de prompt).\n3. Como migrar sem quebrar o fluxo do usuário acostumado (deep links, atalhos, redirects de versão antiga).\n\nDepende de ERG-09 (precisa do shell de abas pronto antes de migrar features pra ele).",
+      "categoria": "ergonomia",
+      "prioridade": "P3",
+      "coluna": "triagem",
+      "origem": "sessão de smoke 09/05/2026 — análise da divisão popup/options",
+      "tags": ["ergonomia", "options", "popup", "ux", "estrategia"],
+      "esforco": "M",
+      "depende": ["ERG-09"],
+      "aceitacao": [
+        "Documento curto (≤1 página) propondo divisão final entre popup e options",
+        "Lista de features candidatas a migração pra options",
+        "Ordem de migração com riscos por feature"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-09T18:00:00.000Z",
+      "atualizadoEm": "2026-05-09T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T18:00:00.000Z",
+          "comando": "Card aberto durante smoke do FLUX-11. Análise revelou que a fronteira atual entre popup e options é histórica e não estratégica. Card P3 dependente de ERG-09."
+        }
+      ]
+    },
+    {
+      "id": "ERG-11",
+      "titulo": "Bug — Mermaid bomb vaza pro rodapé quando LLM produz bloco mermaid inválido na resposta",
+      "descricao": "Identificado durante o smoke do v1.5 (sessão 09/05/2026) no Consultor de fluxos em modo Dev. Sintoma: ao final da página, abaixo do footer institucional, aparece um SVG enorme do Mermaid 11.14.0 com ícone de bomba e texto 'Syntax error in text'. Visualmente parece que a extensão quebrou.\n\n**Diagnóstico:** o renderizador determinístico (`caminhoParaMermaid` no painel direito) funciona corretamente — o diagrama do caminho 'JEF_ELDESP até CERTTRANSJULG' aparece bonito. A bomba é um SEGUNDO render do Mermaid, disparado por algum bloco ```` ```mermaid ```` que o LLM produziu na resposta com sintaxe inválida (provavelmente node id com caractere proibido, flecha esquecida, ou sintaxe v9 vs v10 confusa). Como o markdown renderer chama `mermaid.render()` sem container válido (ou com container que falha), o Mermaid v11 dumpa o SVG de erro no fim do `<body>`.\n\n**Reprodução:** modo Dev no Consultor, perguntar 'do JEF_ELDESP até CERTTRANSJULG' (ou outro caminho que faça o LLM tentar gerar Mermaid próprio). Bomb aparece no rodapé.\n\n**Fix proposto:**\n\n1. Envolver chamadas a `mermaid.render`/`mermaid.run` dentro do pipeline de markdown da resposta com `try/catch`.\n2. Em caso de erro, fallback: mostrar o código Mermaid bruto numa `<pre>` com classe `.mermaid-fallback` (e talvez um aviso discreto 'diagrama inválido').\n3. Garantir que o Mermaid SEMPRE recebe um container target — nunca deixar a lib auto-decidir onde dumpar erro.\n4. Considerar: instruir o LLM no system prompt a NÃO produzir blocos Mermaid próprios (deixar isso só pro renderizador determinístico) — pode reduzir frequência do bug a quase zero.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão de smoke 09/05/2026 — Consultor modo Dev",
+      "tags": ["bug", "consultor", "mermaid", "ux", "ergonomia"],
+      "esforco": "S",
+      "depende": [],
+      "aceitacao": [
+        "Mermaid render no pipeline de markdown da resposta envolvido em try/catch",
+        "Em erro, código Mermaid aparece como <pre> dentro da bolha de resposta — nada vaza pro fim do body",
+        "Smoke da reprodução não exibe mais a bomba",
+        "Avaliar (e talvez aplicar) instrução no FLUXOS_SYSTEM_PROMPT_DEV pra LLM não gerar blocos Mermaid próprios",
+        "Build do paidegua sem erros TS"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-09T18:00:00.000Z",
+      "atualizadoEm": "2026-05-09T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T18:00:00.000Z",
+          "comando": "Bug identificado pelo owner durante smoke do FLUX-14 (modo Dev). Não bloqueante — diagrama determinístico funciona. P2 por ser visualmente assustador (parece que quebrou tudo) mas sem impacto funcional."
         }
       ]
     }
