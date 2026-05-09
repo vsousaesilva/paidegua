@@ -2946,7 +2946,7 @@
       "descricao": "Quando o servidor está em uma tela do PJe que cita o nome de uma tarefa humana conhecida do catálogo (ex.: '[JEF] Análise inicial - Perícia'), o paidegua reconhece e oferece, via toast flutuante não-intrusivo, abrir a vista da tarefa nos Mapas de Jornada (rota ?tarefa=<id>). Sem persistência: dispensa-se com um clique e a mesma tarefa não reaparece nesta sessão; auto-some após 14s sem interação. Já considera o pivot FLUX-17 — alvo é TAREFA HUMANA (não fluxo), e o destino é a página dedicada da tarefa, não o Consultor.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "em-curso",
+      "coluna": "lancado",
       "origem": "sessão 06/05/2026 — Sprint 3 / atualizado 2026-05-07 com pivot",
       "tags": [
         "fluxos",
@@ -3754,7 +3754,7 @@
       "descricao": "Replica a estrutura JEF para a lane EF (já considerando o pivot FLUX-17 — tarefa humana como unidade primária). Cria paidegua/assets/jornadas-ef.json com 5 trilhas (Distribuição e citação; Convênios e penhora online — SISBAJUD/RENAJUD/INFOJUD; Audiência; Decisão e cálculo; Sobrestamento e arquivo) e 5 agrupamentos cobrindo as 9 fases canônicas, todas com tarefas-âncora reais confirmadas via Grep no catálogo embarcado (98 tarefas EF). Ativa o botão 'Mapa EF' no header do Consultor de fluxos (remove disabled e badge 'em breve') e na nav lateral da página de Mapas. Detector contextual proativo (FLUX-04) passa a abrir Mapa EF quando reconhece tarefa '[EF] X' na tela do PJe. Validação institucional pendente — owner não atua na lane EF, precisa designar servidor sênior da Execução Fiscal antes do release final (proposta inicial deste card baseada no catálogo).",
       "categoria": "pesquisa",
       "prioridade": "P2",
-      "coluna": "em-curso",
+      "coluna": "qa",
       "origem": "sessão 06/05/2026 — Sprint 5 dos Mapas de Jornada (PLANO-VIS-JEF.md)",
       "tags": [
         "fluxos",
@@ -3822,7 +3822,7 @@
       "descricao": "Replica a estrutura JEF/EF para a lane Comum (cível ordinário + criminal nas varas comuns federais), já considerando o pivot FLUX-17. Cria paidegua/assets/jornadas-comum.json com 5 trilhas (citacao-comunicacao, instrucao audiência+perícia, decisao-sentenca, transito-cumprimento, sobrestamento-arquivo) e 5 agrupamentos mapeados às 9 fases canônicas. Tarefas-âncora reais confirmadas via Grep no catálogo embarcado (134 tarefas Comum + algumas com prefixo [PREVJUD] para o caso previdenciário). Estruturação UNIFICADA cível+criminal porque o catálogo coletado não distingue fluxos exclusivamente criminais — ambos usam as mesmas rotinas de comunicação/audiência/decisão/arquivo. Ativa o botão 'Cível e Criminal' no header do Consultor (remove disabled e badge 'em breve') e na nav lateral da página de Mapas. Detector contextual proativo (FLUX-04) já cobre tarefas '[PREVJUD] X' via lane-aware. Validação institucional pendente — owner não atua plenamente nessas lanes; precisa designar 1 sênior cível + 1 criminal antes do release definitivo.",
       "categoria": "pesquisa",
       "prioridade": "P2",
-      "coluna": "em-curso",
+      "coluna": "qa",
       "origem": "sessão 06/05/2026 — Sprint 6 dos Mapas de Jornada (PLANO-VIS-JEF.md)",
       "tags": [
         "fluxos",
