@@ -661,6 +661,11 @@
           "autor": "vsousaesilva@jfce.jus.br",
           "data": "2026-05-10T03:00:00.000Z",
           "comando": "Implementado + smoke ponta-a-ponta verde (passa limpo no source atual; detecta linha proibida quando inserida; volta a passar quando a linha é removida). Próximo PR/push exercita o gate no CI (esperado: verde, já que scan local passou). Follow-up registrado: ampliar termos para incluir 'ca' e 'url' com regex mais inteligente que distinga FP — ficou de fora desta entrega por gerar muitos FP no source atual."
+        }
+      ]
+    },
+    {
+      "id": "INFRA-16",
       "titulo": "Detector de não-PJe (Eproc/PROJUDI) devolvendo null",
       "descricao": "Adapter em pje-legacy.ts identifica não-PJe e nenhum coordenador deve cair em path otimizado. Bandeira explícita.",
       "categoria": "infra",
