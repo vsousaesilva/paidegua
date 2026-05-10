@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "pAIdegua",
-  "version": "1.5.0",
-  "description": "Inteligência Artificial integrada ao PJe — análise de processos, geração de minutas e extração de informações com IA.",
+  "version": "1.5.1",
+  "description": "Plataforma de apoio à atividade e à gestão judicial no PJe — triagem, minutas, fluxos, metas CNJ, prazos e indicadores de gestão.",
   "permissions": [
     "activeTab",
     "alarms",

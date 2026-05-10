@@ -4941,33 +4941,49 @@
     },
     {
       "id": "ERG-09",
-      "titulo": "Refatorar página de Opções em abas (Modelos / Mapas de Jornada / Geral)",
-      "descricao": "Dívida de design herdada do FLUX-11. A página `src/options/options.html` é historicamente monotemática (`<title>` e `<h1>` = 'pAIdegua — Modelos de Minuta', subtítulo descreve apenas configuração de pasta de modelos), mas o FLUX-11 inseriu nela uma seção 'Mapas de Jornada — telemetria local' que fica deslocada do contexto, levando o usuário a não encontrá-la na primeira tentativa. A correção é transformar o options.html em um shell com abas internas:\n\n1. Aba **Modelos de Minuta** — preserva os 3 cards atuais (Pasta de modelos, Modelos indexados, Como funciona).\n2. Aba **Mapas de Jornada** — recebe o card de telemetria local (do FLUX-11) e cresce conforme novos toggles desse módulo.\n3. Aba **Geral** — placeholder pra futuras configurações comuns (ex.: tema escuro, idioma).\n\nMudar também `<title>` e `<h1>` pra 'pAIdegua — Configurações'. Atualizar subtítulo pra refletir escopo geral. Padrão de UX: tabs como em Bitwarden/uBlock — keyboard-navegáveis (Tab + setas), persistir aba ativa em chrome.storage.local.",
+      "titulo": "Migrar configs avançadas pro popup (Mapas de Jornada + Mais opções) e manter Opções monotemática",
+      "descricao": "Reescopo após primeira implementação. PRIMEIRA TENTATIVA (09/05/2026 manhã): refatorar options.html em 3 abas (Modelos / Mapas de Jornada / Geral) — entregue em build local + verde, mas REPROVADO pelo owner em 09/05/2026 tarde com a seguinte fundamentação: 'A página pAIdegua Configurações deve voltar a ser apenas para configuração dos modelos. As abas Mapas de Jornada (com explicação melhor) e Geral (renomeada para Mais opções) devem ir para a página principal do popup, depois da aba Central de Comunicação.'\n\nSEGUNDA IMPLEMENTAÇÃO (v1.5.1):\n\n1. options.html volta a ser monotemático — somente Modelos de Minuta (estado pré-tentativa). Subtitle inclui linha curta apontando que demais configs ficam no popup.\n2. popup.html ganha 2 abas novas após 'Central de Comunicação':\n   - 'Mapas de Jornada' — explicação melhorada do que é + onde acessar (botão 'Mapa JEF' no Consultor) + toggle de telemetria local migrado do FLUX-11.\n   - 'Mais opções' — aba dedicada a hospedar TOGGLES de UI passiva no PJe (ver ERG-14). Inicialmente com 1 toggle (toast contextual do FLUX-04). Cresce conforme novas features automáticas forem adicionadas.\n3. STORAGE_KEYS.OPTIONS_ABA_ATIVA removido (não usado mais).\n4. Tagline atualizada na v1.5.1 (rebrand textual): 'Plataforma de apoio à atividade e à gestão judicial no PJe'.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "triagem",
-      "origem": "sessão de smoke 09/05/2026 — feedback owner ao validar FLUX-11",
-      "tags": ["ergonomia", "options", "abas", "ux", "divida-tecnica"],
+      "coluna": "qa",
+      "origem": "sessão de smoke 09/05/2026 — feedback owner ao validar FLUX-11; reprovação 09/05/2026 noite",
+      "tags": ["ergonomia", "options", "popup", "abas", "ux", "rebrand"],
       "esforco": "M",
       "depende": [],
       "aceitacao": [
-        "options.html refatorado com 3 abas (Modelos de Minuta, Mapas de Jornada, Geral)",
-        "Telemetria do FLUX-11 vive na aba 'Mapas de Jornada', não mais misturada com Modelos",
-        "Aba ativa persistida em chrome.storage.local — recarregar a página mantém a aba",
-        "Navegação por teclado entre abas (Tab, setas)",
-        "Título da janela e h1 trocados pra 'pAIdegua — Configurações'",
-        "Build do paidegua sem erros TS"
+        "options.html monotemático (só Modelos de Minuta) — sem abas, sem panel-jornadas, sem panel-geral",
+        "popup.html ganha aba 'Mapas de Jornada' depois de 'Central de Comunicação' com explicação + toggle telemetria",
+        "popup.html ganha aba 'Mais opções' como última aba, com toggles de UI passiva (ver ERG-14)",
+        "Telemetria do FLUX-11 funciona migrada no popup (toggle, contador, limpar)",
+        "Tagline 'Plataforma de apoio à atividade e à gestão judicial no PJe' aplicada no popup",
+        "STORAGE_KEYS.OPTIONS_ABA_ATIVA removido sem uso residual",
+        "Build do paidegua sem erros TS",
+        "Smoke: abrir options → só Modelos; abrir popup → 7 abas; navegar nas 2 novas; toggle telemetria persiste; toggle do toast desliga o aviso no PJe"
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-09T18:00:00.000Z",
-      "atualizadoEm": "2026-05-09T18:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+      "atualizadoEm": "2026-05-09T23:30:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-v1.5.1",
       "historico": [
         {
           "tipo": "criado",
           "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
           "data": "2026-05-09T18:00:00.000Z",
           "comando": "Card aberto durante smoke do FLUX-11. Owner identificou que a seção 'Mapas de Jornada — telemetria local' está deslocada na página de Opções (que historicamente era 100% Modelos de Minuta). Decisão: aceitar FLUX-11 como entregue (critério estrito 'toggle visível em options/options.html, OFF por default' atendido) e abrir este card P2 para refatorar a página em abas (opção B do triplo Renomear/Abas/Páginas-separadas)."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/options/options.html", "src/options/options.css", "src/options/options.ts", "src/shared/constants.ts"],
+          "autor": "claude-code/sessao-2026-05-09-smoke-v1.5",
+          "data": "2026-05-09T20:30:00.000Z",
+          "comando": "Primeira tentativa implementada: 3 abas em options (Modelos/Mapas/Geral) com persistência em chrome.storage.local + navegação por teclado. Build verde."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/options/*", "src/popup/*", "src/shared/constants.ts", "src/shared/ui-toggles.ts (novo)"],
+          "autor": "claude-code/sessao-2026-05-09-v1.5.1",
+          "data": "2026-05-09T23:30:00.000Z",
+          "comando": "Reescopo após reprovação do owner. options.html revertido pra monotemático. popup.html ganhou 2 abas (Mapas de Jornada + Mais opções) depois de Central de Comunicação. Telemetria FLUX-11 migrada do options pro popup. Aba 'Geral' descartada → virou 'Mais opções' com função real (hospedar toggles de UI passiva — ERG-14). STORAGE_KEYS.OPTIONS_ABA_ATIVA removido."
         }
       ]
     },
@@ -5129,6 +5145,40 @@
           "autor": "vsousaesilva@jfce.jus.br",
           "data": "2026-05-09T22:30:00.000Z",
           "comando": "Refactor concluído + build verde. Single source of truth da regex agora em src/shared/extension-context.ts:16."
+        }
+      ]
+    },
+    {
+      "id": "ERG-14",
+      "titulo": "Padrão pAIdegua de toggles para UI passiva no PJe (Mais opções)",
+      "descricao": "Convenção institucional decidida pelo owner em 2026-05-09 (sessão v1.5.1). Toda nova feature do pAIdegua que insere DOM automaticamente na tela do PJe (sem clique do usuário) deve ter toggle on/off na aba 'Mais opções' do popup. Default sempre ligado (preserva comportamento). Permite que o usuário decida quanta UI passiva quer ver.\n\n**Critério estrito (todas as 3):** (1) aparece automaticamente, (2) adiciona elemento visual ao DOM da página do PJe, (3) pode ser percebida como intrusiva. Bubbles dentro do sidebar (resultado de clique) NÃO entram — são triggered, não passivos.\n\n**Implementação inicial (v1.5.1):** util compartilhada `src/shared/ui-toggles.ts` com `getUiToggle/getAllUiToggles/setUiToggle/subscribeUiToggle`, single key `STORAGE_KEYS.UI_TOGGLES` em chrome.storage.local, único toggle hoje: `tarefaContextualToast` (FLUX-04). content.ts handler de onTarefaDetectada checa `getUiToggle('tarefaContextualToast')` antes de chamar `mostrarToastTarefaContextual`.\n\n**Aba 'Mais opções':** lista os toggles dinamicamente a partir de `UI_TOGGLE_DEFAULTS` + metadata em `META` dentro de `bindMaisOpcoesToggles` em popup.ts. Para adicionar novo toggle: (1) adicionar nome em UI_TOGGLE_DEFAULTS, (2) adicionar entrada em META com rótulo + descrição, (3) instrumentar a feature pra checar getUiToggle antes de criar DOM.\n\n**Convenção registrada em memória:** `paidegua_ui_toggle_pattern.md`.",
+      "categoria": "ergonomia",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "sessão 09/05/2026 — decisão de design do owner durante reescopo do ERG-09",
+      "tags": ["padrao", "ui", "toggle", "convencao", "ergonomia", "extensao"],
+      "esforco": "S",
+      "depende": ["ERG-09"],
+      "aceitacao": [
+        "src/shared/ui-toggles.ts criado com getUiToggle, getAllUiToggles, setUiToggle, subscribeUiToggle",
+        "STORAGE_KEYS.UI_TOGGLES adicionado em constants.ts",
+        "Aba 'Mais opções' do popup lista toggles dinamicamente a partir de UI_TOGGLE_DEFAULTS",
+        "Toggle 'tarefaContextualToast' funcional: desligar pelo popup → próximo toast não aparece no PJe",
+        "Default ON preservado para compatibilidade com comportamento atual",
+        "Convenção documentada em memory paidegua_ui_toggle_pattern.md",
+        "Build do paidegua sem erros TS",
+        "Smoke: ativar/desativar toggle → reload aba PJe → comportamento muda conforme esperado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-09T23:30:00.000Z",
+      "atualizadoEm": "2026-05-09T23:30:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-09-v1.5.1",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-09-v1.5.1",
+          "data": "2026-05-09T23:30:00.000Z",
+          "comando": "Card aberto + implementado na mesma sessão (v1.5.1). Critério restritivo aplicado: só toast contextual do FLUX-04 entra hoje (bubbles de análise/etiquetas são triggered, não passivos). Framework pronto para receber mais toggles conforme features automáticas novas. Aguardando smoke do owner para mover para lancado."
         }
       ]
     }

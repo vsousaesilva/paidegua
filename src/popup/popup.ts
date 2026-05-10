@@ -16,6 +16,7 @@ import {
   PROVIDER_IDS,
   PROVIDER_LABELS,
   PROVIDER_MODELS,
+  STORAGE_KEYS,
   TRIAGEM_CRITERIOS,
   type ProfileId,
   type ProviderId,
@@ -492,7 +493,14 @@ async function removeApiKey(): Promise<void> {
 // Abas (Geral / Triagem Inteligente)
 // =====================================================================
 
-type TabId = 'tab-geral' | 'tab-triagem' | 'tab-etiquetas' | 'tab-pericias' | 'tab-comunicacao';
+type TabId =
+  | 'tab-geral'
+  | 'tab-triagem'
+  | 'tab-etiquetas'
+  | 'tab-pericias'
+  | 'tab-comunicacao'
+  | 'tab-mapas-jornada'
+  | 'tab-mais-opcoes';
 
 function setActiveTab(tabId: TabId): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>('.paidegua-popup__tab');
@@ -1099,8 +1107,139 @@ function bindComunicacaoEvents(): void {
   }
 }
 
+/**
+ * Popular os labels de versão (rodapé + seção "Sobre") a partir do
+ * manifest. Evita hardcode que ficava obsoleto a cada release. Bug
+ * descoberto em 2026-05-09 — popup mostrava v1.2.1 mesmo na v1.5.0.
+ */
+function setVersionLabels(): void {
+  const versao = chrome.runtime.getManifest().version;
+  const sobre = document.getElementById('about-version-label');
+  const rodape = document.getElementById('footer-version-label');
+  if (sobre) sobre.textContent = versao;
+  if (rodape) rodape.textContent = versao;
+}
+
+/**
+ * UI da telemetria opt-in dos Mapas de Jornada (FLUX-11). Migrada do
+ * options.ts pra popup.ts em 2026-05-09 (v1.5.1) — vive na aba
+ * "Mapas de Jornada" do popup. Default OFF; sem envio externo até
+ * acordo formal com a SETIC.
+ */
+async function bindJornadasTelemetria(): Promise<void> {
+  const optin = document.getElementById('jornadas-telemetria-optin') as HTMLInputElement | null;
+  const info = document.getElementById('jornadas-telemetria-info');
+  const limpar = document.getElementById('jornadas-telemetria-limpar') as HTMLButtonElement | null;
+  if (!optin || !info || !limpar) return;
+
+  const tel = await import('../shared/jornadas-telemetria');
+
+  const atualizarInfo = async (): Promise<void> => {
+    const eventos = await tel.getEventos();
+    if (eventos.length === 0) {
+      info.textContent = 'Nenhum evento coletado.';
+    } else {
+      const desde = new Date(eventos[0].ts).toLocaleString('pt-BR');
+      info.textContent = `${eventos.length} evento(s) coletado(s) desde ${desde}.`;
+    }
+  };
+
+  optin.checked = await tel.getOptIn();
+  await atualizarInfo();
+
+  optin.addEventListener('change', async () => {
+    await tel.setOptIn(optin.checked);
+    await atualizarInfo();
+  });
+  limpar.addEventListener('click', async () => {
+    if (!confirm('Apagar todos os eventos coletados localmente?')) return;
+    await tel.limparEventos();
+    await atualizarInfo();
+  });
+}
+
+/**
+ * Aba "Mais opções" — toggles de UI passiva no PJe. Padrão registrado em
+ * memory `paidegua_ui_toggle_pattern.md`. Cada toggle aqui controla uma
+ * feature que insere DOM automaticamente no PJe (sem clique do usuário).
+ */
+async function bindMaisOpcoesToggles(): Promise<void> {
+  const host = document.getElementById('mais-opcoes-toggles');
+  if (!host) return;
+
+  const { UI_TOGGLE_DEFAULTS, getAllUiToggles, setUiToggle } =
+    await import('../shared/ui-toggles');
+  type UiToggleName = keyof typeof UI_TOGGLE_DEFAULTS;
+
+  // Metadados de UI por toggle: rótulo curto + descrição. Quando entrar
+  // toggle novo em UI_TOGGLE_DEFAULTS, adicionar a entrada aqui também.
+  const META: Record<UiToggleName, { rotulo: string; descricao: string }> = {
+    tarefaContextualToast: {
+      rotulo: 'Toast "pAIdegua reconheceu esta tarefa"',
+      descricao:
+        'Cartão flutuante que aparece no canto inferior direito quando você abre uma tarefa do PJe que o pAIdegua conhece bem (ex.: "[JEF] Análise inicial - Perícia"), oferecendo abrir a vista da tarefa no Mapa de Jornada.'
+    }
+  };
+
+  const valores = await getAllUiToggles();
+
+  host.innerHTML = '';
+  for (const nome of Object.keys(UI_TOGGLE_DEFAULTS) as UiToggleName[]) {
+    const meta = META[nome];
+    const wrapper = document.createElement('label');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'flex-start';
+    wrapper.style.gap = '10px';
+    wrapper.style.cursor = 'pointer';
+    wrapper.style.padding = '10px 12px';
+    wrapper.style.border = '1px solid rgba(19,81,180,0.14)';
+    wrapper.style.borderRadius = '10px';
+    wrapper.style.background = 'rgba(255,255,255,0.7)';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = valores[nome];
+    checkbox.style.marginTop = '2px';
+    checkbox.style.width = '16px';
+    checkbox.style.height = '16px';
+    checkbox.style.accentColor = 'var(--primary)';
+    checkbox.style.cursor = 'pointer';
+
+    const texto = document.createElement('div');
+    texto.style.minWidth = '0';
+
+    const rotuloEl = document.createElement('div');
+    rotuloEl.textContent = meta.rotulo;
+    rotuloEl.style.fontSize = '13px';
+    rotuloEl.style.fontWeight = '600';
+    rotuloEl.style.color = 'var(--primary-dark)';
+
+    const descEl = document.createElement('div');
+    descEl.textContent = meta.descricao;
+    descEl.style.fontSize = '12px';
+    descEl.style.color = 'var(--muted)';
+    descEl.style.lineHeight = '1.45';
+    descEl.style.marginTop = '2px';
+
+    texto.appendChild(rotuloEl);
+    texto.appendChild(descEl);
+    wrapper.appendChild(checkbox);
+    wrapper.appendChild(texto);
+    host.appendChild(wrapper);
+
+    checkbox.addEventListener('change', () => {
+      setUiToggle(nome, checkbox.checked).catch((err: unknown) => {
+        console.warn('paidegua mais-opcoes: falha ao salvar toggle', nome, err);
+      });
+    });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  setVersionLabels();
   bindAuthGate();
+  void bindJornadasTelemetria();
+  void bindMaisOpcoesToggles();
   void (async () => {
     const status = await fetchAuthStatus();
     if (status.authenticated && status.email) {
@@ -2417,12 +2556,18 @@ function bindPericiasEvents(): void {
  * Versão do pacote de backup. Incrementar se o shape mudar de forma
  * incompatível (ex.: renomear campos). Leitores devem validar antes
  * de mesclar no storage.
+ *
+ * v1 → v2 (2026-05-09, v1.5.1): adiciona `uiToggles` e
+ * `jornadasTelemetriaOptIn`. Campos opcionais — leitores v2 aceitam
+ * pacotes v1 (compatibilidade pra trás).
  */
-const BACKUP_VERSION = 1 as const;
+const BACKUP_VERSION = 2 as const;
+const BACKUP_VERSIONS_ACEITAS: readonly number[] = [1, 2];
 
 interface BackupPacote {
   pacote: 'paidegua-config';
-  version: typeof BACKUP_VERSION;
+  /** Versão do pacote — leitores aceitam v1 (legado) e v2 (atual). */
+  version: 1 | 2;
   exportedAt: string;
   /** Config gerais SEM api keys (nunca exportadas). */
   settings: Partial<PAIdeguaSettings>;
@@ -2430,6 +2575,10 @@ interface BackupPacote {
   peritos: PericiaPeritosStore;
   /** Etiquetas marcadas como sugestionáveis (idTag). */
   etiquetasSugestionaveis: number[];
+  /** v2+: estado dos toggles de UI passiva no PJe (aba "Mais opções"). */
+  uiToggles?: Record<string, boolean>;
+  /** v2+: opt-in da telemetria local dos Mapas de Jornada (FLUX-11). */
+  jornadasTelemetriaOptIn?: boolean;
 }
 
 function setBackupStatus(
@@ -2459,17 +2608,34 @@ async function exportarConfig(): Promise<void> {
       setBackupStatus('Configurações ainda não carregadas.', 'error');
       return;
     }
-    const [peritosStore, sugestionaveis] = await Promise.all([
+    const [peritosStore, sugestionaveis, storageData] = await Promise.all([
       loadPericiasStore(),
-      listSugestionaveis()
+      listSugestionaveis(),
+      chrome.storage.local.get([
+        STORAGE_KEYS.UI_TOGGLES,
+        STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN
+      ])
     ]);
+    const uiTogglesRaw = storageData[STORAGE_KEYS.UI_TOGGLES];
+    const uiToggles =
+      uiTogglesRaw && typeof uiTogglesRaw === 'object'
+        ? (uiTogglesRaw as Record<string, boolean>)
+        : undefined;
+    const jornadasOptInRaw = storageData[STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN];
+    const jornadasTelemetriaOptIn =
+      typeof jornadasOptInRaw === 'boolean' ? jornadasOptInRaw : undefined;
+
     const pacote: BackupPacote = {
       pacote: 'paidegua-config',
       version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       settings: sanitizeSettingsParaExport(currentSettings),
       peritos: peritosStore,
-      etiquetasSugestionaveis: sugestionaveis.map((s) => s.idTag)
+      etiquetasSugestionaveis: sugestionaveis.map((s) => s.idTag),
+      ...(uiToggles ? { uiToggles } : {}),
+      ...(typeof jornadasTelemetriaOptIn === 'boolean'
+        ? { jornadasTelemetriaOptIn }
+        : {})
     };
     const json = JSON.stringify(pacote, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
@@ -2504,6 +2670,7 @@ function isBackupPacote(v: unknown): v is BackupPacote {
   return (
     o.pacote === 'paidegua-config' &&
     typeof o.version === 'number' &&
+    BACKUP_VERSIONS_ACEITAS.includes(o.version as number) &&
     typeof o.exportedAt === 'string' &&
     typeof o.settings === 'object' &&
     typeof o.peritos === 'object' &&
@@ -2523,9 +2690,9 @@ async function importarConfig(file: File): Promise<void> {
       );
       return;
     }
-    if (parsed.version !== BACKUP_VERSION) {
+    if (!BACKUP_VERSIONS_ACEITAS.includes(parsed.version)) {
       setBackupStatus(
-        `Versão de backup não suportada (${parsed.version}). Esperado: ${BACKUP_VERSION}.`,
+        `Versão de backup não suportada (${parsed.version}). Aceitos: ${BACKUP_VERSIONS_ACEITAS.join(', ')}.`,
         'error'
       );
       return;
@@ -2534,7 +2701,8 @@ async function importarConfig(file: File): Promise<void> {
       'Importar este backup substituirá:\n' +
         '  • Configurações gerais (exceto chaves de API);\n' +
         '  • Todos os peritos cadastrados;\n' +
-        '  • A seleção de etiquetas sugestionáveis.\n\n' +
+        '  • A seleção de etiquetas sugestionáveis;\n' +
+        '  • Toggles de UI passiva e opt-in da telemetria de Mapas de Jornada (se presentes no arquivo).\n\n' +
         'Deseja prosseguir?'
     );
     if (!confirmed) {
@@ -2569,6 +2737,21 @@ async function importarConfig(file: File): Promise<void> {
     etiqState.selecionados = new Set(parsed.etiquetasSugestionaveis);
     etiqState.selecionadosOriginais = new Set(etiqState.selecionados);
     await notificarInvalidateIndex();
+
+    // 4) v2+: toggles de UI passiva no PJe (aba "Mais opções"). Opt-in:
+    // se o arquivo for v1 ou não tiver o campo, não toca no storage atual.
+    if (parsed.uiToggles && typeof parsed.uiToggles === 'object') {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.UI_TOGGLES]: parsed.uiToggles
+      });
+    }
+
+    // 5) v2+: opt-in da telemetria dos Mapas de Jornada (FLUX-11).
+    if (typeof parsed.jornadasTelemetriaOptIn === 'boolean') {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN]: parsed.jornadasTelemetriaOptIn
+      });
+    }
 
     // Re-renderiza para refletir as novidades.
     populateProviders();

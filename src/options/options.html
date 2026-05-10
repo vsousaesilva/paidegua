@@ -68,33 +68,6 @@
         <p id="skipped-summary" class="paidegua-options__hint paidegua-options__hint--small"></p>
       </section>
 
-      <section class="paidegua-options__card" aria-labelledby="hd-jornadas-tel">
-        <h2 id="hd-jornadas-tel">Mapas de Jornada — telemetria local</h2>
-        <p class="paidegua-options__hint">
-          Coletar localmente eventos agregados de uso dos Mapas de Jornada
-          (qual etapa foi aberta, quantas vezes a busca foi usada). Apenas
-          metadata: timestamps + ids de fluxo. Nunca conteúdo de processo,
-          número de processo ou termo digitado na busca. Os dados ficam
-          somente nesta máquina; nada é enviado a servidor.
-        </p>
-        <p class="paidegua-options__hint paidegua-options__hint--small">
-          Pendente de acordo institucional com a SETIC. Por isso, o padrão
-          é <strong>desligado</strong>.
-        </p>
-        <label class="paidegua-jornadas-tel__toggle">
-          <input type="checkbox" id="jornadas-telemetria-optin">
-          <span>Ativar telemetria local dos Mapas de Jornada</span>
-        </label>
-        <p id="jornadas-telemetria-info" class="paidegua-options__hint paidegua-options__hint--small">
-          Nenhum evento coletado.
-        </p>
-        <div class="paidegua-options__row">
-          <button type="button" id="jornadas-telemetria-limpar" class="paidegua-options__btn">
-            Limpar dados coletados
-          </button>
-        </div>
-      </section>
-
       <section class="paidegua-options__card paidegua-options__card--note">
         <h2>Como funciona</h2>
         <ul class="paidegua-options__doc">
@@ -115,6 +88,12 @@
             editar ou remover modelos.
           </li>
         </ul>
+        <p class="paidegua-options__hint paidegua-options__hint--small">
+          Outras configurações (telemetria dos Mapas de Jornada, avisos
+          automáticos no PJe e demais opções) ficam no <strong>popup</strong>
+          da extensão (ícone do pAIdegua na barra do Chrome), nas abas
+          "Mapas de Jornada" e "Mais opções".
+        </p>
       </section>
     </main>
 

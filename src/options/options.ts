@@ -295,44 +295,7 @@ function bindEvents(): void {
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
   void loadInitial();
-  void bindJornadasTelemetria();
 });
-
-/**
- * UI da telemetria opt-in dos Mapas de Jornada (FLUX-11). Default OFF.
- * Toggle persiste em chrome.storage.local; "Limpar dados" remove o
- * acumulado. Sem envio externo até acordo formal com a SETIC.
- */
-async function bindJornadasTelemetria(): Promise<void> {
-  const tel = await import('../shared/jornadas-telemetria');
-  const optin = document.getElementById('jornadas-telemetria-optin') as HTMLInputElement | null;
-  const info = document.getElementById('jornadas-telemetria-info');
-  const limpar = document.getElementById('jornadas-telemetria-limpar') as HTMLButtonElement | null;
-  if (!optin || !info || !limpar) return;
-
-  const atualizarInfo = async (): Promise<void> => {
-    const eventos = await tel.getEventos();
-    if (eventos.length === 0) {
-      info.textContent = 'Nenhum evento coletado.';
-    } else {
-      const desde = new Date(eventos[0].ts).toLocaleString('pt-BR');
-      info.textContent = `${eventos.length} evento(s) coletado(s) desde ${desde}.`;
-    }
-  };
-
-  optin.checked = await tel.getOptIn();
-  await atualizarInfo();
-
-  optin.addEventListener('change', async () => {
-    await tel.setOptIn(optin.checked);
-    await atualizarInfo();
-  });
-  limpar.addEventListener('click', async () => {
-    if (!confirm('Apagar todos os eventos coletados localmente?')) return;
-    await tel.limparEventos();
-    await atualizarInfo();
-  });
-}
 
 // Evita warning de import não-utilizado em verificações estritas — o tipo
 // é referenciado apenas em assinaturas internas.

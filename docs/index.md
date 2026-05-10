@@ -17,7 +17,12 @@ A extensão **pAIdegua** é desenvolvida pelo **Laboratório de Inovação da Ju
 
 ## 2. Natureza da extensão
 
-O pAIdegua é uma **ferramenta de apoio** que se integra ao Processo Judicial Eletrônico (PJe) para facilitar a redação de minutas, a triagem inicial de processos, a organização de pautas periciais e a consulta a documentos dos autos com auxílio de Inteligência Artificial generativa. **Toda decisão jurídica permanece exclusivamente humana.**
+O pAIdegua é uma **plataforma institucional de apoio à atividade e à gestão judicial no PJe**, mantida pelo Inovajus / JFCE. Atua em dois eixos:
+
+- **Atividade jurisdicional individual** — triagem inicial de processos, etiquetas inteligentes, anonimização preventiva, geração de minutas e despachos com modelos próprios da unidade, visualização de fluxos processuais e mapas de jornada do PJe, especializações por matéria (criminal, audiência, perícia).
+- **Gestão judicial coletiva** — acompanhamento de Metas CNJ por unidade, controle de prazos em massa via API do PJe, painel de indicadores de gestão, organização de pauta de perícias, triagem em lote, varredura automatizada.
+
+**Toda decisão jurídica permanece exclusivamente humana.** O apoio inteligente da plataforma utiliza modelos de IA dos provedores Anthropic, OpenAI e Google (multi-provedor, sem dependência única), com chave de API configurada localmente pelo usuário. Nenhum conteúdo de processo é persistido em servidor do Inovajus.
 
 A extensão classifica-se como **ferramenta de baixo risco** segundo o Anexo da Resolução CNJ 615/2025 (itens BR4 e BR8 — produção de textos de apoio e anonimização).
 

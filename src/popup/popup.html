@@ -732,7 +732,7 @@
       </span>
       <div>
         <h1>pAIdegua</h1>
-        <p class="paidegua-popup__subtitle">Assistente com IA para o PJe &#8212; JFCE</p>
+        <p class="paidegua-popup__subtitle">Plataforma de apoio &#224; atividade e &#224; gest&#227;o judicial no PJe</p>
       </div>
     </header>
 
@@ -768,6 +768,12 @@
       </button>
       <button type="button" class="paidegua-popup__tab" role="tab" id="tab-comunicacao" aria-controls="panel-comunicacao" aria-selected="false">
         Central de Comunica&#231;&#227;o
+      </button>
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-mapas-jornada" aria-controls="panel-mapas-jornada" aria-selected="false">
+        Mapas de Jornada
+      </button>
+      <button type="button" class="paidegua-popup__tab" role="tab" id="tab-mais-opcoes" aria-controls="panel-mais-opcoes" aria-selected="false">
+        Mais op&#231;&#245;es
       </button>
     </nav>
 
@@ -1011,7 +1017,7 @@
                   Colabora&#231;&#227;o do Dr. George Marmelstein Lima, com o prompt FIRAC+ na
                   etapa de resumo do processo.
                 </p>
-                <p>Vers&#227;o 1.2.1</p>
+                <p>Vers&#227;o <span id="about-version-label"></span></p>
                 <p>Contato: <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
               </div>
             </details>
@@ -1341,11 +1347,70 @@
           <p id="comm-status" class="paidegua-popup__status"></p>
         </section>
       </div>
+
+      <div class="paidegua-popup__tabpanel" role="tabpanel" id="panel-mapas-jornada" aria-labelledby="tab-mapas-jornada" hidden>
+        <section class="paidegua-popup__section">
+          <h2 style="margin:0 0 6px;font-size:14px;color:var(--primary-dark)">Mapas de Jornada do PJe</h2>
+          <p class="paidegua-popup__hint">
+            Visualiza&#231;&#227;o interativa dos fluxos processuais do PJe (JEF, EF, C&#237;vel/Criminal). Mostra como o processo caminha entre tarefas humanas, exibe trilhas pr&#233;-modeladas (audi&#234;ncia, per&#237;cia, senten&#231;a, recursos, cumprimento), permite buscar tarefas por nome com <kbd>Ctrl+K</kbd> e imprimir em A3.
+          </p>
+          <p class="paidegua-popup__hint paidegua-popup__hint--small">
+            Acesse pelo bot&#227;o <strong>"Mapa JEF"</strong> no header do <strong>Consultor de fluxos</strong> (na barra lateral do PJe, se&#231;&#227;o "Conhecimento").
+          </p>
+        </section>
+
+        <section class="paidegua-popup__section" aria-labelledby="hd-jornadas-tel">
+          <h2 id="hd-jornadas-tel" style="margin:0 0 6px;font-size:14px;color:var(--primary-dark)">Telemetria local</h2>
+          <p class="paidegua-popup__hint">
+            Coletar localmente eventos agregados de uso dos Mapas de Jornada
+            (qual etapa foi aberta, quantas vezes a busca foi usada). Apenas
+            metadata: timestamps + ids de fluxo. <strong>Nunca conte&#250;do de processo,
+            n&#250;mero de processo ou termo digitado na busca.</strong> Os dados ficam
+            somente nesta m&#225;quina; nada &#233; enviado a servidor.
+          </p>
+          <p class="paidegua-popup__hint paidegua-popup__hint--small">
+            Pendente de acordo institucional com a SETIC. Por isso, o padr&#227;o
+            &#233; <strong>desligado</strong>.
+          </p>
+          <label class="paidegua-jornadas-tel__toggle" style="display:inline-flex;align-items:center;gap:8px;padding:10px 0;font-size:13px;cursor:pointer;color:var(--primary-dark);">
+            <input type="checkbox" id="jornadas-telemetria-optin" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;">
+            <span>Ativar telemetria local dos Mapas de Jornada</span>
+          </label>
+          <p id="jornadas-telemetria-info" class="paidegua-popup__hint paidegua-popup__hint--small">
+            Nenhum evento coletado.
+          </p>
+          <div class="paidegua-popup__row">
+            <button type="button" id="jornadas-telemetria-limpar" class="paidegua-popup__btn">
+              Limpar dados coletados
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div class="paidegua-popup__tabpanel" role="tabpanel" id="panel-mais-opcoes" aria-labelledby="tab-mais-opcoes" hidden>
+        <section class="paidegua-popup__section">
+          <h2 style="margin:0 0 6px;font-size:14px;color:var(--primary-dark)">Avisos autom&#225;ticos no PJe</h2>
+          <p class="paidegua-popup__hint">
+            Cada item abaixo &#233; um aviso visual que o pAIdegua insere
+            automaticamente nas telas do PJe (sem voc&#234; precisar pedir).
+            Desligue os que voc&#234; n&#227;o quiser ver. As demais funcionalidades
+            do pAIdegua, que voc&#234; aciona com clique, n&#227;o s&#227;o afetadas.
+          </p>
+          <div id="mais-opcoes-toggles" style="display:flex;flex-direction:column;gap:14px;margin-top:8px;">
+            <!-- preenchido por bindMaisOpcoesToggles em popup.ts -->
+          </div>
+          <p class="paidegua-popup__hint paidegua-popup__hint--small" style="margin-top:14px">
+            <strong>Padr&#227;o pAIdegua:</strong> toda nova feature que insere UI
+            autom&#225;tica no PJe ganhar&#225; um toggle nesta lista, com padr&#227;o
+            ligado. Mude livremente conforme a sua prefer&#234;ncia.
+          </p>
+        </section>
+      </div>
     </main>
 
     <footer class="paidegua-popup__footer">
       <small>
-        v1.2.1 - Inovajus / JFCE ·
+        v<span id="footer-version-label"></span> - Inovajus / JFCE ·
         <a href="#" id="open-diagnostico-link" style="color:var(--primary);text-decoration:none;font-weight:600;">Diagn&#243;stico</a>
         ·
         <a href="#" id="open-suporte-link" style="color:var(--primary);text-decoration:none;font-weight:600;">Suporte</a>

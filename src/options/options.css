@@ -281,3 +281,7 @@ button {
   color: var(--primary-dark);
   font-weight: 600;
 }
+
+/* Toggle inline para telemetria dos Mapas de Jornada — vive no popup
+ * (aba "Mapas de Jornada") desde a v1.5.1. Mantido aqui o estilo
+ * compartilhado caso outras telas precisem do mesmo padrão visual. */

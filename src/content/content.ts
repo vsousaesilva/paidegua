@@ -149,6 +149,7 @@ import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
 import type { BaseAdapter } from './adapters/base-adapter';
 import { derivarAnomaliasProcesso } from './adapters/pje-legacy';
 import { installExtensionContextSilencer, isExtensionContextInvalidated } from '../shared/extension-context';
+import { getUiToggle } from '../shared/ui-toggles';
 
 // Silencia "Extension context invalidated" globalmente — esse erro acontece
 // quando a extensão é recarregada/atualizada com este content script ainda
@@ -3870,22 +3871,28 @@ function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
 function instalarDetectorContextualGlobal(): void {
   instalarDetectorTarefaContextual({
     onTarefaDetectada: (t) => {
-      // Lane do mapa segue a lane da tarefa detectada (JEF, EF, Comum
-      // → 'comum', Shared → 'jef' como fallback porque Shared não tem
-      // mapa próprio). Permite que tarefas '[EF]' abram o Mapa EF.
-      const lane: 'jef' | 'ef' | 'comum' =
-        t.lane === 'EF' ? 'ef' : t.lane === 'Comum' ? 'comum' : 'jef';
-      mostrarToastTarefaContextual(t.nome, {
-        onAbrir: () => {
-          void chrome.runtime
-            .sendMessage({
-              channel: MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS,
-              payload: { lane, tarefa: t.id }
-            })
-            .catch((e) => console.warn(`${LOG_PREFIX} FLUXOS_OPEN_JORNADAS falhou:`, e));
-        },
-        onDispensar: () => dispensarTarefaContextual(t.nome)
-      });
+      // ERG-09 (re-escopo) / padrão de UI passiva: o usuário pode desligar
+      // este toast pela aba "Mais opções" do popup. Default: ligado.
+      void (async () => {
+        const habilitado = await getUiToggle('tarefaContextualToast');
+        if (!habilitado) return;
+        // Lane do mapa segue a lane da tarefa detectada (JEF, EF, Comum
+        // → 'comum', Shared → 'jef' como fallback porque Shared não tem
+        // mapa próprio). Permite que tarefas '[EF]' abram o Mapa EF.
+        const lane: 'jef' | 'ef' | 'comum' =
+          t.lane === 'EF' ? 'ef' : t.lane === 'Comum' ? 'comum' : 'jef';
+        mostrarToastTarefaContextual(t.nome, {
+          onAbrir: () => {
+            void chrome.runtime
+              .sendMessage({
+                channel: MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS,
+                payload: { lane, tarefa: t.id }
+              })
+              .catch((e) => console.warn(`${LOG_PREFIX} FLUXOS_OPEN_JORNADAS falhou:`, e));
+          },
+          onDispensar: () => dispensarTarefaContextual(t.nome)
+        });
+      })();
     }
   });
 }

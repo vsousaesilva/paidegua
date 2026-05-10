@@ -1,6 +1,6 @@
 # pAIdegua - Manual de Instalacao e Uso
 
-Assistente de IA integrado ao PJe para analise de processos, geracao de minutas e extracao de informacoes.
+Plataforma de apoio a atividade e a gestao judicial no PJe - triagem, minutas, fluxos, metas CNJ, prazos e indicadores de gestao. Mantida pelo Inovajus / JFCE em conformidade com a LGPD e a Resolucao CNJ 615/2025.
 
 ---
 

@@ -706,6 +706,15 @@ export const STORAGE_KEYS = {
   JORNADAS_TELEMETRIA_OPT_IN: 'paidegua.jornadas.telemetria.optIn',
   JORNADAS_TELEMETRIA_DADOS:  'paidegua.jornadas.telemetria.dados',
   /**
+   * Toggles de UI passiva no PJe (FLUX-04 toast contextual e futuras
+   * features que aparecem automaticamente). Single-key + objeto para
+   * load/subscribe atômicos. Valores default em `src/shared/ui-toggles.ts`.
+   * Adicionado em 2026-05-09 — ERG-09 reescoado: a aba "Mais opções" do
+   * popup hospeda esses toggles; cada feature passiva consulta antes de
+   * criar DOM. Padrão registrado em memory `paidegua_ui_toggle_pattern.md`.
+   */
+  UI_TOGGLES:                 'paidegua.ui.toggles',
+  /**
    * Chave em `chrome.storage.session` (volátil) com o payload JÁ ANONIMIZADO
    * do Painel Gerencial, pronto para enviar à LLM. Separado do
    * `GESTAO_DASHBOARD_PAYLOAD` (leve, usado para renderizar o dashboard)
