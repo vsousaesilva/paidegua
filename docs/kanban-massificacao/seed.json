@@ -2681,8 +2681,10 @@
         {
           "id": "ext6",
           "texto": "Comunicar pilotos atuais sobre a migração + período de fallback",
-          "feito": false,
-          "nota": "Decisão 09/05/2026: comunicação CONSOLIDADA com a release v1.5.0 (estratégia B). Razão: v1.3.2 aprovada em 06/05/2026 (já no ar via auto-update do Chrome) e v1.5.0 submetida à CWS em 09/05/2026 (em revisão). Em vez de 2 e-mails em ~1 semana, aguardar aprovação da v1.5.0 e enviar 1 e-mail único cobrindo: (a) infra de auth nova (Worker Cloudflare); (b) features novas da v1.5.0 (Mapas de Jornada + melhorias Consultor); (c) pedido de logout+login até 05/06/2026 antes do desligamento do Apps Script (ext8). Destinatários conhecidos hoje: 13 pilotos (excluindo owner) — 9 jfce.jus.br + 4 jfal.jus.br. Texto rascunho do e-mail mantido na conversa da sessão 2026-05-09; final será compilado na sessão pós-aprovação."
+          "feito": true,
+          "feitoPor": "vsousaesilva@jfce.jus.br",
+          "feitoEm": "2026-05-09T23:55:00.000Z",
+          "nota": "ENVIADO em 09/05/2026 via Resend (Broadcast no dashboard) para 13 pilotos da equipe extensao (9 jfce.jus.br + 4 jfal.jus.br): victorfalcao, gunnartrennepohl, robertapessoa, felipemartiniano, gabrielasilva, andreacavalcante, danilosal, italo, janielle, ciro.porto, thiagomesquita, kcabral, danielle.lira. Subject: 'pAIdegua — primeiros passos no piloto institucional'. From: pAIdegua <noreply@paidegua.ia.br>. Reply-To: inovajus@jfce.jus.br.\n\nPIVÔ DE ABORDAGEM (decisão owner 09/05): em vez de comunicar como 'aviso de migração técnica + relogin obrigatório até 05/06', a mensagem virou um ONBOARDING/CONVITE ao piloto institucional com instruções completas de instalação na CWS, configuração inicial e destaque dos Mapas de Jornada (v1.5.0). Razão: 5 dos 13 pilotos foram cadastrados no mesmo dia 09/05 e ainda não tinham instalado a extensão; falar de migração de auth seria irrelevante pra eles e técnico demais pra todos. Decisão derivada: NÃO menciona Apps Script, Cloudflare Worker, logout+login. Apenas enquadra como grupo pequeno na primeira fase de validação. Pilotos antigos que ainda usam sessão Apps Script vão simplesmente refazer login quando o backend velho parar de responder em ~05-12/06 (ver ext8) — perda da sessão atual é não-catastrófica. Texto integral do e-mail (HTML) preservado no transcript da sessão 09/05/2026."
         },
         {
           "id": "ext7",
@@ -2695,7 +2697,7 @@
           "id": "ext8",
           "texto": "Desligar Apps Script após 30 dias de validação",
           "feito": false,
-          "nota": "Data alvo confirmada: 2026-06-05 (30 dias após aprovação CWS da v1.3.2 em 06/05/2026). Janela operacional 05-12/06/2026 para acomodar pilotos que demorarem a relogar. Pré-condição: comunicação aos pilotos enviada (ext6, agora consolidada com release v1.5.0)."
+          "nota": "Data alvo confirmada: 2026-06-05 (30 dias após aprovação CWS da v1.3.2 em 06/05/2026). Janela operacional 05-12/06/2026 para acomodar pilotos que demorarem a relogar. ext6 enviado em 09/05/2026 como ONBOARDING (não como aviso de migração — ver nota do ext6); pilotos antigos com sessão Apps Script vão simplesmente refazer login pelo fluxo padrão quando o backend velho parar de responder. Risco baixo: perda da sessão é recuperável pelo próprio fluxo OTP. Se até 04/06/2026 não houver evidência de problema (telemetria do Worker mostra todos os 13 pilotos chegando pelo backend novo), seguir com desligamento em 05/06."
         }
       ],
       "historico": [
@@ -2769,9 +2771,15 @@
           "autor": "vsousaesilva@jfce.jus.br",
           "data": "2026-05-09T22:00:00.000Z",
           "comando": "Estratégia B confirmada: comunicação ext6 consolidada com release v1.5.0 (em revisão CWS). Em vez de 2 e-mails (v1.3.2 hoje + v1.5.0 quando aprovar), 1 e-mail único cobrindo infra de auth + features novas + pedido de logout+login até 05/06/2026. Lista de destinatários congelada hoje em 13 pilotos (9 jfce + 4 jfal). Data alvo ext8 confirmada para 2026-06-05 (janela operacional 05-12/06)."
+        },
+        {
+          "tipo": "comunicacao",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-09T23:55:00.000Z",
+          "comando": "ext6 ENVIADO via Resend dashboard (Broadcast) para 13 pilotos da equipe extensao. PIVÔ DE ABORDAGEM antes do envio: o e-mail virou ONBOARDING/CONVITE (com instruções completas de instalação na CWS + configuração inicial + destaque Mapas de Jornada v1.5.0) em vez de aviso técnico de migração de auth. Razão: 5 dos 13 pilotos foram cadastrados no próprio dia 09/05 e nem tinham instalado a extensão. Não menciona Apps Script, Worker, logout+login. Pilotos antigos que ainda usam sessão Apps Script vão simplesmente refazer login quando o backend velho parar de responder em ~05-12/06 — risco baixo (perda da sessão é recuperável pelo fluxo OTP padrão). Subject: 'pAIdegua — primeiros passos no piloto institucional'. Texto integral preservado no transcript da sessão."
         }
       ],
-      "atualizadoEm": "2026-05-09T22:00:00.000Z",
+      "atualizadoEm": "2026-05-09T23:55:00.000Z",
       "atualizadoPor": "vsousaesilva@jfce.jus.br"
     },
     {
