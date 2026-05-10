@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies (npm ci)
         run: npm ci
 
+      - name: Scan PII em logs (LGPD - INFRA-15)
+        run: npm run scan:pii
+
       - name: Typecheck
         run: npm run typecheck
 

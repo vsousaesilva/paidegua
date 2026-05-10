@@ -488,22 +488,32 @@
     {
       "id": "INFRA-15",
       "titulo": "Scan estático de PII em logs (CI gate)",
-      "descricao": "Falha no merge se houver console.log/warn/error com template literal contendo variáveis de nome cpf|ca|url|htmlBruto. Bloqueio LGPD §6.",
+      "descricao": "Falha no merge se houver console.log/warn/error com template literal contendo variáveis de nome cpf|htmlBruto|numeroProcesso etc. Bloqueio LGPD §6.\n\n**Implementado em 2026-05-10 (sessão limpeza pós-v1.5.0):** script `scripts/scan-pii-logs.mjs` (Node ESM standalone, regex line-based, sem dependências) + npm script `scan:pii` em package.json + step no CI (.github/workflows/ci-extension.yml) ANTES do typecheck. Falha com exit 1 se encontrar console.* com template literal contendo `${...PROIBIDO...}`. Suporta whitelist via comentário `// pii-allow` na linha (uso raro).\n\nTermos proibidos atuais: cpf, cpfCnpj, cpfFormatado, cpfDoAutor, cpfDaParte, htmlBruto, htmlBytes, htmlContent, htmlPagina, rawHtml, numeroProcesso, nrProcesso, numeroProcessoCnj.\n\nDecisões deliberadas de exclusão documentadas no script: `url` (FP alto em logs legítimos de fetch — URLs com `ca` embutido não são detectadas hoje, ver follow-up) e `ca` (palavra de 2 letras gera FP em caCert/cache/calculo).",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "spec",
+      "coluna": "lancado",
       "origem": "manual-massificacao §II.4 #7, §II.5.2",
       "fase": "F1",
       "tags": [
         "LGPD",
-        "ci-gate"
+        "ci-gate",
+        "tooling"
       ],
       "esforco": "S",
       "depende": [],
+      "aceitacao": [
+        "scripts/scan-pii-logs.mjs criado, sem deps, exit 1 em violação",
+        "npm script scan:pii configurado",
+        "Step no CI yml roda antes do typecheck (bloqueia merge cedo)",
+        "Smoke 1: rodar contra source atual passa limpo (zero violações)",
+        "Smoke 2: inserir linha proibida temporária dispara FAIL com mensagem clara apontando arquivo:linha",
+        "Whitelist via // pii-allow funciona (linhas marcadas são ignoradas)"
+      ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-04T04:22:55.625Z",
-      "atualizadoEm": "2026-05-04T04:22:55.625Z",
-      "atualizadoPor": "sprint-planning/2026-05-04",
+      "dataConclusao": "2026-05-10T03:00:00.000Z",
+      "atualizadoEm": "2026-05-10T03:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10",
       "historico": [
         {
           "tipo": "movido",
@@ -512,11 +522,21 @@
           "autor": "sprint-planning/2026-05-04",
           "data": "2026-05-04T04:22:55.625Z",
           "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
-        }
-      ]
-    },
-    {
-      "id": "INFRA-16",
+        },
+        {
+          "tipo": "editado",
+          "campos": ["scripts/scan-pii-logs.mjs", "package.json", ".github/workflows/ci-extension.yml"],
+          "autor": "claude-code/sessao-2026-05-10",
+          "data": "2026-05-10T02:45:00.000Z",
+          "comando": "Implementação concluída. scripts/scan-pii-logs.mjs (~140 linhas, Node ESM, regex line-based, sem deps externas, exit 1 em violação). package.json ganhou npm script 'scan:pii'. ci-extension.yml ganhou step 'Scan PII em logs (LGPD - INFRA-15)' ANTES do typecheck (bloqueia merge cedo se houver violação). Termos proibidos atuais cobertos no script. Whitelist via comentário '// pii-allow' na linha. Smoke 1 (source atual): zero violações, exit 0. Smoke 2 (linha proibida temporária): exit 1 com mensagem clara apontando arquivo:linha:col + termo + trecho da linha."
+        },
+        {
+          "tipo": "movido",
+          "de": "spec",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-10T03:00:00.000Z",
+          "comando": "Implementado + smoke ponta-a-ponta verde (passa limpo no source atual; detecta linha proibida quando inserida; volta a passar quando a linha é removida). Próximo PR/push exercita o gate no CI (esperado: verde, já que scan local passou). Follow-up registrado: ampliar termos para incluir 'ca' e 'url' com regex mais inteligente que distinga FP — ficou de fora desta entrega por gerar muitos FP no source atual."
       "titulo": "Detector de não-PJe (Eproc/PROJUDI) devolvendo null",
       "descricao": "Adapter em pje-legacy.ts identifica não-PJe e nenhum coordenador deve cair em path otimizado. Bandeira explícita.",
       "categoria": "infra",
