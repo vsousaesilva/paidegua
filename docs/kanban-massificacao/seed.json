@@ -4244,6 +4244,43 @@
       ]
     },
     {
+      "id": "REL-1.5.0",
+      "titulo": "Release v1.5.0 — Mapas de Jornada do PJe + melhorias do Consultor + ERG-11/12 fixes",
+      "descricao": "Release minor consolidando o trabalho da semana de 06-09/05/2026.\n\n**Features novas:**\n- **Mapas de Jornada do PJe** (FLUX-08/09/10/11) — Camadas 1-4 (mapa unificado JEF + 5 trilhas + estações + catálogo de tarefas) + palette Ctrl+K + print A3 + telemetria opt-in default OFF.\n- **Consultor de fluxos — modo dual** (FLUX-07) — seletor 'Para o usuário' vs 'Para o desenvolvedor', com persistência e reinício de conversa ao trocar.\n- **Consultor — nome oficial das tarefas** (FLUX-15) — respostas e diagrama Mermaid agora citam tarefas com prefixo `[JEF]/[EF]/[Comum]` igual à tela do PJe.\n- **Consultor — task-nodes expostas** (FLUX-16) — tarefas humanas (562 únicas) listadas como unidade primária no resumo enviado ao LLM.\n- **Consultor — modal full-screen com zoom no Mermaid** (FLUX-14) — click no diagrama abre modal com pan/zoom; ESC ou backdrop fecham.\n- **Detector contextual de tarefa** (FLUX-04) — toast no canto inferior direito do PJe quando reconhece tarefa conhecida; abre vista da tarefa nos Mapas de Jornada.\n- **Pivot tarefas humanas Iter A** (FLUX-17) — `tarefas-indice.ts` com 583 task-nodes; Catálogo da Camada 4 reescrito como catálogo de tarefas; Ctrl+K busca tarefas por padrão.\n\n**Bug fixes:**\n- **Mermaid bomb** (ERG-11) — `mermaid.parse(src, {suppressErrors: true})` antes de `mermaid.render()` evita injeção do SVG de erro no body quando o LLM produz bloco inválido.\n- **Extension context invalidated silencer** (ERG-12) — `src/shared/extension-context.ts` instala handlers globais que silenciam o erro quando a extensão é recarregada/atualizada com aba PJe aberta. ERG-13 (dedup do isContextInvalidated) também concluído como subproduto.\n\n**Aprovação CWS:** 09/05/2026 ~19:00 BRT.",
+      "categoria": "operacional",
+      "prioridade": "P1",
+      "coluna": "lancado",
+      "origem": "release planning sessão 09/05/2026",
+      "tags": ["release", "mapas-jornada", "consultor-fluxos", "mermaid-fix", "ext-context-fix"],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataConclusao": "2026-05-09T22:00:00.000Z",
+      "dataCriacao": "2026-05-10T02:00:00.000Z",
+      "atualizadoEm": "2026-05-10T02:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10-limpeza",
+      "evidencias": [
+        "versoes/dist v1.4.0.zip (anterior) → versoes/dist v1.5.0.zip",
+        "commit a5d64e8 (bump 1.4.0 → 1.5.0)",
+        "https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk",
+        "FLUX-04, FLUX-07, FLUX-08, FLUX-09, FLUX-10, FLUX-11, FLUX-14, FLUX-15, FLUX-16, FLUX-17 (Iter A), ERG-11, ERG-12, ERG-13"
+      ],
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-10-limpeza",
+          "data": "2026-05-10T02:00:00.000Z",
+          "comando": "Card criado retroativamente. v1.5.0 foi aprovada na CWS em 09/05/2026 ~19:00 BRT, mas no momento da aprovação a sessão pivotou imediatamente para o trabalho da v1.5.1 (fix da versão hardcoded no popup + ERG-09 + rebrand + toggles + export v2) e o pacote pós-aprovação prometido (criar REL, sync KV, tag git, e-mail pilotos, atualizar INFRA-EXT-AUTH ext6) foi parcialmente executado: ext6 (e-mail aos pilotos) foi feito; criação do REL-1.5.0, tag git e mover ERG-09/ERG-14 → lancado ficaram pendentes. Limpeza A da sessão de 10/05/2026 fecha esta lacuna criando REL-1.5.0. Lição registrada em memória feedback_kanban_mirror_rule.md (2026-05-10): toda release aprovada deve gerar REL-vX.Y.Z imediatamente, mesmo que a sessão esteja focada em outra coisa."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-10-limpeza",
+          "data": "2026-05-10T02:00:00.000Z",
+          "comando": "Já estava em produção via CWS quando o card foi criado."
+        }
+      ]
+    },
+    {
       "id": "MOD-CHAT",
       "titulo": "Chat lateral + integração com 3 provedores de IA",
       "descricao": "Painel lateral com chat livre integrado a Anthropic Claude, OpenAI GPT e Google Gemini. Chave de API armazenada localmente em chrome.storage.local; Inovajus não atua como intermediário das requisições. Núcleo do produto desde o MVP 1.0. [reconstruído retrospectivamente em 2026-05-06]",
