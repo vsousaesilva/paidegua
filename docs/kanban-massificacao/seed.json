@@ -438,23 +438,25 @@
     },
     {
       "id": "INFRA-13",
-      "titulo": "Fixtures de HTML real anonimizadas (TRF1-6 + 3 TJs)",
-      "descricao": "Fixtures em test/fixtures/listAutosDigitais/: cível 33 movs, criminal com sigilo, JEF, timeline >100 entradas. TRF1, TRF2, TRF3, TRF4, TRF5, TRF6 + TJSP, TJMG, TJRJ. Anonimizar todas.",
+      "titulo": "Fixtures de HTML real anonimizadas (TRF1-6 + 3 TJs) — infraestrutura + seed",
+      "descricao": "Fixtures em test/fixtures/listAutosDigitais/: cível 33 movs, criminal com sigilo, JEF, timeline >100 entradas. TRF1, TRF2, TRF3, TRF4, TRF5, TRF6 + TJSP, TJMG, TJRJ. Anonimizar todas. Inclui também o stub de 32KB do incidente 20/04/2026 para teste anti-regressão (item 3 do checklist da §II.4).\n\n**Cobertura por release:** este card entrega a INFRAESTRUTURA (pasta + README + script de anonimização) + 1-2 fixtures seed (stub 32KB sintético + TRF5 cível). Cobertura completa segue em sub-cards INFRA-13a (TRF5 completo: criminal+JEF+timeline grande), INFRA-13b (outros TRFs federais), INFRA-13c (TJs estaduais) — coleta gradual conforme acessos forem disponibilizados.",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "spec",
+      "coluna": "dev",
       "origem": "manual-massificacao §II.4, §II.5.3",
       "fase": "F1",
       "tags": [
         "fixtures",
-        "testes"
+        "testes",
+        "lgpd"
       ],
       "esforco": "L",
       "depende": [],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-04T04:22:55.625Z",
-      "atualizadoEm": "2026-05-04T04:22:55.625Z",
-      "atualizadoPor": "sprint-planning/2026-05-04",
+      "atualizadoEm": "2026-05-10T04:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10",
+      "dataConclusao": "2026-05-10T04:00:00.000Z",
       "historico": [
         {
           "tipo": "movido",
@@ -463,6 +465,128 @@
           "autor": "sprint-planning/2026-05-04",
           "data": "2026-05-04T04:22:55.625Z",
           "comando": "sprint planning 04/05/2026 — fundação F1 + conformidade"
+        },
+        {
+          "tipo": "movido",
+          "de": "spec",
+          "para": "dev",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-10T03:30:00.000Z",
+          "comando": "Puxado pra esta sessão. Escopo recortado: entregar INFRAESTRUTURA (pasta + README + script anonimizador) + 1-2 fixtures seed; cobertura completa via sub-cards INFRA-13a/b/c."
+        },
+        {
+          "tipo": "editado",
+          "campos": [
+            "test/fixtures/listAutosDigitais/README.md (novo)",
+            "test/fixtures/anonimizar-html.mjs (novo, sem deps)",
+            "test/fixtures/listAutosDigitais/stub-sintetico-32kb.html (novo)"
+          ],
+          "autor": "claude-code/sessao-2026-05-10",
+          "data": "2026-05-10T03:55:00.000Z",
+          "comando": "Infraestrutura entregue: (1) README.md com convenção de nomenclatura, passo-a-passo de captura via DevTools, fluxo de anonimização e revisão manual obrigatória, lista de NÃO fazer; (2) anonimizar-html.mjs Node ESM standalone (zero deps) que substitui CPF/CNPJ/processo CNJ/OAB/email/telefone formatado, reporta stats no stderr e instrui revisão manual de nomes próprios; (3) stub-sintetico-32kb.html — fixture sintética representativa do stub do incidente 20/04/2026 (sem #divTimeLine, sem #mais-detalhes, sem cbTipoDocumento; ~5 KB com cabeçalho explicativo deixando claro que o critério de detecção primário é a ausência dos IDs estruturais, não os bytes). Cobertura completa de outras jurisdições segue em sub-cards INFRA-13a, 13b, 13c."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-10T04:00:00.000Z",
+          "comando": "Infra entregue + 1 fixture seed sintética. Sub-cards INFRA-13a/b/c criados pra coleta de fixtures reais (depende de acesso a cada tribunal). INFRA-14 (parser unitários offline) já pode ser puxado quando houver pelo menos uma fixture cível real."
+        }
+      ]
+    },
+    {
+      "id": "INFRA-13a",
+      "titulo": "Fixtures TRF5 — cível 33 movs + criminal com sigilo + JEF + timeline grande",
+      "descricao": "Capturar via DevTools (Network → listAutosDigitais.seam → Save Response) processos reais de TRF5 cobrindo 4 perfis estruturais críticos: cível típico (33 movs como caso analisado no parecer), criminal com tags de segredo, JEF padrão, e cível com timeline > 100 entradas (paginação).\n\nUsar o pipeline já entregue por INFRA-13: rodar `node test/fixtures/anonimizar-html.mjs <bruto> > <destino>`, revisar manualmente nomes próprios, atualizar tabela 'Fixtures registradas' do README, commit. 4 fixtures = 4 commits (ou 1 commit batch se preferir). Acesso fácil porque owner é JFCE/TRF5.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "triagem",
+      "origem": "sessão 10/05/2026 — sub-card de INFRA-13",
+      "fase": "F1",
+      "tags": ["fixtures", "trf5", "testes"],
+      "esforco": "M",
+      "depende": ["INFRA-13"],
+      "aceitacao": [
+        "civel-trf5-33-movs.html anonimizado e commitado",
+        "criminal-trf5-com-sigilo.html anonimizado e commitado",
+        "jef-trf5-padrao.html anonimizado e commitado",
+        "civel-trf5-timeline-grande.html (>100 movs) anonimizado e commitado",
+        "Tabela 'Fixtures registradas' do README.md atualizada com cada arquivo",
+        "Cada arquivo aprovado em revisão visual (renderiza no browser, sem PII residual)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-10T04:00:00.000Z",
+      "atualizadoEm": "2026-05-10T04:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-10",
+          "data": "2026-05-10T04:00:00.000Z",
+          "comando": "Sub-card de INFRA-13 — coleta de fixtures TRF5. Acesso direto pelo owner; pode ser feito em qualquer sessão futura sem dependência externa."
+        }
+      ]
+    },
+    {
+      "id": "INFRA-13b",
+      "titulo": "Fixtures de outros TRFs federais — TRF1, TRF2, TRF3, TRF4, TRF6",
+      "descricao": "Capturar fixtures de processos civis padrão (~30 movimentos) em pelo menos 1 caso por TRF não-5: TRF1 (Brasília), TRF2 (Rio), TRF3 (SP), TRF4 (Sul), TRF6 (MG). Objetivo é validar que o parser unificado tolera variações de tema/skin entre tribunais (per §II.5.3 do manual).\n\nDepende de favores institucionais: solicitar a colegas magistrados/servidores de outras Seções Judiciárias capturas anonimizadas. Pode ser endereçado via Inovajus/TRF5 → contato com Inovajus de cada TRF, ou via comunicação informal com colegas conhecidos.\n\nCada fixture segue o pipeline INFRA-13: anonimizar-html.mjs + revisão manual + atualizar README + commit.",
+      "categoria": "infra",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão 10/05/2026 — sub-card de INFRA-13",
+      "fase": "F6",
+      "tags": ["fixtures", "outros-trfs", "testes", "institucional"],
+      "esforco": "L",
+      "depende": ["INFRA-13"],
+      "aceitacao": [
+        "Pelo menos 1 fixture de cada: TRF1, TRF2, TRF3, TRF4, TRF6 commitada",
+        "Cada uma com 30+ movimentos (caso típico)",
+        "Anonimização revisada visualmente",
+        "Tabela 'Fixtures registradas' do README atualizada"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-10T04:00:00.000Z",
+      "atualizadoEm": "2026-05-10T04:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-10",
+          "data": "2026-05-10T04:00:00.000Z",
+          "comando": "Sub-card de INFRA-13 — coleta de fixtures dos outros TRFs federais. P2 (não-bloqueante) porque a F1 da massificação pode começar com TRF5 e expandir cobertura conforme institucionalização nacional avança (§II.5.3, F6 do roadmap)."
+        }
+      ]
+    },
+    {
+      "id": "INFRA-13c",
+      "titulo": "Fixtures de Tribunais Estaduais — TJSP, TJMG, TJRJ",
+      "descricao": "Capturar fixtures de processos civis padrão em pelo menos 1 caso por TJ relevante: TJSP (volume), TJMG (variação regional), TJRJ. Objetivo é validar que o parser tolera diferenças entre PJe federal (linha CNJ) e variantes estaduais (TJSP usa fork; TJMG/TJRJ seguem linha CNJ com customizações de skin).\n\n§II.5.3 do manual prevê que diferenças de PJe legacy entre TJs podem exigir parser que falha de forma controlada (devolve ParseAnomaly em vez de crashar). Estas fixtures alimentam essa validação.\n\nMaior dificuldade institucional: depende de relações com magistrados/servidores estaduais. Pode ser viabilizado via parcerias formais (CNJ, AMB, AJUFE) ou via colegas pessoais.",
+      "categoria": "infra",
+      "prioridade": "P3",
+      "coluna": "triagem",
+      "origem": "sessão 10/05/2026 — sub-card de INFRA-13",
+      "fase": "F6",
+      "tags": ["fixtures", "tjs-estaduais", "testes", "institucional"],
+      "esforco": "L",
+      "depende": ["INFRA-13"],
+      "aceitacao": [
+        "Pelo menos 1 fixture de cada: TJSP, TJMG, TJRJ commitada",
+        "Anonimização revisada visualmente",
+        "Tabela 'Fixtures registradas' do README atualizada",
+        "Eventuais ParseAnomalies registradas como achado (não regressão)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-10T04:00:00.000Z",
+      "atualizadoEm": "2026-05-10T04:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-10",
+          "data": "2026-05-10T04:00:00.000Z",
+          "comando": "Sub-card de INFRA-13 — coleta de fixtures de Tribunais Estaduais. P3 (postergável) porque PJe estadual está fora do escopo da v2.0 (§II.5.3 menciona Eproc/PROJUDI fora; TJs com PJe seguem a F6 do roadmap)."
         }
       ]
     },

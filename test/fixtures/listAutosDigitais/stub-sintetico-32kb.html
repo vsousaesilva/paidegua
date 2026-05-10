@@ -1,0 +1,142 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="pt-BR">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>PJe — sessão expirada (FIXTURE SINTÉTICA)</title>
+<link href="/pje/css/skins/pje/style.css" rel="stylesheet" type="text/css" />
+<link href="/pje/javax.faces.resource/css/style.css.xhtml?ln=pje" rel="stylesheet" type="text/css" />
+<script src="/pje/javax.faces.resource/jsf.js.xhtml?ln=javax.faces&amp;stage=Production" type="text/javascript"></script>
+<script src="/pje/seam/resource/remoting/resource/remote.js" type="text/javascript"></script>
+<script src="/pje/javax.faces.resource/richfaces.js.xhtml?ln=org.richfaces" type="text/javascript"></script>
+</head>
+<body>
+
+<!--
+=========================================================================
+FIXTURE SINTÉTICA — anti-regressão do incidente de 20/04/2026
+=========================================================================
+
+Este arquivo NÃO é HTML real capturado do PJe. É um stub construído
+à mão para exercitar a detecção de stub no pje-autos-cache.ts
+(card INFRA-02).
+
+Características reproduzidas do stub real do incidente:
+
+  - Estrutura JSF/RichFaces preservada (header, form vazio, viewstate)
+  - SEM #divTimeLine             (componente que o parser procura
+                                   para extrair movimentos do processo)
+  - SEM #mais-detalhes           (bloco com metadados estruturados
+                                   do processo: classe, assunto, etc.)
+  - SEM select#cbTipoDocumento   (universo de tipos de documento
+                                   anexados ao processo)
+  - Mensagem indicando sessão expirada — comportamento real
+    observado quando o cookie de sessão Keycloak expira mas o
+    servidor ainda devolve HTTP 200 com este conteúdo "leve"
+
+OBSERVAÇÃO SOBRE TAMANHO
+
+O stub real do incidente tinha ~32 KB. Esta fixture sintética é
+intencionalmente menor (~5 KB) por dois motivos:
+
+  1. Simplicidade — fixture menor é mais fácil de auditar humano
+     que entende o contrato (parser deve rejeitar por ausência
+     dos IDs estruturais, não por bytes).
+  2. O critério primário de detecção em pje-autos-cache.ts é a
+     ausência de #divTimeLine OU #mais-detalhes; o threshold de
+     "htmlBytes < 50_000" é apenas uma redundância de segurança
+     para casos em que algum dos IDs aparece coincidentemente.
+
+Quando o parser executar contra este arquivo, deve:
+
+  1. Detectar ausência de #divTimeLine                    (PASS)
+  2. Detectar ausência de #mais-detalhes                  (PASS)
+  3. Devolver ParseAnomaly em vez de AutosSnapshot vazio  (PASS)
+  4. Invalidar o cache do idProcesso correspondente       (PASS)
+  5. NÃO recriar cache do `ca`                            (regra absoluta —
+                                                          ver post-mortem)
+
+Origem do incidente:
+  docs/post-mortem-prazos-na-fita.md §8 "cache de ca envenenado"
+
+Cards relacionados:
+  - INFRA-02   pje-autos-cache.ts (single-flight + detecção de stub)
+  - INFRA-13   este pacote de fixtures (✅ entrega esta fixture)
+  - INFRA-14   parser unitários offline contra estas fixtures (a fazer)
+=========================================================================
+-->
+
+<form id="formMain" name="formMain" method="post" action="/pje/processo/listAutosDigitais.seam" enctype="application/x-www-form-urlencoded">
+  <input type="hidden" name="formMain" value="formMain" />
+  <input type="hidden" name="javax.faces.ViewState" id="j_id1:javax.faces.ViewState:1" value="SYNTHETIC_VIEWSTATE_FOR_FIXTURE_PURPOSES_DO_NOT_USE_IN_PROD_e2RkZA==" autocomplete="off" />
+  <input type="hidden" name="autoScroll" value="" />
+  <input type="hidden" name="cid" value="0" />
+</form>
+
+<header class="pje-header" role="banner">
+  <div class="pje-header__brand">
+    <h1 class="pje-header__title">PJe — Processo Judicial Eletrônico</h1>
+    <p class="pje-header__sub">Sintético / fixture de teste — não use em produção</p>
+  </div>
+</header>
+
+<nav class="pje-breadcrumb" aria-label="Navegação">
+  <ol>
+    <li><a href="/pje/painel/painel_usuario.seam">Painel do usuário</a></li>
+    <li>Sessão expirada</li>
+  </ol>
+</nav>
+
+<main role="main" id="conteudo-principal">
+  <section class="alerta alerta--expirado" aria-live="polite">
+    <h2>Sua sessão expirou</h2>
+    <p>
+      Por motivos de segurança, sua sessão de trabalho foi encerrada
+      automaticamente após período de inatividade. Para continuar
+      visualizando os autos digitais deste processo, é necessário
+      realizar o login novamente com seu certificado digital ou
+      credencial institucional.
+    </p>
+    <p class="alerta__cta">
+      <a href="/pje/login.seam" class="botao botao--primario" rel="nofollow">Acessar PJe</a>
+    </p>
+    <p class="alerta__nota">
+      Caso esteja recebendo esta mensagem repetidamente em curto
+      intervalo de tempo, entre em contato com a equipe de suporte
+      do tribunal informando o horário aproximado e o número do
+      processo (caso disponível).
+    </p>
+  </section>
+</main>
+
+<footer class="pje-footer" role="contentinfo">
+  <div class="pje-footer__row">
+    <small>Conselho Nacional de Justiça — Plataforma PJe</small>
+  </div>
+  <div class="pje-footer__row pje-footer__row--alt">
+    <small>FIXTURE SINTÉTICA — usado apenas em test/fixtures/listAutosDigitais/</small>
+  </div>
+</footer>
+
+<!--
+=========================================================================
+FIM DA FIXTURE SINTÉTICA
+
+Pontos de atenção para quem for ler este arquivo no futuro:
+
+  - NÃO confundir este arquivo com captura de produção. Veja o
+    cabeçalho de comentário em cima para o propósito.
+  - NÃO adicionar #divTimeLine, #mais-detalhes ou #cbTipoDocumento
+    aqui — quebraria o objetivo da fixture (testar o caminho de
+    rejeição de stub).
+  - Se quiser uma fixture de stub COM tamanho próximo do real
+    (~32 KB), basta fazer padding com mais comentários como este,
+    ou adicionar inline CSS/JS realista — mas o teste continua
+    se sustentando na ausência dos IDs.
+
+Card de origem: INFRA-13 (sessão 10/05/2026).
+=========================================================================
+-->
+
+</body>
+</html>
