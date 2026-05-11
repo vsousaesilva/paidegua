@@ -1380,6 +1380,62 @@
       "depende": []
     },
     {
+      "id": "SEC-11",
+      "titulo": "Triagem Inteligente — campo Título no critério customizado",
+      "descricao": "No popup da extensão, ao adicionar um critério customizado em 'Triagem Inteligente' havia apenas o campo Descrição. Adicionado campo Título (rótulo curto) acima da Descrição para que cada critério adicional do magistrado tenha um nome próprio reaproveitado no relatório de análise (substitui o rótulo genérico 'Critério adicional N') e no bloco de critérios injetado nos prompts da NT 1/2025. Mudanças: `TriagemCriterioCustom` ganhou campo opcional `title?: string`; `storage.ts` sanitiza e preserva título; popup renderiza input de Título + textarea Descrição empilhados, com persistência debounced independente; prompts.ts usa `title || 'Critério adicional N'` no label da AnaliseCriterio e inclui o título no bloco do prompt principal. Retro-compat: critérios já cadastrados sem título continuam funcionando.",
+      "categoria": "secretaria",
+      "prioridade": "P3",
+      "coluna": "dev",
+      "origem": "Sessão 2026-05-11 — pedido do usuário (popup só mostrava Descrição)",
+      "tags": [
+        "ergonomia",
+        "triagem",
+        "popup",
+        "nt-1-2025"
+      ],
+      "esforco": "S",
+      "depende": [],
+      "evidencias": [
+        "src/shared/types.ts",
+        "src/background/storage.ts",
+        "src/popup/popup.ts",
+        "src/popup/popup.html",
+        "src/shared/prompts.ts"
+      ],
+      "aceitacao": [
+        "Popup mostra Título + Descrição empilhados em cada item de critério customizado",
+        "Foco vai pro Título ao clicar em 'Adicionar critério'",
+        "Título e Descrição persistem debounced de forma independente em chrome.storage.local",
+        "Critérios sem título preservam o comportamento atual (rótulo 'Critério adicional N')",
+        "Critérios com título aparecem com o título no relatório de análise e no bloco de critérios do prompt"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-11T00:00:00.000Z",
+      "atualizadoEm": "2026-05-11T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-11",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-11",
+          "data": "2026-05-11T00:00:00.000Z",
+          "comando": "Pedido do usuário: 'no cadastro da triagem inteligente, no popup, ao clicar para inserir critério customizado, abre apenas a descrição — preciso que tenha Título e Descrição'. Implementação iniciada."
+        },
+        {
+          "tipo": "editado",
+          "campos": [
+            "src/shared/types.ts",
+            "src/background/storage.ts",
+            "src/popup/popup.ts",
+            "src/popup/popup.html",
+            "src/shared/prompts.ts"
+          ],
+          "autor": "claude-code/sessao-2026-05-11",
+          "data": "2026-05-11T00:00:00.000Z",
+          "comando": "Adicionado campo opcional title à interface TriagemCriterioCustom + sanitização em storage + render do input no popup (com CSS dedicado) + uso do título como label da AnaliseCriterio e no bloco de critérios do prompt principal."
+        }
+      ]
+    },
+    {
       "id": "GES-01",
       "titulo": "Painel Justiça em Números local (IPC-Jus, IPS-Jud, congestionamento)",
       "descricao": "Indicadores calculados localmente sobre os dados varridos: taxa de congestionamento, IPS-Jud equivalente da unidade, IPC-Jus. Permite à direção comparar com a Justiça em Números do CNJ.",
@@ -1637,6 +1693,76 @@
       ],
       "esforco": "XL",
       "depende": []
+    },
+    {
+      "id": "AUD-09",
+      "titulo": "Botão Audiência pAIdegua → painel inline (master-detail)",
+      "descricao": "Refatorar o handler do botão 'Audiência pAIdegua' da sidebar para abrir um painel inline na coluna direita (mesmo shadow do triagem-panel), no formato master-detail, com 'Audiência pAIdegua' como item único da coluna esquerda. Coluna direita exibe duas ações: 'Monte a pauta de audiência' (mantém fluxo atual de abrir audiencia-painel/painel.html) e 'Resumo dos processos da pauta' (abre nova aba audiencia-resumo/resumo.html — AUD-10). Implementado em src/content/ui/audiencia-panel.ts; subtítulo 'Agilize sua parte nas audiências!'; visível para perfis Gabinete e Secretaria com header 'AÇÕES DO GABINETE'.",
+      "categoria": "audiencia",
+      "prioridade": "P1",
+      "coluna": "lancado",
+      "origem": "Sessão 10/05/2026 — usuário pediu padrão equivalente ao Triagem Inteligente",
+      "tags": [
+        "audiencia",
+        "ui-inline",
+        "refactor"
+      ],
+      "esforco": "S",
+      "depende": [],
+      "comentarios": [
+        {
+          "autor": "claude-code/sessao-2026-05-11",
+          "data": "2026-05-11",
+          "texto": "Lançado na v1.6.0 — aprovado e em produção na Chrome Web Store em 11/05/2026."
+        }
+      ]
+    },
+    {
+      "id": "AUD-10",
+      "titulo": "Resumo dos processos da pauta — nova feature com IA",
+      "descricao": "Nova aba audiencia-resumo/resumo.html acessível pela ação 'Resumo dos processos da pauta' do painel AUD-09. ENTREGUE: (1) busca da pauta via listView.seam nativa do PJe com filtros de data + situações (M+R default); (2) tabela com CNJ hyperlink + copiar + abrir-tarefa; (3) modal 'Resumir' (modo filtrado) e botão 'Ler o processo inteiro' (modo todos); (4) coleta server-side com paginação RichFaces 3.x (autoScroll AJAX em loop até totalPaginas) — captura 100% dos docs listados; (5) extração via extractContents com fallbacks MAIN-world bridge + ativação por clique fantasma; (6) OCR em offscreen document — não throttled em background tab (Chrome ≥88) — reusa worker entre docs (workerBlobURL: false pra MV3); (7) prompt adaptativo (roteiro JEF previdenciário PDF + estrutura genérica para demais classes); (8) streaming via CHAT_STREAM port; (9) export PDF (html2pdf, page-break-inside:avoid + style embarcado no wrapper) + DOCX (html-docx-js); (10) sentença oral (Procedente/Improcedente/Extinto + orientação) e sentença com modelo (templatesSearch + LLM rerank + buildMinutaPrompt); (11) modo 'todos' abre processo em aba oculta (background.tabs.create active:false → aguarda load + 5s pra árvore popular → auto-scroll DOM materializa nós → extrai → fecha); (12) Frente 2.5: refetch leve do ca por Resumir (cache 30s, fallback silencioso). Pendência conhecida: AUD-11 (déficit 40/57 em modo=todos pra processos com docs sigilosos/sem ativação).",
+      "categoria": "audiencia",
+      "prioridade": "P1",
+      "coluna": "lancado",
+      "origem": "Sessão 10/05/2026 — requisitos do usuário + roteiro audiências.pdf",
+      "tags": [
+        "audiencia",
+        "resumo",
+        "ia-gemini",
+        "sentenca-oral",
+        "pdf-docx",
+        "ocr-offscreen"
+      ],
+      "esforco": "L",
+      "depende": [
+        "AUD-09"
+      ],
+      "comentarios": [
+        {
+          "autor": "claude-code/sessao-2026-05-11",
+          "data": "2026-05-11",
+          "texto": "Lançado na v1.6.0 — aprovado e em produção na Chrome Web Store em 11/05/2026. Pendência conhecida AUD-11 (déficit 40/57 em modo='todos') segue em discovery."
+        }
+      ]
+    },
+    {
+      "id": "AUD-11",
+      "titulo": "Resumo da pauta — déficit de docs em modo='todos' (40/57)",
+      "descricao": "Em processo grande (0005760-94.2025.4.05.8109, 57 docs na timeline), 'Ler o processo inteiro' captura ~40 docs mesmo com aba oculta + auto-scroll DOM. Os 17 faltantes voltam com 'resultado-final: buffer vazio após todas as tentativas' — diagnóstico per docs/extracao-conteudo-pje.md §1.2: PJe Legacy devolve HTTP 200 com 0 bytes pra docs não-ativados na sessão. Ativação por clique-fantasma já roda como fallback (activateDocumentInPje), mas alguns docs continuam falhando. Hipóteses a investigar: (a) sigilo processual (HTTP 200 vazio em vez de 403), (b) docs cuja anchor não é encontrada por scanOnclickElements (label diferente), (c) timing — auto-scroll precisa mais tempo / mais ciclos. Próximo passo: instrumentar quais docs específicos falham e cruzar com a árvore visível na aba oculta.",
+      "categoria": "audiencia",
+      "prioridade": "P1",
+      "coluna": "discovery",
+      "origem": "Sessão 10/05/2026 — teste empírico em processo previdenciário grande",
+      "tags": [
+        "audiencia",
+        "resumo",
+        "extração",
+        "investigação"
+      ],
+      "esforco": "M",
+      "depende": [
+        "AUD-10"
+      ]
     },
     {
       "id": "CRI-01",
@@ -2951,7 +3077,7 @@
     {
       "id": "FLUX-01",
       "titulo": "Parser jPDL + catálogo embarcado dos fluxos do PJe",
-      "descricao": "Script Node.js (fluxos-pje/scripts/parser-jpdl.mjs) que lê os 210 XMLs jBPM 3.2 coletados de pje1gta.trf5 e gera três artefatos: paidegua/assets/fluxos-catalogo.json (embarcado no build da extensão), fluxos-pje/grafo.json (grafo dirigido das chamadas incluirNovoFluxo) e fluxos-pje/analise-topologica.md (entradas, saídas, hubs, fantasmas, ilhas, distribuição por lane/fase). Usa fast-xml-parser. Heurísticas de classificação por lane (JEF, EF, Comum, Shared) e fase (Distribuição → Arquivo) em fluxos-pje/scripts/heuristicas.mjs.",
+      "descricao": "Script Node.js (fluxos-pje/scripts/parser-jpdl.mjs) que lê os 212 XMLs jBPM 3.2 coletados de pje1gta.trf5 e gera três artefatos: paidegua/assets/fluxos-catalogo.json (embarcado no build da extensão), fluxos-pje/grafo.json (grafo dirigido das chamadas incluirNovoFluxo) e fluxos-pje/analise-topologica.md (entradas, saídas, hubs, fantasmas, ilhas, distribuição por lane/fase). Usa fast-xml-parser. Heurísticas de classificação por lane (JEF, EF, Comum, Shared) e fase (Distribuição → Arquivo) em fluxos-pje/scripts/heuristicas.mjs.",
       "categoria": "pesquisa",
       "prioridade": "P1",
       "coluna": "lancado",
@@ -2967,14 +3093,14 @@
       "aceitacao": [
         "fluxos-pje/scripts/gerar-catalogo.bat roda sem erro com Node portátil",
         "paidegua/assets/fluxos-catalogo.json gerado e válido contra o schema CatalogoFluxos",
-        "210 fluxos no catálogo (210 do _lista.txt; 2 com falha registrada em FALHAS-ANALISE.md)",
+        "212 fluxos no catálogo (cobertura completa dos fluxos ativos coletados; falhas iniciais resolvidas e documentadas em FALHAS-ANALISE.md)",
         "fluxos-pje/analise-topologica.md gerado com entradas, saídas, hubs e fantasmas listados",
         "≥85% dos fluxos com fase definida pela heurística (faseOrigem='heuristica'); demais marcados como 'pendente'"
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-06T23:30:00.000Z",
-      "atualizadoEm": "2026-05-07T00:30:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-06-fluxos",
+      "atualizadoEm": "2026-05-10T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10-fluxos-tri",
       "historico": [
         {
           "tipo": "criado",
@@ -2988,6 +3114,13 @@
           "autor": "claude-code/sessao-2026-05-06-fluxos",
           "data": "2026-05-07T00:15:00.000Z",
           "comando": "Fix de mojibação UTF-8: trocado readFile encoding 'latin1' → 'utf8'. Causa raiz: o coletor JSZip salva os XMLs como UTF-8 por default mesmo com prólogo declarando ISO-8859-1; ler como latin1 gerava double-encoding visível na UI ('AnÃ¡lise' em vez de 'Análise'). Após o fix, regenerar o catálogo (gerar-catalogo.bat) restabeleceu acentos corretos."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["fluxos-pje/JEF_TRIAGIN.xml", "fluxos-pje/JEF_CONTRPRAZREQ.xml", "fluxos-pje/_README-CORRECAO.md", "fluxos-pje/FALHAS-ANALISE.md", "paidegua/assets/fluxos-catalogo.json", "fluxos-pje/grafo.json", "fluxos-pje/analise-topologica.md"],
+          "autor": "claude-code/sessao-2026-05-10-fluxos-tri",
+          "data": "2026-05-10T00:00:00.000Z",
+          "comando": "Catálogo passou de 210 → 212 fluxos. (1) Inclusão manual do JEF_TRIAGIN.xml — coletado pela UI do PJe (lápis → DEFINIÇÃO → aba XML), uma das duas falhas históricas da rodada inicial (a outra, JEF_ANSECR, já tinha sido resolvida em coleta anterior). (2) Bug de cadastro upstream descoberto: JEF_CONTRPRAZREQ.xml tinha 'Código: JEF_CONTRPRAZREC' no CDATA (cópia descuidada de descrição na hora do cadastro no PJe), causando dedup que descartava o fluxo 'Controle de prazo do requisitório'. Correção local aplicada (CDATA→JEF_CONTRPRAZREQ) com nota _README-CORRECAO.md para reaplicar em futuras coletas. Pendência: chamado SETIC para corrigir upstream. Catálogo final: 212 fluxos · 0 ignorados · grafo 220 nós · 879 arestas."
         }
       ]
     },
@@ -3063,10 +3196,17 @@
           "autor": "vsousaesilva@jfce.jus.br",
           "data": "2026-05-07T02:00:00.000Z",
           "comando": "Smoke test passou ponta a ponta. Consultor de fluxos validado em produção (CWS v1.4.0 instalada, botão visível, página carrega, catálogo OK, chat funcional, mermaid renderiza). Próximo: comunicar 2 pilotos sobre v1.4.0."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/shared/fluxos-prompts.ts"],
+          "autor": "claude-code/sessao-2026-05-10-fluxos-tri",
+          "data": "2026-05-10T01:00:00.000Z",
+          "comando": "Fix de renderização Mermaid no chat do Consultor: incidente reproduzido com diagrama gerado pelo LLM em modo dev contendo 'T1[[[JEF] Analisar inicial]]' (3 colchetes consecutivos por choque entre shape '[[ ]]' do Mermaid e '[JEF]' literal do nome do fluxo). Causa raiz: o system prompt do modo dev mostrava só exemplo com códigos curtos (sem colchetes) e não orientava sobre escape/aspas. Acrescentadas seções 'Regras obrigatórias de sintaxe Mermaid' nos dois prompts (dev e usuário) com 4–5 regras: shape único id[label] ou id{label}, aspas duplas obrigatórias quando label tem [/]/(/)/{/}/:/-/espaço, banimento de [[ ]]/(( ))/{{ }}, ids snake_case para nós sintéticos (start, fim), aspas em rótulos de seta. Modo dev ganhou exemplo extra com decisão e nomes legíveis. Pendente: rebuildar (build.bat) e validar com mesma pergunta que reproduziu o bug."
         }
       ],
-      "atualizadoEm": "2026-05-07T02:00:00.000Z",
-      "atualizadoPor": "vsousaesilva@jfce.jus.br"
+      "atualizadoEm": "2026-05-10T01:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-10-fluxos-tri"
     },
     {
       "id": "FLUX-03",
@@ -5373,6 +5513,52 @@
           "autor": "claude-code/sessao-2026-05-09-v1.5.1",
           "data": "2026-05-09T23:30:00.000Z",
           "comando": "Card aberto + implementado na mesma sessão (v1.5.1). Critério restritivo aplicado: só toast contextual do FLUX-04 entra hoje (bubbles de análise/etiquetas são triggered, não passivos). Framework pronto para receber mais toggles conforme features automáticas novas. Aguardando smoke do owner para mover para lancado."
+        }
+      ]
+    },
+    {
+      "id": "ERG-15",
+      "titulo": "Mensagem amigável quando o provedor de IA está inalcançável (substitui 'Failed to fetch')",
+      "descricao": "Owner reportou em 2026-05-11 (v1.6) que o Consultor de fluxos exibia '(falha: Failed to fetch)' ao perguntar 'como remeter o processo ao sobrestamento?' — mensagem opaca para o usuário final, sem indicar a causa nem o que verificar. Causa raiz: o erro era propagado cru do TypeError do fetch no service worker (background/background.ts handleChatStart), que dispara quando o host da API do provedor de IA está inalcançável (rede bloqueando, proxy/firewall, DNS, offline).\n\nSolução: (1) novo helper getProviderApiHost(provider) em shared/constants.ts que extrai o host real do PROVIDER_ENDPOINTS conforme o provedor configurado (anthropic → api.anthropic.com, openai → api.openai.com, gemini → generativelanguage.googleapis.com); (2) friendlyChatError(error, provider) em background/background.ts detecta 'TypeError: Failed to fetch' (e variantes NetworkError/Load failed) e troca por 'Não consegui conectar ao provedor de IA (<host>). Verifique sua conexão com a internet ou se a rede (proxy/firewall) está bloqueando esse endereço.'; (3) handleChatStart usa o helper no catch da porta CHAT_STREAM, beneficiando Consultor de fluxos E chat normal do sidebar. Erros HTTP do provedor (4xx/5xx) passam intactos — só o caso 'rede/firewall' ganha a mensagem nova.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "lancado",
+      "origem": "sessão 11/05/2026 — feedback owner: 'usuário fez uma pergunta ao consultor de fluxo e deu o erro (falha: Failed to fetch)'",
+      "tags": ["consultor", "ux", "erro", "rede", "extensao", "chat"],
+      "esforco": "XS",
+      "depende": [],
+      "aceitacao": [
+        "Bloqueio simulado de api.anthropic.com (provedor Anthropic ativo) → bubble do Consultor mostra 'Não consegui conectar ao provedor de IA (api.anthropic.com)...' em vez de 'Failed to fetch'",
+        "Trocando provedor ativo para OpenAI/Gemini, o host citado na mensagem muda dinamicamente (api.openai.com / generativelanguage.googleapis.com)",
+        "Erro HTTP do provedor (ex.: 401 chave inválida) continua exibindo a mensagem original (não cai no wrapper de rede)",
+        "Chat normal do sidebar herda o mesmo comportamento (mesmo handler handleChatStart)",
+        "Build do paidegua sem erros TS"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-11T00:00:00.000Z",
+      "atualizadoEm": "2026-05-11T00:45:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-11",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-11",
+          "data": "2026-05-11T00:00:00.000Z",
+          "comando": "Card aberto + implementado na mesma sessão a partir de feedback do owner no chat. Diagnóstico apontou ambiente JFCE (sem acesso irrestrito à internet) como causa provável da queda; antes de assumir bug, melhora a mensagem para que o próprio usuário identifique se é problema de rede/firewall."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["src/background/background.ts", "docs/kanban-massificacao/seed.json"],
+          "autor": "claude-code/sessao-2026-05-11",
+          "data": "2026-05-11T00:15:00.000Z",
+          "comando": "Owner pediu remover 'da JFCE' da mensagem ao usuário (workspace é JFCE mas a mensagem deve ser neutra). Ajustado em friendlyChatError (background.ts) e na descricao/aceitacao do card. Mantida nota institucional só no comando da história de criação."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-11T00:45:00.000Z",
+          "comando": "Smoke validado pelo owner: build local refletiu a mensagem nova, sync KV concluído, simulação de bloqueio confirmou mudança de comportamento. Card movido para lancado."
         }
       ]
     }

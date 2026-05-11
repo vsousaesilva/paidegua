@@ -133,11 +133,12 @@ export async function getSettings(): Promise<PAIdeguaSettings> {
     ? stored.triagemCriteriosCustom
         .map((item, i) => {
           if (!item || typeof item !== 'object') return null;
-          const obj = item as { id?: unknown; text?: unknown };
+          const obj = item as { id?: unknown; title?: unknown; text?: unknown };
           const text = typeof obj.text === 'string' ? obj.text : '';
+          const title = typeof obj.title === 'string' ? obj.title : '';
           const id =
             typeof obj.id === 'string' && obj.id.length > 0 ? obj.id : `custom-${i}-${Date.now()}`;
-          return { id, text };
+          return { id, title, text };
         })
         .filter((x): x is NonNullable<typeof x> => x !== null)
     : [];

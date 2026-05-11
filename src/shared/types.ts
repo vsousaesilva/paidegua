@@ -203,6 +203,8 @@ export interface ComunicacaoSettings {
 /** Critério livre criado pelo magistrado, fora do conjunto da NT 1/2025. */
 export interface TriagemCriterioCustom {
   id: string;
+  /** Rótulo curto exibido nos relatórios; opcional para retro-compat. */
+  title?: string;
   text: string;
 }
 
@@ -1458,6 +1460,18 @@ export interface AudienciaPainelState {
   legacyOrigin: string;
   abertoEm: string;
   tarefas: AudienciaTarefaInfo[];
+}
+
+/**
+ * Estado da aba "Resumo dos processos da pauta" (AUD-10). Não recebe
+ * lista de tarefas — a aba consulta o endpoint nativo `listView.seam`
+ * por período + situações, sem dependência das tarefas do painel.
+ */
+export interface AudienciaResumoPainelState {
+  requestId: string;
+  hostnamePJe: string;
+  legacyOrigin: string;
+  abertoEm: string;
 }
 
 /** Resultado consolidado da coleta da Audiência pAIdegua. */

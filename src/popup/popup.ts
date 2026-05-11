@@ -700,21 +700,48 @@ function buildExtraItem(item: TriagemCriterioCustom): HTMLElement {
   const row = document.createElement('div');
   row.className = 'paidegua-triagem-extras__item';
 
+  const fields = document.createElement('div');
+  fields.className = 'paidegua-triagem-extras__fields';
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'paidegua-triagem-extras__title-input';
+  titleInput.placeholder = 'Título do critério (ex.: Comprovação de residência)';
+  titleInput.value = item.title ?? '';
+  titleInput.maxLength = 120;
+  titleInput.addEventListener('input', () => {
+    const key = `${item.id}:title`;
+    const existing = customDebounce.get(key);
+    if (existing) window.clearTimeout(existing);
+    const handle = window.setTimeout(() => {
+      customDebounce.delete(key);
+      const items = (currentSettings?.triagemCriteriosCustom ?? []).map((c) =>
+        c.id === item.id ? { ...c, title: titleInput.value } : c
+      );
+      void persistTriagemExtras(items);
+    }, 400);
+    customDebounce.set(key, handle);
+  });
+
   const textarea = document.createElement('textarea');
   textarea.placeholder = 'Descreva o critério adicional que você adota.';
   textarea.value = item.text;
   textarea.addEventListener('input', () => {
-    const existing = customDebounce.get(item.id);
+    const key = `${item.id}:text`;
+    const existing = customDebounce.get(key);
     if (existing) window.clearTimeout(existing);
     const handle = window.setTimeout(() => {
-      customDebounce.delete(item.id);
+      customDebounce.delete(key);
       const items = (currentSettings?.triagemCriteriosCustom ?? []).map((c) =>
         c.id === item.id ? { ...c, text: textarea.value } : c
       );
       void persistTriagemExtras(items);
     }, 400);
-    customDebounce.set(item.id, handle);
+    customDebounce.set(key, handle);
   });
+
+  fields.appendChild(titleInput);
+  fields.appendChild(textarea);
 
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
@@ -729,7 +756,7 @@ function buildExtraItem(item: TriagemCriterioCustom): HTMLElement {
     void persistTriagemExtras(items).then(() => renderTriagemExtras());
   });
 
-  row.appendChild(textarea);
+  row.appendChild(fields);
   row.appendChild(removeBtn);
   return row;
 }
@@ -741,12 +768,12 @@ function buildAddButton(): HTMLElement {
   btn.innerHTML = `<span class="paidegua-triagem-extras__add-icon">+</span><span>Adicionar critério</span>`;
   btn.addEventListener('click', () => {
     const items = [...(currentSettings?.triagemCriteriosCustom ?? [])];
-    items.push({ id: generateCustomId(), text: '' });
+    items.push({ id: generateCustomId(), title: '', text: '' });
     void persistTriagemExtras(items).then(() => {
       renderTriagemExtras();
       const body = document.getElementById('triagem-extras-body');
-      const last = body?.querySelector<HTMLTextAreaElement>(
-        '.paidegua-triagem-extras__item:last-of-type textarea'
+      const last = body?.querySelector<HTMLInputElement>(
+        '.paidegua-triagem-extras__item:last-of-type .paidegua-triagem-extras__title-input'
       );
       last?.focus();
     });
@@ -762,7 +789,7 @@ function bindTriagemExtras(): void {
       // Abrir pela primeira vez já cria um item vazio para o usuário escrever.
       const items = currentSettings?.triagemCriteriosCustom ?? [];
       if (items.length === 0) {
-        void persistTriagemExtras([{ id: generateCustomId(), text: '' }]).then(() =>
+        void persistTriagemExtras([{ id: generateCustomId(), title: '', text: '' }]).then(() =>
           renderTriagemExtras()
         );
       } else {
@@ -771,7 +798,9 @@ function bindTriagemExtras(): void {
     } else {
       // Desligar limpa todos os critérios livres (ação destrutiva — confirma).
       const items = currentSettings?.triagemCriteriosCustom ?? [];
-      const hasContent = items.some((i) => i.text.trim().length > 0);
+      const hasContent = items.some(
+        (i) => i.text.trim().length > 0 || (i.title ?? '').trim().length > 0
+      );
       if (hasContent && !confirm('Remover todos os critérios customizados?')) {
         enable.checked = true;
         return;

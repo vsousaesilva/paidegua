@@ -627,10 +627,13 @@ export function buildTriagemCriteriosBlock(settings: PAIdeguaSettings): string {
   }
 
   const customs = (settings.triagemCriteriosCustom ?? [])
-    .map((c) => (c.text ?? '').trim())
-    .filter((t) => t.length > 0);
-  for (const text of customs) {
-    lines.push(`${idx}. (Critério adicional do magistrado): ${text}`);
+    .map((c) => ({ title: (c.title ?? '').trim(), text: (c.text ?? '').trim() }))
+    .filter((c) => c.text.length > 0);
+  for (const c of customs) {
+    const rotulo = c.title
+      ? `(Critério adicional do magistrado — ${c.title})`
+      : `(Critério adicional do magistrado)`;
+    lines.push(`${idx}. ${rotulo}: ${c.text}`);
     idx += 1;
   }
 
@@ -694,9 +697,10 @@ export function resolveTriagemCriterios(
       idx += 1;
       continue;
     }
+    const title = (c.title ?? '').trim();
     out.push({
       id: `custom-${idx}`,
-      label: `Critério adicional ${idx}`,
+      label: title || `Critério adicional ${idx}`,
       texto: txt
     });
     idx += 1;
