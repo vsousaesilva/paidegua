@@ -5568,7 +5568,7 @@
       "descricao": "Owner reportou em 2026-05-12 que 'Resumir o processo' falhou com 'Erro: Gemini 503: { \"error\": { \"code\": 503, \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\", \"status\": \"UNAVAILABLE\" } }' (provedor Google Gemini, modelo gemini-3-flash-preview). Causa: sobrecarga momentânea no servidor do modelo (comum em modelos -preview) — uma única falha já abortava todo o resumo, sem retry, e a mensagem na tela era o JSON cru da API.\n\nSolução: (1) novo helper src/background/providers/retry.ts com fetchWithRetry — retry exponencial com jitter (base 800ms, teto 8s) para status HTTP transitórios (429, 500, 502, 503, 504, 529), respeitando o cabeçalho Retry-After (teto 30s) e o AbortSignal; 3 tentativas, 4 para modelos com id -preview. Falhas de rede (firewall/DNS/offline) NÃO são repetidas — falham na hora para não atrasar a mensagem do ERG-15. (2) ProviderHttpError carrega status/provider/apiBody/attempts e tem .message já amigável (cita o rótulo do provedor via PROVIDER_LABELS, o código HTTP e a ação recomendada) — assim qualquer ponto que exiba error.message mostra algo compreensível. (3) describeHttpError mapeia: 5xx/529 → 'O provedor de IA (X) está sobrecarregado... não respondeu após N tentativas automáticas (erro NNN)... aguarde cerca de um minuto e tente novamente... pode selecionar outro modelo no popup ou usar outro provedor'; 429 → 'A chave de API... atingiu o limite de uso (erro 429)... verifique o limite/plano da chave'; 401/403 → 'A chave de API... foi recusada (erro NNN)... verifique se a chave está correta e ativa'; demais → repassa a mensagem da API com rótulo legível. NUNCA cita versão de modelo (a lista de modelos muda). (4) gemini.ts/openai.ts/anthropic.ts: sendMessage (chat/resumo/minutar/consultor — toda chamada que passa por provider.sendMessage) + transcribeAudio (Gemini e Whisper) + synthesizeSpeech (OpenAI TTS) passam a usar fetchWithRetry; testConnection fica como está (feedback rápido ao testar a chave). (5) friendlyChatError (background.ts) inalterado funcionalmente — ProviderHttpError.message já é amigável e a vertente 'rede/firewall' do ERG-15 segue tratando o TypeError do fetch; só o comentário foi atualizado.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "sessão 12/05/2026 — feedback owner: print do 'Erro: Gemini 503 ... UNAVAILABLE' ao acionar Resumir; pedido para entender e tratar o erro",
       "tags": ["providers", "retry", "resiliencia", "erro", "ux", "extensao", "chat", "resumo", "ia-gemini"],
       "esforco": "S",
@@ -5601,6 +5601,14 @@
           "autor": "claude-code/sessao-2026-05-12",
           "data": "2026-05-12T18:00:00.000Z",
           "comando": "build.bat OK (typecheck + webpack; dist/manifest.json em 1.6.1; BACKEND_URL preservada no bundle). Mudança commitada em 6445027 e pushada para origin/main. Embarcada na release v1.6.1 (REL-1.6.1), enviada à Chrome Web Store em 12/05/2026 e em revisão. Mover para lancado após aprovação CWS + smoke do owner."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-12T20:00:00.000Z",
+          "comando": "v1.6.1 aprovada pela Chrome Web Store e em produção (12/05/2026); ERG-16 embarcado. Card movido para lancado."
         }
       ]
     },
@@ -5610,7 +5618,7 @@
       "descricao": "Publicação na Chrome Web Store em 2026-05-12 (em revisão). Bump 1.6.0 → 1.6.1.\n\nConteúdo: (1) ERG-16 — retry exponencial com backoff/jitter + mensagens amigáveis para erros transitórios dos provedores de IA (503/529/429), em src/background/providers/retry.ts. (2) Sincronização do conteúdo da v1.6.0 que havia sido publicado mas nunca commitado: módulo de resumo/minuta a partir da pauta de audiências (src/audiencia-resumo/, src/content/audiencia/, src/content/ui/audiencia-*), OCR offscreen (src/offscreen/), templates-client, ajustes em content/extractor/ocr/constants/fluxos-prompts/sidebar/webpack, permissão offscreen + CSP wasm-unsafe-eval no manifest. (3) .gitignore: docs/kanban-massificacao/scripts/backups/ + *.swp/*.swo/*~.\n\nO catálogo de fluxos foi mantido na versão enriquecida do HEAD (210 fluxos, camada FLUX-08); a regeração de 10/05 (catálogo base sem enriquecimento, 212 fluxos) foi descartada para não regredir os Mapas de Jornada — o fluxo faltante volta numa release futura (ver FLUX-18). Commit: 6445027.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "validacao",
+      "coluna": "lancado",
       "origem": "skill release-extensao — sessão 12/05/2026 (pedido de release urgente da 1.6.1)",
       "tags": ["release", "extensao", "cws", "audiencia", "ocr", "retry"],
       "esforco": "M",
@@ -5633,6 +5641,14 @@
           "autor": "claude-code/sessao-2026-05-12",
           "data": "2026-05-12T18:00:00.000Z",
           "comando": "Release seguindo a skill release-extensao: bump 1.6.0→1.6.1, build local validado, zip empacotado via 'cd dist && tar -a -cf', upload manual no CWS Developer Dashboard (em revisão), commit 6445027 pushado. Nota: as releases v1.5.1 e v1.6.0 saíram sem card (a disciplina do mirror lapsou nessas duas) — REL-1.5.1 e REL-1.6.0 ficam a abrir retroativamente."
+        },
+        {
+          "tipo": "movido",
+          "de": "validacao",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-12T20:00:00.000Z",
+          "comando": "v1.6.1 aprovada pela Chrome Web Store e em produção em 12/05/2026. Listing: https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk. Smoke test do owner + comunicação aos pilotos em andamento."
         }
       ]
     },
