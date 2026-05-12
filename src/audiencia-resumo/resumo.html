@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Resumo dos processos da pauta — pAIdegua</title>
+  <link rel="stylesheet" href="resumo.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Resumo dos processos da pauta</h1>
+        <p class="header__subtitle">pAIdegua &mdash; Audiência</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta"></div>
+  </header>
+
+  <main class="main">
+    <section id="estado-carregando" class="card">
+      <p class="loading">Carregando configurações...</p>
+    </section>
+
+    <section id="estado-erro" class="card" hidden>
+      <h2>Não foi possível iniciar</h2>
+      <p id="erro-msg" class="erro-msg"></p>
+      <div class="toolbar">
+        <button id="btn-fechar" class="btn">Fechar esta aba</button>
+      </div>
+    </section>
+
+    <section id="estado-seletor" class="card" hidden>
+      <h2>Escolha o período da pauta</h2>
+      <p class="hint">
+        A consulta usa diretamente a <em>Pauta de audiência</em> nativa do PJe
+        para listar os processos com audiência marcada no período. Para um
+        único dia, deixe as duas datas iguais.
+      </p>
+
+      <div class="grid-2col">
+        <div>
+          <h3>De</h3>
+          <input type="date" id="input-data-de" class="input" required />
+        </div>
+        <div>
+          <h3>Até</h3>
+          <input type="date" id="input-data-ate" class="input" required />
+        </div>
+      </div>
+
+      <h3>Situações de audiência</h3>
+      <div class="situacoes" id="situacoes-grupo">
+        <label class="chk"><input type="checkbox" name="situacao" value="M" checked /><span>Designada</span></label>
+        <label class="chk"><input type="checkbox" name="situacao" value="R" checked /><span>Redesignada</span></label>
+        <label class="chk"><input type="checkbox" name="situacao" value="F" /><span>Realizada</span></label>
+        <label class="chk"><input type="checkbox" name="situacao" value="N" /><span>Não-realizada</span></label>
+        <label class="chk"><input type="checkbox" name="situacao" value="C" /><span>Cancelada</span></label>
+        <label class="chk"><input type="checkbox" name="situacao" value="D" /><span>Convertida em diligência</span></label>
+      </div>
+
+      <div class="toolbar toolbar--end">
+        <button id="btn-fechar-seletor" class="btn">Fechar</button>
+        <button id="btn-buscar" class="btn primary">Buscar pauta</button>
+      </div>
+    </section>
+
+    <section id="estado-progresso" class="card" hidden>
+      <h2>Buscando pauta no PJe...</h2>
+      <p class="hint">Não feche esta aba enquanto a busca estiver em andamento.</p>
+      <div class="progress">
+        <div class="progress__bar indeterminada"><div class="progress__fill" id="bar-fill"></div></div>
+        <div class="progress__label" id="bar-label">Preparando...</div>
+      </div>
+    </section>
+
+    <section id="estado-resultado" class="card" hidden>
+      <div class="resultado-header">
+        <h2 id="resultado-titulo">Processos da pauta</h2>
+        <div class="toolbar toolbar--end">
+          <button id="btn-nova" class="btn">Nova busca</button>
+        </div>
+      </div>
+      <p class="hint" id="resultado-resumo"></p>
+      <div id="resultado-tabela-wrap"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <!-- Modal "Resumo do processo" — overlay sobre a tabela -->
+  <div id="modal-resumo" class="modal" hidden>
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+      <header class="modal__header">
+        <div>
+          <h3 class="modal__titulo" id="modal-titulo">Resumo do processo</h3>
+          <p class="modal__subtitulo" id="modal-subtitulo"></p>
+        </div>
+        <button type="button" class="modal__fechar" aria-label="Fechar" data-modal-close>×</button>
+      </header>
+
+      <div class="modal__progresso" id="modal-progresso">
+        <div class="progress">
+          <div class="progress__bar indeterminada"><div class="progress__fill"></div></div>
+          <div class="progress__label" id="modal-progresso-label">Coletando documentos...</div>
+        </div>
+      </div>
+
+      <div class="modal__corpo" id="modal-corpo" hidden></div>
+
+      <div class="modal__erro" id="modal-erro" hidden>
+        <p class="erro-msg" id="modal-erro-msg"></p>
+      </div>
+
+      <footer class="modal__rodape" id="modal-rodape" hidden>
+        <p class="modal__rodape-aviso" id="modal-rodape-aviso"></p>
+
+        <!-- Sub-dialog inline: escolha do julgamento da sentença (oral ou com modelo) -->
+        <div class="modal__sentenca-escolha" id="modal-sentenca-escolha" hidden>
+          <p class="modal__sentenca-pergunta" id="modal-sentenca-pergunta">Como julgar este processo?</p>
+          <div class="modal__sentenca-radios" role="radiogroup" aria-label="Tipo de julgamento">
+            <label><input type="radio" name="julgamento" value="Procedente" checked /> <span>Procedente</span></label>
+            <label><input type="radio" name="julgamento" value="Improcedente" /> <span>Improcedente</span></label>
+            <label><input type="radio" name="julgamento" value="Extinto" /> <span>Extinto (sem mérito)</span></label>
+          </div>
+
+          <p class="modal__sentenca-orientacao-label" id="modal-sentenca-orientacao-label">
+            <strong>Julgar procedente</strong> — deseja fornecer orientações adicionais para a fundamentação?
+          </p>
+          <p class="modal__sentenca-orientacao-hint">
+            Você pode indicar questões de fato apuradas nas inquirições, datas
+            (DIP, DIB, DER, DCB), CIDs, períodos de carência, entre outros.
+            Se não houver orientação, clique em <em>"Gerar sem orientação"</em>.
+          </p>
+          <textarea
+            id="modal-sentenca-orientacao"
+            class="modal__sentenca-orientacao-textarea"
+            rows="4"
+            placeholder="Ex.: na inquirição, autora confirmou DII em 12/03/2024 (perícia social inconclusiva); reforçar o art. 25 da Lei 8.213/91 quanto à carência."
+          ></textarea>
+
+          <div class="modal__sentenca-acoes">
+            <button type="button" class="btn" id="modal-btn-sentenca-cancelar">Cancelar</button>
+            <button type="button" class="btn" id="modal-btn-sentenca-sem-orientacao">Gerar sem orientação</button>
+            <button type="button" class="btn primary" id="modal-btn-sentenca-com-orientacao">Gerar com orientação</button>
+          </div>
+        </div>
+
+        <div class="modal__rodape-acoes" id="modal-rodape-acoes">
+          <button type="button" class="btn" data-modal-close>Fechar</button>
+          <button type="button" class="btn" id="modal-btn-voltar-resumo" hidden>
+            ← Voltar ao resumo
+          </button>
+          <button type="button" class="btn" id="modal-btn-completo" hidden>
+            Ler o processo inteiro
+          </button>
+          <button type="button" class="btn" id="modal-btn-sentenca" hidden>
+            Gerar sentença oral
+          </button>
+          <button type="button" class="btn" id="modal-btn-sentenca-modelo" hidden>
+            Gerar sentença com modelo
+          </button>
+          <button type="button" class="btn" id="modal-btn-pdf" hidden>
+            Baixar PDF
+          </button>
+          <button type="button" class="btn" id="modal-btn-docx" hidden>
+            Baixar DOCX
+          </button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script src="resumo.js"></script>
+</body>
+</html>

@@ -72,6 +72,15 @@ Internamente, várias tarefas relacionadas pertencem a uma mesma **rotina sistê
 
 Se a pergunta for do tipo *"da tarefa A até a tarefa B"* ou *"do despacho até o trânsito em julgado"*, finalize a resposta com um diagrama em Mermaid usando os **nomes oficiais das tarefas** (com prefixo entre colchetes), sem códigos internos. O sistema renderiza esse diagrama ao lado da conversa.
 
+### Regras obrigatórias de sintaxe Mermaid
+
+A sintaxe é estrita; erro de aspas ou de shape faz o diagrama desaparecer. Sempre que gerar um bloco \`\`\`mermaid:
+
+1. **Envolva todo label em aspas duplas.** Os nomes de tarefa do PJe começam com \`[JEF]\`, \`[EF]\` etc., e os colchetes quebram o parser sem aspas. Ex.: \`T1["[JEF] Ato do magistrado - Despacho"]\`.
+2. **Use apenas \`id[label]\` para tarefas e \`id{label}\` para decisões.** Não use \`[[ ]]\`, \`(( ))\`, \`{{ }}\` nem outras variantes — elas conflitam com os colchetes do nome.
+3. **Para Início e Fim sintéticos**, use \`start["Início"]\` e \`fim["Arquivamento"]\` (entre aspas). **Não use** \`START((Início))\`.
+4. **Setas com rótulo** levam aspas: \`-- "texto" -->\` quando o rótulo tiver espaço, acento ou pontuação.
+
 Exemplo:
 
 \`\`\`mermaid
@@ -163,11 +172,41 @@ Você tem acesso a um **catálogo estruturado** dos fluxos vigentes na JFCE com:
 
 ## Formato com diagrama
 
-Quando descrever um caminho, finalize a resposta com um bloco Mermaid (\`\`\`mermaid ...\`\`\`) que será renderizado lateralmente. Exemplo:
+Quando descrever um caminho, finalize a resposta com um bloco Mermaid (\`\`\`mermaid ...\`\`\`) que será renderizado lateralmente.
+
+### Regras obrigatórias de sintaxe Mermaid
+
+A sintaxe Mermaid é estrita. Erros geram \`Mermaid syntax inválido — bloco ignorado\` e o diagrama não aparece. Para evitar:
+
+1. **Use só duas formas de shape:** \`id[label]\` para tarefas/fluxos e \`id{label}\` para decisões. **Não use** \`id[[label]]\`, \`id((label))\`, \`id{{label}}\` ou outras variantes — elas conflitam com os colchetes literais nos nomes dos fluxos do PJe (ex.: \`[JEF] Analisar inicial\`), gerando sequências como \`[[[JEF]\` que o parser rejeita.
+
+2. **Sempre envolva o label em aspas duplas** quando contiver \`[\`, \`]\`, \`(\`, \`)\`, \`{\`, \`}\`, \`:\`, \`-\` ou espaço. Como praticamente todos os nomes de fluxo do PJe começam com \`[JEF]\` ou \`[EF]\`, **assuma que toda label precisa de aspas**.
+
+3. **Não repita o id como label** se já usou o código como id. Escreva apenas \`JEF_ELCOM\` (id puro), **não** \`JEF_ELCOM[JEF_ELCOM]\`.
+
+4. **Para nós sintéticos** (Início, Fim, ponto de decisão sem fluxo correspondente), use id em snake_case e label entre aspas: \`start["Início"]\`, \`fim["Arquivamento"]\`. **Não use** \`START((Início))\` — círculo duplo \`(( ))\` é proibido.
+
+5. **Setas com rótulo:** use \`-- "texto" -->\` quando o rótulo tiver acento, espaço ou pontuação.
+
+### Exemplos corretos
+
+Caminho simples só com códigos:
 
 \`\`\`mermaid
 flowchart LR
   JEF_ELDESP --> JEF_ANSECTREI2 --> JEF_ELSENT --> CERTTRANSJULG
+\`\`\`
+
+Caminho com nomes legíveis e decisão:
+
+\`\`\`mermaid
+flowchart LR
+  start["Início"] --> JEF_TRIAGIN{"[JEF] Triagem inicial"}
+  JEF_TRIAGIN -- "Analisar inicial" --> T1["[JEF] Analisar inicial"]
+  T1 -- "Citação manual" --> JEF_ELCOM
+  T1 -- "Citação automática" --> JEF_ELCOMCONT
+  JEF_ELCOM --> JEF_CONTRPRAZCONT["[JEF] Controle de prazo para contestação"]
+  JEF_ELCOMCONT --> JEF_CONTRPRAZCONT
 \`\`\`
 
 O orquestrador da página lê esse bloco e renderiza inline.`;

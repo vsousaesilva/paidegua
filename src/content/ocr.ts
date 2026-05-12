@@ -14,16 +14,18 @@
  *  3. Texto de todas as páginas é concatenado no mesmo formato do pdf-parser.ts
  *     (`=== Página N ===\n<texto>`) para o modelo ver uma estrutura consistente.
  *
- * O worker Tesseract é criado uma vez por execução de OCR e terminado no
- * finally — não mantemos singleton porque peças muito grandes podem vazar
- * memória entre invocações.
+ * O worker Tesseract pode ser criado externamente e reutilizado entre vários
+ * documentos via `createOcrWorker` + `ocrPdf({ worker })` — isso elimina o
+ * overhead de ~3-5s por documento de carregar `por.traineddata` (~25MB)
+ * cada vez. O orquestrador `runOcrOnDocuments` em extractor.ts faz isso
+ * automaticamente em batch.
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
 import { LOG_PREFIX } from '../shared/constants';
 
-type TesseractWorker = Tesseract.Worker;
+export type TesseractWorker = Tesseract.Worker;
 
 /** Número máximo de páginas processadas por documento (fallback). */
 export const MAX_OCR_PAGES = 30;
@@ -31,6 +33,14 @@ export const MAX_OCR_PAGES = 30;
 export interface OcrOptions {
   /** Override do cap de páginas. Zero ou negativo cai no fallback. */
   maxPages?: number;
+  /**
+   * Worker Tesseract pré-criado para reutilização entre documentos. Quando
+   * presente, `ocrPdf` NÃO cria nem termina o worker — apenas usa. Esse é o
+   * principal acelerador para batches: criar um worker custa ~3-5s
+   * (carregamento de `por.traineddata` ~25MB), então passar o mesmo worker
+   * para 10 docs economiza ~30-50s.
+   */
+  worker?: TesseractWorker;
 }
 
 /** Fator de escala aplicado ao render do PDF antes do OCR. */
@@ -79,7 +89,8 @@ export async function ocrPdf(
     options?.maxPages && options.maxPages > 0 ? options.maxPages : MAX_OCR_PAGES;
   const pagesToProcess = Math.min(totalPages, effectiveCap);
 
-  let worker: TesseractWorker | null = null;
+  const externalWorker = options?.worker ?? null;
+  let worker: TesseractWorker | null = externalWorker;
   const pageTexts: string[] = [];
 
   // Estado mutável compartilhado entre o logger do Tesseract e o loop
@@ -89,10 +100,12 @@ export async function ocrPdf(
   let lastProgress = 0;
 
   try {
-    worker = await createTesseractWorker((m) => {
-      lastStatus = m.status ?? lastStatus;
-      lastProgress = typeof m.progress === 'number' ? m.progress : lastProgress;
-    });
+    if (!worker) {
+      worker = await createOcrWorker((m) => {
+        lastStatus = m.status ?? lastStatus;
+        lastProgress = typeof m.progress === 'number' ? m.progress : lastProgress;
+      });
+    }
 
     for (let pageIndex = 1; pageIndex <= pagesToProcess; pageIndex++) {
       const page = await doc.getPage(pageIndex);
@@ -137,7 +150,9 @@ export async function ocrPdf(
       });
     }
   } finally {
-    if (worker) {
+    // Só terminamos o worker se NÓS o criamos. Worker externo é
+    // responsabilidade do chamador (típico em batches via runOcrOnDocuments).
+    if (worker && !externalWorker) {
       try {
         await worker.terminate();
       } catch (err: unknown) {
@@ -167,18 +182,33 @@ export async function ocrPdf(
 /**
  * Cria um worker Tesseract configurado para rodar 100% offline, carregando
  * worker.js, core wasm e por.traineddata a partir de chrome.runtime.getURL.
+ *
+ * Exportado para permitir reutilização entre múltiplos documentos no mesmo
+ * batch. Crie uma vez antes do loop de docs e passe o mesmo worker para
+ * `ocrPdf({ worker })` em cada iteração — depois `terminate()` no final.
+ * Cada criação custa ~3-5s (carregamento de `por.traineddata` ~25MB),
+ * então reutilização economiza ordens de grandeza em batches.
  */
-async function createTesseractWorker(
-  logger: (m: { status?: string; progress?: number }) => void
+export async function createOcrWorker(
+  logger?: (m: { status?: string; progress?: number }) => void
 ): Promise<TesseractWorker> {
   const base = chrome.runtime.getURL('libs/tesseract/');
 
   // oem=1 (LSTM_ONLY) é o modo suportado pelo tessdata_fast.
+  // `workerBlobURL: false` é CRÍTICO em MV3: por padrão, Tesseract.js v5
+  // envolve o worker.min.js num blob URL antes de criar o Worker. Isso
+  // faz o worker rodar em origin `blob:` e qualquer `importScripts`
+  // subsequente para `chrome-extension://...` vira cross-origin → falha
+  // ("Failed to execute 'importScripts' on 'WorkerGlobalScope'") mesmo
+  // com web_accessible_resources liberado. Forçando false, o Worker é
+  // criado direto da URL chrome-extension://... e fica same-origin com
+  // os arquivos de wasm/lang.
   const worker = await Tesseract.createWorker('por', 1, {
     workerPath: chrome.runtime.getURL('libs/tesseract/worker.min.js'),
     corePath: base,
     langPath: base,
     gzip: false, // nosso por.traineddata não está comprimido
+    workerBlobURL: false,
     logger
   });
 

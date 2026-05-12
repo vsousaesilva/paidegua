@@ -356,9 +356,14 @@ const SIDEBAR_CSS = `
   display: none !important;
 }
 .paidegua-sidebar[data-profile="gestao"] [data-profile-section="gabinete"],
-.paidegua-sidebar[data-profile="gestao"] [data-profile-section="secretaria"] {
+.paidegua-sidebar[data-profile="gestao"] [data-profile-section="secretaria"],
+.paidegua-sidebar[data-profile="gestao"] [data-profile-section="gabinete-secretaria"] {
   display: none !important;
 }
+/* O valor 'gabinete-secretaria' aparece em Gabinete e Secretaria,
+ * mas não em Gestão (regra acima). Usado pelo botão "Audiência
+ * pAIdegua" porque a feature serve aos dois perfis: magistrado
+ * conduz a audiência; secretaria organiza a pauta. */
 
 /* Visibilidade condicional por processo aberto. Os botões que exigem
  * processo aberto (Resumir, Resumir em áudio, Anonimizar, Minutar)
@@ -663,13 +668,15 @@ export function mountSidebar(
             `<button type="button" disabled data-profile-section="gabinete" data-processo-section="processo" data-paidegua="template-action" data-action-id="${a.id}" title="${a.description}">${a.label}</button>`
         )
         .join('')}
+      <div data-profile-section="gabinete" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
+      <div data-profile-section="gabinete" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações do gabinete</div>
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="secretaria" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Ações da secretaria</div>
       <button type="button" data-profile-section="secretaria" data-paidegua="triagem-inteligente" title="Abre o painel de Triagem Inteligente" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Triagem Inteligente</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui é uma análise!</span></span></button>
       <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="pericias-paidegua" title="Organiza os processos das tarefas de perícia em uma pauta por perito" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Perícias pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Organize a sua pauta!</span></span></button>
       <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="sigcrim" title="Varre processos criminais e captura dados de prescrição, ANPP e SERP" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Sigcrim</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Controle ANPP e prescrição penal!</span></span></button>
       <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="comunicacao-paidegua" title="Gera mensagens de cobrança aos peritos (WhatsApp) e à Ceab (e-mail)" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Central de Comunicação</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Cobre peritos e Ceab num clique!</span></span></button>
-      <button type="button" data-profile-section="secretaria" data-painel-section="painel" data-paidegua="audiencia-paidegua" title="Agrupa processos de designar audiência por advogado e gera a pauta" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Audiência pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Pauta agrupada por advogado!</span></span></button>
+      <button type="button" data-profile-section="gabinete-secretaria" data-painel-section="painel" data-paidegua="audiencia-paidegua" title="Pauta de audiência agrupada por advogado, resumo dos processos e geração de sentença oral / com modelo" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Audiência pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Agilize sua parte nas audiências!</span></span></button>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gestao" data-painel-section="painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Recursos para a Gestão</div>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Painel Gerencial pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui você se faz!</span></span></button>

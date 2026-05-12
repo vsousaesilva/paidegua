@@ -65,6 +65,7 @@ import {
 } from './ui/document-list';
 import { mountChat, type ChatBubbleAction, type ChatController } from './ui/chat';
 import { createTriagemPanel } from './ui/triagem-panel';
+import { createAudienciaPanel } from './ui/audiencia-panel';
 import { createAnaliseProcessoBubble } from './ui/analise-processo-bubble';
 import { createEtiquetasSugestoesBubble } from './ui/etiquetas-sugestoes-bubble';
 import {
@@ -93,7 +94,17 @@ import { abrirPericiasPainel } from './pericias/pericias-coordinator';
 import { abrirComunicacaoPainel } from './comunicacao/comunicacao-coordinator';
 import { coletarComunicacao } from './comunicacao/comunicacao-coletor';
 import { abrirAudienciaPainel } from './audiencia/audiencia-coordinator';
+import { abrirAudienciaResumoPainel } from './audiencia/audiencia-resumo-coordinator';
+import { pedirConfiguracaoResumoPauta } from './ui/audiencia-resumo-config-modal';
 import { coletarAudienciaPorAdvogado } from './audiencia/audiencia-coletor';
+import {
+  coletarPautaPorPeriodo,
+  type AudienciaSituacaoCodigo
+} from './audiencia/audiencia-pauta-coletor';
+import {
+  coletarDocumentosDoProcesso,
+  type ColetarDocsModo
+} from './audiencia/audiencia-resumo-docs';
 import { abrirSigcrim } from './criminal/criminal-coordinator';
 import { varrerCriminalPorTarefas } from './criminal/pje-criminal-fetcher';
 import { enriquecerPessoaFisicaPorCpf } from './criminal/pje-pessoa-fisica-fetcher';
@@ -132,6 +143,12 @@ import { renderForPJe, stripMarkdown } from './ui/markdown';
 import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
 import type { SaveTemplatePayload } from '../shared/templates-save';
+import {
+  templatesHasConfig,
+  templatesRerank,
+  templatesSearch,
+  type TemplateSearchHit
+} from '../shared/templates-client';
 import {
   aplicarRegexAnonimizacao,
   aplicarSubstituicoesNomes,
@@ -1561,100 +1578,9 @@ function handleQuickAction(id: string): void {
  * o caso de uso (5 botões com top-3) torna inviável fazer round-trip
  * extra para buscar o texto após o usuário escolher.
  */
-interface TemplateSearchHit {
-  id: number;
-  relativePath: string;
-  name: string;
-  ext: string;
-  charCount: number;
-  score: number;
-  /** Similaridade normalizada em 0..100. */
-  similarity: number;
-  matchedFolderHint: boolean;
-  text: string;
-}
-
-async function templatesHasConfig(): Promise<boolean> {
-  try {
-    const response = (await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.TEMPLATES_HAS_CONFIG,
-      payload: null
-    })) as { ok: boolean; hasTemplates: boolean };
-    return Boolean(response?.hasTemplates);
-  } catch {
-    return false;
-  }
-}
-
-async function templatesSearch(
-  query: string,
-  folderHints: string[],
-  excludeTerms?: string[]
-): Promise<TemplateSearchHit[]> {
-  try {
-    const response = (await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.TEMPLATES_SEARCH,
-      payload: { query, opts: { folderHints, topK: 8, excludeTerms } }
-    })) as { ok: boolean; results?: TemplateSearchHit[]; error?: string };
-    return response?.results ?? [];
-  } catch (error: unknown) {
-    console.warn(`${LOG_PREFIX} templatesSearch falhou:`, error);
-    return [];
-  }
-}
-
-/**
- * Pede ao background para reordenar os candidatos do BM25 usando o LLM
- * ativo (RAG híbrido). Devolve `null` em caso de falha — o chamador deve
- * cair de volta para a ordem original do BM25 sem barulho.
- */
-async function templatesRerank(
-  actionLabel: string,
-  caseContext: string,
-  hits: TemplateSearchHit[]
-): Promise<{ ordered: TemplateSearchHit[]; justificativa: string } | null> {
-  if (hits.length < 2 || !caseContext) return null;
-  try {
-    const candidates = hits.map((h, i) => ({
-      index: i,
-      relativePath: h.relativePath,
-      // Excerto do começo do template — onde costumam aparecer relatório,
-      // partes e enquadramento da matéria. Suficiente para o LLM decidir.
-      excerpt: (h.text ?? '').slice(0, 1500)
-    }));
-    const response = (await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.TEMPLATES_RERANK,
-      payload: { actionLabel, caseContext, candidates }
-    })) as {
-      ok: boolean;
-      ranking?: number[];
-      justificativa?: string;
-      error?: string;
-    };
-    if (!response?.ok || !response.ranking || response.ranking.length === 0) {
-      if (response?.error) {
-        console.warn(`${LOG_PREFIX} rerank LLM falhou: ${response.error}`);
-      }
-      return null;
-    }
-    const ordered: TemplateSearchHit[] = [];
-    const seen = new Set<number>();
-    for (const idx of response.ranking) {
-      if (idx >= 0 && idx < hits.length && !seen.has(idx)) {
-        seen.add(idx);
-        ordered.push(hits[idx]!);
-      }
-    }
-    // Defensivo: completa eventuais faltantes na ordem original.
-    for (let i = 0; i < hits.length; i++) {
-      if (!seen.has(i)) ordered.push(hits[i]!);
-    }
-    return { ordered, justificativa: response.justificativa ?? '' };
-  } catch (error: unknown) {
-    console.warn(`${LOG_PREFIX} templatesRerank falhou:`, error);
-    return null;
-  }
-}
+// Wrappers de templates + tipo `TemplateSearchHit` foram extraídos
+// para `src/shared/templates-client.ts` quando a aba `audiencia-resumo`
+// (AUD-10) precisou dos mesmos wrappers (ver imports no topo).
 
 /**
  * Estado da última geração de minuta — usado pelo botão "Refinar minuta"
@@ -2586,7 +2512,7 @@ function wireSidebarEvents(sidebar: SidebarController): void {
 
   els.audienciaPaideguaButton.addEventListener('click', (event) => {
     event.preventDefault();
-    void handleAbrirAudiencia();
+    handleAudienciaPaidegua();
   });
 
   els.painelGerencialButton.addEventListener('click', (event) => {
@@ -2747,9 +2673,9 @@ async function handleAbrirComunicacao(): Promise<void> {
 }
 
 /**
- * Fluxo do botão "Audiência pAIdegua" (perfil Secretaria): detecta as
- * tarefas de "designar audiência" no painel e abre a aba que agrupa por
- * advogado e aplica a etiqueta-pauta em lote.
+ * Fluxo legado da "Audiência pAIdegua" — agora chamado como sub-ação do
+ * card-detalhe (`createAudienciaPanel`): detecta as tarefas de "designar
+ * audiência" no painel e abre a aba que agrupa por advogado.
  */
 async function handleAbrirAudiencia(): Promise<void> {
   if (!mounted) return;
@@ -2772,6 +2698,102 @@ async function handleAbrirAudiencia(): Promise<void> {
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAbrirAudiencia falhou:`, err);
     notice(`Falha em "Audiência pAIdegua": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do "Resumo dos processos da pauta" (AUD-10):
+ *
+ *   1. Abre um modal de pré-config (data De/Até + situações) no shadow
+ *      root do paidegua, sobre a página do PJe.
+ *   2. Ao confirmar, abre a aba dedicada `audiencia-resumo/resumo.html`
+ *      JÁ com os parâmetros — a aba pula o seletor interno e dispara
+ *      a busca direto.
+ *   3. Se cancelar (Esc / fora / botão), nada acontece.
+ */
+async function handleAbrirResumoPauta(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  let preConfig;
+  try {
+    preConfig = await pedirConfiguracaoResumoPauta(mountShell().shadow);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} pedirConfiguracaoResumoPauta falhou:`, err);
+    notice(`Falha ao abrir configuração: ${errorMessage(err)}`, 'error');
+    return;
+  }
+  if (!preConfig) {
+    // Usuário cancelou — não abre aba.
+    return;
+  }
+
+  notice('Abrindo "Resumo dos processos da pauta" em nova aba...');
+  try {
+    const result = await abrirAudienciaResumoPainel({
+      onProgress: (msg) => notice(msg),
+      preConfig
+    });
+    if (!result.ok) {
+      notice(
+        result.error ?? 'Falha ao abrir "Resumo dos processos da pauta".',
+        'error'
+      );
+      return;
+    }
+    notice('"Resumo dos processos da pauta" aberto em nova aba.');
+    window.setTimeout(() => notice('', 'info'), 2500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAbrirResumoPauta falhou:`, err);
+    notice(`Falha em "Resumo dos processos da pauta": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Handler do botão "Audiência pAIdegua" da sidebar. Substitui o antigo
+ * `handleAbrirAudiencia` direto, que abria a aba imediatamente. Agora
+ * renderiza um card-detalhe (`createAudienciaPanel`) na coluna direita,
+ * com duas opções: "Monte a pauta de audiência" (fluxo legado) e "Resumo
+ * dos processos da pauta" (Frente 2).
+ *
+ * Mesma topologia de montagem do `handleTriagemInteligente`: no painel do
+ * usuário substitui o body do sidebar; em janelas de processo, encapsula
+ * em uma bolha do chat para preservar o histórico.
+ */
+function handleAudienciaPaidegua(): void {
+  if (!mounted) return;
+  const isPainelUsuario =
+    window.location.href.includes('painel-usuario-interno') ||
+    Boolean(document.querySelector('iframe[src*="painel-usuario-interno"]'));
+  const card = createAudienciaPanel(
+    mountShell().shadow,
+    {
+      onMontarPauta: () => {
+        void handleAbrirAudiencia();
+      },
+      onResumoPauta: () => {
+        handleAbrirResumoPauta();
+      }
+    },
+    { isPainelUsuario }
+  );
+  if (isPainelUsuario) {
+    const body = mounted.sidebar.elements.body;
+    if (mounted.chat) {
+      mounted.chat.destroy();
+      mounted.chat = null;
+    }
+    if (mounted.docList) {
+      mounted.docList.destroy();
+      mounted.docList = null;
+    }
+    body.innerHTML = '';
+    body.appendChild(card);
+  } else {
+    const chat = ensureChatMounted();
+    chat.addCustomBubble(card);
   }
 }
 
@@ -4331,6 +4353,90 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           error: errorMessage(err),
           detalhes: []
         });
+      }
+    })();
+    return true;
+  }
+
+  // Resumo da pauta (AUD-10): baixa os documentos de UM processo da pauta
+  // (modo 'filtrado' ou 'todos') no momento que o magistrado clica
+  // "Resumir". Devolve `ProcessoDocumento[]` com texto extraído pra a
+  // aba abrir a porta CHAT_STREAM com esses docs como contexto.
+  if (message.channel === MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_DOCS) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      legacyOrigin?: string;
+      idProcesso: number;
+      ca: string;
+      modo: ColetarDocsModo;
+      progressKey?: string;
+    };
+    if (
+      !payload ||
+      typeof payload.idProcesso !== 'number' ||
+      typeof payload.ca !== 'string' ||
+      (payload.modo !== 'filtrado' && payload.modo !== 'todos')
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido para coletar docs.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await coletarDocumentosDoProcesso({
+          legacyOrigin: payload.legacyOrigin || window.location.origin,
+          idProcesso: payload.idProcesso,
+          ca: payload.ca,
+          modo: payload.modo,
+          progressKey: payload.progressKey
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          documentos: [],
+          totalListados: 0,
+          totalBaixados: 0,
+          totalChars: 0,
+          error: errorMessage(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  // Resumo da pauta (AUD-10): coleta a pauta de audiência via endpoint
+  // nativo (`listView.seam`) com filtros de período + situações marcadas.
+  // Same-origin: precisa rodar no content script para herdar cookies do PJe.
+  if (message.channel === MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_PAUTA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      legacyOrigin?: string;
+      dataDe: string;
+      dataAte: string;
+      situacoes: AudienciaSituacaoCodigo[];
+    };
+    if (
+      !payload ||
+      typeof payload.dataDe !== 'string' ||
+      typeof payload.dataAte !== 'string' ||
+      !Array.isArray(payload.situacoes)
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido para coletar pauta.' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await coletarPautaPorPeriodo({
+          legacyOrigin: payload.legacyOrigin || window.location.origin,
+          dataDe: payload.dataDe,
+          dataAte: payload.dataAte,
+          situacoes: payload.situacoes
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({ ok: false, error: errorMessage(err) });
       }
     })();
     return true;

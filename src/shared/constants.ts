@@ -122,6 +122,25 @@ export const PROVIDER_ENDPOINTS = {
   }
 } as const;
 
+/**
+ * Hostname público do provedor de IA configurado pelo usuário. Usado em
+ * mensagens de erro de rede para indicar EXATAMENTE qual endereço precisa
+ * estar acessível (proxy/firewall da JFCE costuma bloquear seletivamente).
+ */
+export function getProviderApiHost(provider: ProviderId): string {
+  const url =
+    provider === 'anthropic'
+      ? PROVIDER_ENDPOINTS.anthropic.messages
+      : provider === 'openai'
+        ? PROVIDER_ENDPOINTS.openai.chat
+        : PROVIDER_ENDPOINTS.gemini.base;
+  try {
+    return new URL(url).host;
+  } catch {
+    return PROVIDER_LABELS[provider];
+  }
+}
+
 /** Defaults gerais. */
 // 32k cobre minutas longas (sentenças com fundamentação extensa) sem corte
 // nos provedores atuais — Gemini 1.5/2.x/3.x suporta até 65k, Claude até
@@ -628,6 +647,42 @@ export const MESSAGE_CHANNELS = {
   AUDIENCIA_OPEN_PAINEL: 'paidegua/audiencia/open-painel',
   AUDIENCIA_RUN_COLETA: 'paidegua/audiencia/run-coleta',
   AUDIENCIA_APLICAR_ETIQUETAS: 'paidegua/audiencia/aplicar-etiquetas',
+  /**
+   * Canais do "Resumo dos processos da pauta" (AUD-10). Independente das
+   * tarefas do painel: a coleta usa o endpoint nativo do PJe
+   * `ProcessoAudiencia/PautaAudiencia/listView.seam`, filtrando por
+   * período + situações (default M+R). O coletor vive no content script
+   * (precisa de cookies same-origin); a página da extensão pede via
+   * background → tabs.sendMessage.
+   */
+  AUDIENCIA_RESUMO_OPEN_PAINEL: 'paidegua/audiencia-resumo/open-painel',
+  AUDIENCIA_RESUMO_COLETAR_PAUTA: 'paidegua/audiencia-resumo/coletar-pauta',
+  /**
+   * Pedido da aba para coletar e baixar os documentos de UM processo
+   * (modo 'filtrado' por padrão; 'todos' quando o magistrado clica
+   * "Ler o processo inteiro"). Roteado ao content script da aba PJe
+   * via background → tabs.sendMessage. Devolve `ProcessoDocumento[]`
+   * com `textoExtraido` preenchido + estatísticas de listados/baixados.
+   * O resumo final (Gemini) usa a porta CHAT_STREAM diretamente da aba.
+   */
+  AUDIENCIA_RESUMO_COLETAR_DOCS: 'paidegua/audiencia-resumo/coletar-docs',
+
+  /**
+   * OCR offscreen — content script pede ao background pra garantir que o
+   * offscreen document de OCR existe. Necessário porque tabs em background
+   * (Chrome ≥88) sofrem throttling de timers/postMessage; isso faz o OCR
+   * via Tesseract na pauta de audiências (PJe atrás da aba do resumo)
+   * pendurar. Offscreen documents NÃO são throttled — OCR roda lá com
+   * velocidade normal mesmo quando a aba PJe está em background.
+   */
+  OCR_OFFSCREEN_ENSURE: 'paidegua/ocr-offscreen/ensure',
+  /**
+   * OCR offscreen — pedido de batch de OCR. O content script envia um
+   * array de `{ id, url }` (sem buffer — offscreen faz fetch com
+   * credentials:'include' direto, herdando os cookies de jus.br via
+   * host_permissions do manifest). Resposta é um map id→{text, ok, error}.
+   */
+  OCR_OFFSCREEN_BATCH: 'paidegua/ocr-offscreen/batch',
 
   /**
    * Canal do "Consultor de fluxos" — abre a página estática
@@ -918,7 +973,23 @@ export const STORAGE_KEYS = {
    * Prefixo em `chrome.storage.session` com o roteamento
    * `requestId → {painelTabId, pjeTabId}` da aba da Audiência pAIdegua.
    */
-  AUDIENCIA_PAINEL_ROUTE_PREFIX: 'paidegua.audiencia.painelRoute.'
+  AUDIENCIA_PAINEL_ROUTE_PREFIX: 'paidegua.audiencia.painelRoute.',
+  /**
+   * Prefixos em `chrome.storage.session` para a aba "Resumo dos processos
+   * da pauta" (AUD-10). O state guarda apenas hostnamePJe + legacyOrigin
+   * + abertoEm — a aba não recebe lista de tarefas (o que ela busca é a
+   * pauta inteira via listView.seam, sem dependência das tarefas).
+   */
+  AUDIENCIA_RESUMO_PAINEL_STATE_PREFIX: 'paidegua.audiencia-resumo.painelState.',
+  AUDIENCIA_RESUMO_PAINEL_ROUTE_PREFIX: 'paidegua.audiencia-resumo.painelRoute.',
+  /**
+   * Prefixo para escrita progressiva do status da coleta de documentos
+   * (AUD-10). O coletor (no content script) escreve uma string textual
+   * em `chrome.storage.session`; a aba escuta `storage.onChanged` para
+   * atualizar a label do modal em tempo real (extraindo N/M, OCR k/n).
+   * A chave é apagada após a resposta final para evitar lixo.
+   */
+  AUDIENCIA_RESUMO_COLETA_PROGRESS_PREFIX: 'paidegua.audiencia-resumo.coletaProgress.'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

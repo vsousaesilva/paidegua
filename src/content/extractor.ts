@@ -16,10 +16,17 @@
  *  - Ativação PJe sob demanda (último recurso, ~2 docs por processo)
  */
 
-import { LOG_PREFIX } from '../shared/constants';
+import { LOG_PREFIX, MESSAGE_CHANNELS } from '../shared/constants';
 import type { ProcessoDocumento } from '../shared/types';
 import { parsePdf } from './pdf-parser';
-import { MAX_OCR_PAGES, ocrPdf, type OcrOptions, type OcrProgress } from './ocr';
+import {
+  createOcrWorker,
+  MAX_OCR_PAGES,
+  ocrPdf,
+  type OcrOptions,
+  type OcrProgress,
+  type TesseractWorker
+} from './ocr';
 
 /** Entrada no log de diagnóstico de extração de um documento. */
 export interface DiagnosticEntry {
@@ -94,6 +101,43 @@ let bridgeState: boolean | null = null;
 function ensureMainWorldBridge(): boolean {
   if (bridgeState !== null) return bridgeState;
 
+  // Só tenta injetar no TOP frame. O content script roda em todos os
+  // iframes (`all_frames: true` no manifest); injetar a bridge em cada
+  // iframe gera N CSP errors idênticos no painel "Erros" da extensão e
+  // não traz benefício (extração roda no top frame).
+  if (window !== window.top) {
+    bridgeState = false;
+    return false;
+  }
+
+  // Pré-verificação de CSP: PJe (e qualquer página que sirva
+  // `script-src 'self'` sem `'unsafe-inline'` nem hash) bloqueia o
+  // inline script da bridge. Tentar e tomar o erro suja o painel
+  // "Erros" da extensão a cada F5. Detectamos via meta tag (forma
+  // comum no PJe legacy) e pulamos silenciosamente quando dá.
+  try {
+    const metaCsp = document.querySelector<HTMLMetaElement>(
+      'meta[http-equiv="Content-Security-Policy" i]'
+    );
+    if (metaCsp?.content) {
+      const csp = metaCsp.content.toLowerCase();
+      const scriptSrc = csp.match(/script-src[^;]*/);
+      if (
+        scriptSrc &&
+        !scriptSrc[0].includes("'unsafe-inline'") &&
+        !scriptSrc[0].includes('nonce-')
+      ) {
+        bridgeState = false;
+        console.info(
+          `${LOG_PREFIX} Ponte MAIN world pulada: CSP da página bloqueia inline scripts.`
+        );
+        return false;
+      }
+    }
+  } catch {
+    /* segue tentando */
+  }
+
   try {
     const script = document.createElement('script');
     script.textContent = `
@@ -124,13 +168,15 @@ function ensureMainWorldBridge(): boolean {
     // Verificação: o script MAIN world seta um atributo DOM compartilhado
     bridgeState = document.documentElement.getAttribute('data-paidegua-bridge') === 'ready';
     if (!bridgeState) {
-      console.warn(`${LOG_PREFIX} Ponte MAIN world não inicializou (CSP pode estar bloqueando).`);
+      // Esperado em PJe com CSP restritiva — info, não warn (warn vira
+      // "erro" no painel da extensão e polui o feedback do usuário).
+      console.info(`${LOG_PREFIX} Ponte MAIN world não inicializou (CSP da página bloqueou inline script — fallback aceitável).`);
     } else {
-      console.log(`${LOG_PREFIX} Ponte MAIN world ativa.`);
+      console.info(`${LOG_PREFIX} Ponte MAIN world ativa.`);
     }
   } catch {
     bridgeState = false;
-    console.warn(`${LOG_PREFIX} Erro ao injetar ponte MAIN world.`);
+    console.info(`${LOG_PREFIX} Erro ao injetar ponte MAIN world.`);
   }
 
   return bridgeState;
@@ -525,12 +571,26 @@ class ExtractionError extends Error {
  * Concorrência 2: sobrepõe I/O de rede com CPU (parse PDF) sem
  * sobrecarregar o servidor do PJe.
  */
+export interface ExtractContentsOptions {
+  /**
+   * Quando true, suprime o `console.warn` por documento que falha em
+   * todas as tentativas. Usado por fluxos que sabem que um percentual
+   * de PDFs vai falhar legitimamente (ex.: AUD-10 baixa documentos de
+   * processos que o usuário NÃO está vendo, então `ca` ou permissões
+   * podem não cobrir tudo). Os eventos `document-error` no
+   * `onProgress` continuam sendo emitidos normalmente.
+   */
+  silent?: boolean;
+}
+
 export async function extractContents(
   documentos: ProcessoDocumento[],
-  onProgress?: ExtractProgressHandler
+  onProgress?: ExtractProgressHandler,
+  options?: ExtractContentsOptions
 ): Promise<ProcessoDocumento[]> {
   onProgress?.({ type: 'start', total: documentos.length });
 
+  const silent = options?.silent === true;
   const extracted: ProcessoDocumento[] = [];
   let nextIndex = 0;
 
@@ -550,15 +610,19 @@ export async function extractContents(
         const message = error instanceof Error ? error.message : String(error);
         const diagnostics = error instanceof ExtractionError ? error.diagnostics : [];
 
-        // Log estruturado no console para depuração
-        console.warn(
-          `${LOG_PREFIX} falha ao extrair doc ${source.id} (${source.tipo || 'tipo?'} — "${source.descricao || '?'}"):\n` +
-          `  Erro: ${message}\n` +
-          `  Diagnóstico (${diagnostics.length} etapas):\n` +
-          diagnostics.map(d =>
-            `    [${d.ms}ms] ${d.etapa}: ${d.ok ? 'OK' : 'FALHA'} — ${d.detalhe}`
-          ).join('\n')
-        );
+        // Log estruturado no console para depuração. Suprimido quando
+        // `options.silent === true` — usado por fluxos que sabem
+        // antecipadamente que falhas individuais são esperadas (AUD-10).
+        if (!silent) {
+          console.warn(
+            `${LOG_PREFIX} falha ao extrair doc ${source.id} (${source.tipo || 'tipo?'} — "${source.descricao || '?'}"):\n` +
+            `  Erro: ${message}\n` +
+            `  Diagnóstico (${diagnostics.length} etapas):\n` +
+            diagnostics.map(d =>
+              `    [${d.ms}ms] ${d.etapa}: ${d.ok ? 'OK' : 'FALHA'} — ${d.detalhe}`
+            ).join('\n')
+          );
+        }
 
         onProgress?.({
           type: 'document-error',
@@ -598,15 +662,33 @@ export type OcrProgressEvent =
 
 export type OcrProgressHandler = (event: OcrProgressEvent) => void;
 
+/**
+ * Remove os markers de página (`=== Página N ===` e `=== Página N (OCR) ===`)
+ * para medir o CONTEÚDO real do documento. Sem essa limpeza, um PDF
+ * digitalizado de 3 páginas tem text.length ~54 (só markers) e passa
+ * batido por checagens `< 50`, levando a docs sem conteúdo serem aceitos
+ * como "extraídos com sucesso" e pulando o OCR.
+ */
+function conteudoUtilLength(text: string | undefined): number {
+  if (!text) return 0;
+  return text
+    .replace(/===\s*Página\s+\d+(?:\s*\([^)]+\))?\s*===/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length;
+}
+
 export function getOcrPendingDocuments(
   docs: ProcessoDocumento[]
 ): ProcessoDocumento[] {
   return docs.filter((doc) => {
     if (!doc.isScanned) return false;
-    const text = doc.textoExtraido?.trim() ?? '';
-    return text.length < 50;
+    return conteudoUtilLength(doc.textoExtraido) < 50;
   });
 }
+
+/** Re-exporta utilitário para fluxos que normalizam por conteúdo útil. */
+export { conteudoUtilLength };
 
 export async function runOcrOnDocuments(
   docs: ProcessoDocumento[],
@@ -618,53 +700,102 @@ export async function runOcrOnDocuments(
 
   const updatedMap = new Map<string, ProcessoDocumento>();
 
-  for (let index = 0; index < targets.length; index++) {
-    const doc = targets[index]!;
-    onProgress?.({ type: 'ocr-document-start', index, documento: doc });
+  // Cria UM worker Tesseract reutilizado em todo o batch. O custo de
+  // criação é ~3-5s (carregamento de por.traineddata ~25MB), e antes
+  // pagávamos esse custo a cada documento. Para um batch de 8 docs,
+  // economiza ~25-40s no total — é o ganho que aproxima o tempo
+  // por-documento dos ~2s observados quando o worker já está quente.
+  // Estado mutável compartilhado entre logger do Tesseract (que roda
+  // dentro do wasm) e o loop. SEM logger, o wasm chama `undefined(...)`
+  // → "TypeError: v is not a function" centenas de vezes (uma por
+  // callback de progresso por página). Tem que passar logger SEMPRE,
+  // mesmo que no-op.
+  let sharedLastStatus = 'initializing';
+  let sharedLastProgress = 0;
+  const sharedLogger = (m: { status?: string; progress?: number }): void => {
+    sharedLastStatus = m.status ?? sharedLastStatus;
+    sharedLastProgress =
+      typeof m.progress === 'number' ? m.progress : sharedLastProgress;
+  };
+
+  let sharedWorker: TesseractWorker | null = null;
+  if (targets.length > 0) {
     try {
-      const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      let buffer = await response.arrayBuffer();
-
-      // Se o fetch isolado retorna 0 bytes para OCR, tenta MAIN world
-      if (buffer.byteLength === 0) {
-        try {
-          const mw = await fetchViaMainWorld(doc.url);
-          buffer = mw.buffer;
-        } catch { /* usa o buffer vazio, ocrPdf dará erro */ }
-      }
-
-      const result = await ocrPdf(
-        buffer,
-        (progress) => {
-          onProgress?.({ type: 'ocr-page', index, documento: doc, progress });
-        },
-        options
+      sharedWorker = await createOcrWorker(sharedLogger);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `${LOG_PREFIX} falha ao inicializar worker Tesseract compartilhado ` +
+          `(seguindo com worker por documento):`,
+        message
       );
+    }
+  }
+  // Suprime "unused" — `sharedLastStatus`/`sharedLastProgress` existem
+  // só pra dar destino ao callback (o wasm exige a função existir).
+  void sharedLastStatus;
+  void sharedLastProgress;
 
-      const updated: ProcessoDocumento = {
-        ...doc,
-        textoExtraido: result.text,
-        isScanned: true
-      };
-      updatedMap.set(doc.id, updated);
+  try {
+    for (let index = 0; index < targets.length; index++) {
+      const doc = targets[index]!;
+      onProgress?.({ type: 'ocr-document-start', index, documento: doc });
+      try {
+        const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        let buffer = await response.arrayBuffer();
 
-      onProgress?.({
-        type: 'ocr-document-done',
-        index,
-        documento: updated,
-        pagesProcessed: result.pagesProcessed,
-        pagesSkipped: result.pagesSkipped
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`${LOG_PREFIX} falha no OCR de ${doc.id}:`, message);
-      onProgress?.({
-        type: 'ocr-document-error',
-        index,
-        documento: doc,
-        error: message
-      });
+        // Se o fetch isolado retorna 0 bytes para OCR, tenta MAIN world
+        if (buffer.byteLength === 0) {
+          try {
+            const mw = await fetchViaMainWorld(doc.url);
+            buffer = mw.buffer;
+          } catch { /* usa o buffer vazio, ocrPdf dará erro */ }
+        }
+
+        const result = await ocrPdf(
+          buffer,
+          (progress) => {
+            onProgress?.({ type: 'ocr-page', index, documento: doc, progress });
+          },
+          { ...options, worker: sharedWorker ?? undefined }
+        );
+
+        const updated: ProcessoDocumento = {
+          ...doc,
+          textoExtraido: result.text,
+          isScanned: true
+        };
+        updatedMap.set(doc.id, updated);
+
+        onProgress?.({
+          type: 'ocr-document-done',
+          index,
+          documento: updated,
+          pagesProcessed: result.pagesProcessed,
+          pagesSkipped: result.pagesSkipped
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`${LOG_PREFIX} falha no OCR de ${doc.id}:`, message);
+        onProgress?.({
+          type: 'ocr-document-error',
+          index,
+          documento: doc,
+          error: message
+        });
+      }
+    }
+  } finally {
+    if (sharedWorker) {
+      try {
+        await sharedWorker.terminate();
+      } catch (err: unknown) {
+        console.warn(
+          `${LOG_PREFIX} falha ao terminar worker Tesseract compartilhado:`,
+          err
+        );
+      }
     }
   }
 
@@ -677,6 +808,132 @@ export async function runOcrOnDocuments(
       `${LOG_PREFIX} OCR concluído. ${updatedList.length}/${targets.length} documentos processados (limite: ${MAX_OCR_PAGES} páginas/doc).`
     );
   }
+
+  return merged;
+}
+
+// ============================================================================
+// OCR via offscreen document — fix do throttling de tab background
+// ============================================================================
+
+/**
+ * Variante de `runOcrOnDocuments` que delega o OCR a um offscreen document.
+ *
+ * Por que: Chrome ≥88 throttla tabs em background (timer cap ~1Hz, postMessage
+ * enfileirado). O Tesseract usa Web Worker + postMessage intenso entre wasm
+ * e main thread → quando a aba PJe não é a ativa (caso típico do fluxo de
+ * Resumo da Pauta), OCR pendura. Offscreen documents NÃO sofrem throttling.
+ *
+ * Arquitetura:
+ *   content script ─► background (ENSURE) ─► offscreen criado
+ *   content script ─► offscreen (BATCH com URLs) ─► offscreen fetch+ocr
+ *   offscreen ─► content script (resposta com map id→texto)
+ *
+ * O offscreen faz o fetch dos PDFs ele mesmo, com `credentials: 'include'`,
+ * herdando os cookies de jus.br via `host_permissions`. Não precisamos
+ * transferir buffers (que seriam serializados via JSON via runtime msg).
+ *
+ * Devolve um array no mesmo formato do `runOcrOnDocuments` clássico, mantendo
+ * `isScanned: true` nos docs efetivamente OCRados.
+ */
+export async function runOcrOnDocumentsViaOffscreen(
+  docs: ProcessoDocumento[],
+  onProgress?: OcrProgressHandler,
+  options?: OcrOptions
+): Promise<ProcessoDocumento[]> {
+  const targets = getOcrPendingDocuments(docs);
+  onProgress?.({ type: 'ocr-start', total: targets.length });
+
+  if (targets.length === 0) {
+    onProgress?.({ type: 'ocr-done', updated: [] });
+    return docs;
+  }
+
+  // 1. Garante que o offscreen document existe (background é o único
+  //    contexto que pode chamar chrome.offscreen.createDocument).
+  try {
+    const ack = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.OCR_OFFSCREEN_ENSURE
+    });
+    if (!ack?.ok) {
+      throw new Error(ack?.error || 'background não confirmou ensure offscreen');
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `${LOG_PREFIX} falha ao garantir offscreen de OCR (segue sem OCR):`,
+      message
+    );
+    onProgress?.({ type: 'ocr-done', updated: [] });
+    return docs;
+  }
+
+  // 2. Notifica o início de cada doc (UI puxa contagem progressiva apesar
+  //    de não termos progresso real por página — offscreen processa em
+  //    batch e devolve tudo de uma vez).
+  for (let i = 0; i < targets.length; i++) {
+    onProgress?.({ type: 'ocr-document-start', index: i, documento: targets[i]! });
+  }
+
+  // 3. Envia batch ao offscreen e aguarda resposta única.
+  type OcrDocResult = {
+    text: string;
+    ok: boolean;
+    error?: string;
+    pagesProcessed?: number;
+    pagesSkipped?: number;
+  };
+  let resultados: Record<string, OcrDocResult> = {};
+  try {
+    resultados = (await chrome.runtime.sendMessage({
+      type: MESSAGE_CHANNELS.OCR_OFFSCREEN_BATCH,
+      docs: targets.map((d) => ({ id: d.id, url: d.url })),
+      options: { maxPages: options?.maxPages }
+    })) as Record<string, OcrDocResult>;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`${LOG_PREFIX} OCR offscreen batch falhou:`, message);
+    onProgress?.({ type: 'ocr-done', updated: [] });
+    return docs;
+  }
+
+  // 4. Aplica resultados nos docs.
+  const updatedMap = new Map<string, ProcessoDocumento>();
+  for (let index = 0; index < targets.length; index++) {
+    const doc = targets[index]!;
+    const r = resultados[doc.id];
+    if (r?.ok && r.text.trim().length > 0) {
+      const updated: ProcessoDocumento = {
+        ...doc,
+        textoExtraido: r.text,
+        isScanned: true
+      };
+      updatedMap.set(doc.id, updated);
+      onProgress?.({
+        type: 'ocr-document-done',
+        index,
+        documento: updated,
+        pagesProcessed: r.pagesProcessed ?? 0,
+        pagesSkipped: r.pagesSkipped ?? 0
+      });
+    } else {
+      onProgress?.({
+        type: 'ocr-document-error',
+        index,
+        documento: doc,
+        error: r?.error || 'sem resultado do offscreen'
+      });
+    }
+  }
+
+  const merged = docs.map((d) => updatedMap.get(d.id) ?? d);
+  const updatedList = Array.from(updatedMap.values());
+  onProgress?.({ type: 'ocr-done', updated: updatedList });
+
+  console.log(
+    `${LOG_PREFIX} OCR offscreen concluído: ${updatedList.length}/${targets.length} ` +
+      `documentos processados.`
+  );
 
   return merged;
 }
