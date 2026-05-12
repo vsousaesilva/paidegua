@@ -19,6 +19,7 @@ import {
   PJE_HOST_PATTERNS,
   PORT_NAMES,
   STORAGE_KEYS,
+  getProviderApiHost,
   type ProviderId
 } from '../shared/constants';
 import {
@@ -1069,6 +1070,58 @@ function dispatchMessage(
           },
           sendResponse
         );
+        return true;
+
+      case MESSAGE_CHANNELS.AUDIENCIA_RESUMO_OPEN_PAINEL:
+        void handleOpenAudienciaResumoPainel(
+          message.payload as {
+            hostnamePJe: string;
+            legacyOrigin: string;
+            abertoEm: string;
+            preConfig?: {
+              dataDe: string;
+              dataAte: string;
+              situacoes: string[];
+            };
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_PAUTA:
+        void handleAudienciaResumoColetarPauta(
+          message.payload as {
+            requestId: string;
+            legacyOrigin: string;
+            dataDe: string;
+            dataAte: string;
+            situacoes: string[];
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_DOCS:
+        void handleAudienciaResumoColetarDocs(
+          message.payload as {
+            requestId: string;
+            legacyOrigin: string;
+            idProcesso: number;
+            ca: string;
+            modo: 'filtrado' | 'todos';
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.OCR_OFFSCREEN_ENSURE:
+        void ensureOcrOffscreenDocument()
+          .then(() => sendResponse({ ok: true }))
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            sendResponse({ ok: false, error: message });
+          });
         return true;
 
       case MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR:
@@ -2994,11 +3047,34 @@ async function handleChatStart(
     }
     port.postMessage({
       type: CHAT_PORT_MSG.ERROR,
-      error: errorMessage(error)
+      error: friendlyChatError(error, payload.provider)
     });
   } finally {
     activeChats.delete(port);
   }
+}
+
+/**
+ * Traduz `TypeError: Failed to fetch` (rede indisponível, host bloqueado por
+ * proxy/firewall, DNS falho) em mensagem amigável citando o host do provedor
+ * configurado pelo usuário — assim ele sabe qual endereço precisa liberar.
+ * Os demais erros passam intactos: erros HTTP do provedor já chegam como
+ * `ProviderHttpError` com `.message` amigável (montada em providers/retry.ts —
+ * sobrecarga 503/529, limite 429, chave recusada 401/403), e erros de parsing
+ * trazem contexto próprio.
+ */
+function friendlyChatError(error: unknown, provider: ProviderId): string {
+  const raw = errorMessage(error);
+  const isFetchFailure =
+    error instanceof TypeError &&
+    /failed to fetch|networkerror|load failed/i.test(raw);
+  if (!isFetchFailure) return raw;
+  const host = getProviderApiHost(provider);
+  return (
+    `Não consegui conectar ao provedor de IA (${host}). ` +
+    `Verifique sua conexão com a internet ou se a rede (proxy/firewall) ` +
+    `está bloqueando esse endereço.`
+  );
 }
 
 // =====================================================================
@@ -5368,6 +5444,341 @@ async function handleAudienciaAplicarEtiquetas(
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAudienciaAplicarEtiquetas falhou:`, err);
     sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+// =====================================================================
+// Resumo dos processos da pauta (AUD-10)
+// =====================================================================
+
+function gerarAudienciaResumoRequestId(): string {
+  return `audiencia-resumo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function handleOpenAudienciaResumoPainel(
+  payload: {
+    hostnamePJe: string;
+    legacyOrigin: string;
+    abertoEm: string;
+    preConfig?: {
+      dataDe: string;
+      dataAte: string;
+      situacoes: string[];
+    };
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error:
+          'Não consegui identificar a aba do PJe que disparou o Resumo da pauta.'
+      });
+      return;
+    }
+    const requestId = gerarAudienciaResumoRequestId();
+    const stateKey =
+      `${STORAGE_KEYS.AUDIENCIA_RESUMO_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        hostnamePJe: payload?.hostnamePJe ?? '',
+        legacyOrigin: payload?.legacyOrigin ?? '',
+        abertoEm: payload?.abertoEm ?? new Date().toISOString()
+      }
+    });
+    let url =
+      chrome.runtime.getURL('audiencia-resumo/resumo.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    if (payload?.preConfig) {
+      const { dataDe, dataAte, situacoes } = payload.preConfig;
+      const params = new URLSearchParams();
+      params.set('dataDe', dataDe);
+      params.set('dataAte', dataAte);
+      params.set('situacoes', situacoes.join(','));
+      url += `&${params.toString()}`;
+    }
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba do Resumo da pauta.'
+      });
+      return;
+    }
+    const rotaKeyResumo =
+      `${STORAGE_KEYS.AUDIENCIA_RESUMO_PAINEL_ROUTE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [rotaKeyResumo]: { painelTabId: tab.id, pjeTabId }
+    });
+    sendResponse({ ok: true, requestId });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleOpenAudienciaResumoPainel falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+/**
+ * Garante que o offscreen document de OCR esteja criado e ativo.
+ * Idempotente: se já existe, no-op. Se não existe, cria via
+ * `chrome.offscreen.createDocument` com reason `WORKERS` (Tesseract usa
+ * Web Worker + WASM internamente).
+ *
+ * Por que offscreen: tabs em background são throttled pelo Chrome
+ * (≥88), o que faz o Tesseract pendurar quando a aba PJe não é a
+ * ativa (caso típico do fluxo de Resumo da Pauta, em que o usuário
+ * fica na aba `audiencia-resumo/resumo.html`). Offscreen documents
+ * NÃO sofrem throttling — OCR roda lá com velocidade normal.
+ */
+const OFFSCREEN_OCR_URL = 'offscreen/ocr.html';
+async function ensureOcrOffscreenDocument(): Promise<void> {
+  // chrome.runtime.getContexts é a forma oficial em MV3 de checar se
+  // um offscreen já existe. Filtra por contextTypes + documentUrls.
+  const fullUrl = chrome.runtime.getURL(OFFSCREEN_OCR_URL);
+  const existing = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT' as chrome.runtime.ContextType],
+    documentUrls: [fullUrl]
+  });
+  if (existing.length > 0) return;
+  await chrome.offscreen.createDocument({
+    url: OFFSCREEN_OCR_URL,
+    reasons: ['WORKERS' as chrome.offscreen.Reason],
+    justification:
+      'OCR via Tesseract.js sem throttling de tab background (Chrome ≥88).'
+  });
+  console.info(`${LOG_PREFIX} offscreen document de OCR criado.`);
+}
+
+async function handleAudienciaResumoColetarDocs(
+  payload: {
+    requestId: string;
+    legacyOrigin: string;
+    idProcesso: number;
+    ca: string;
+    modo: 'filtrado' | 'todos';
+    progressKey?: string;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (
+      !payload ||
+      !payload.requestId ||
+      typeof payload.idProcesso !== 'number' ||
+      typeof payload.ca !== 'string' ||
+      (payload.modo !== 'filtrado' && payload.modo !== 'todos')
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Roteamento por modo:
+    //  - modo='filtrado' (default — "Resumir"): usa a aba PJe atual do
+    //    usuário. Mais rápido, mas perde docs que precisam de ativação
+    //    server-side (gap aceitável no fluxo padrão).
+    //  - modo='todos' ("Ler o processo inteiro"): abre o processo numa
+    //    aba OCULTA, deixa o servidor renderizar e ativar a árvore,
+    //    extrai com toda a chain de fallbacks operando contra o DOM
+    //    real. Mais lento (+5-10s) mas captura 100% dos docs. Per
+    //    docs/extracao-conteudo-pje.md §1.2 e §2.2.
+    // ───────────────────────────────────────────────────────────────────
+    if (payload.modo === 'todos') {
+      await coletarDocsViaAbaOculta(payload, sendResponse);
+      return;
+    }
+
+    // Fluxo "filtrado" (default): aba PJe atual.
+    const rotaKeyResumo =
+      `${STORAGE_KEYS.AUDIENCIA_RESUMO_PAINEL_ROUTE_PREFIX}${payload.requestId}`;
+    const got = await chrome.storage.session.get(rotaKeyResumo);
+    const rota = got?.[rotaKeyResumo] as
+      | { painelTabId: number; pjeTabId: number }
+      | undefined;
+    if (!rota || typeof rota.pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão do Resumo da pauta expirou. Volte ao PJe e abra o Resumo novamente.'
+      });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_DOCS,
+      payload: {
+        legacyOrigin: payload.legacyOrigin,
+        idProcesso: payload.idProcesso,
+        ca: payload.ca,
+        modo: payload.modo,
+        progressKey: payload.progressKey
+      }
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAudienciaResumoColetarDocs falhou:`, err);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(err) +
+        '. Verifique se a aba original do PJe ainda está aberta.'
+    });
+  }
+}
+
+/**
+ * Coleta docs abrindo o processo numa aba oculta — modo='todos' ("Ler o
+ * processo inteiro"). Aceita o custo de abrir aba (+5-10s) em troca de
+ * captura completa: a aba renderiza a árvore, ativa todos os docs server-
+ * side, e o content script roda extractContents com todos os fallbacks
+ * operando contra o DOM real do processo.
+ */
+async function coletarDocsViaAbaOculta(
+  payload: {
+    requestId: string;
+    legacyOrigin: string;
+    idProcesso: number;
+    ca: string;
+    modo: 'filtrado' | 'todos';
+    progressKey?: string;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const LOG_HT = `${LOG_PREFIX} [aba-oculta]`;
+  const t0 = Date.now();
+  const url =
+    `${payload.legacyOrigin.replace(/\/$/, '')}` +
+    `/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam` +
+    `?id=${payload.idProcesso}&ca=${encodeURIComponent(payload.ca)}`;
+
+  console.info(`${LOG_HT} criando aba oculta para processo ${payload.idProcesso}…`);
+  // Helper de progresso pra label do modal — usa a mesma chave session
+  // que o content script já escuta.
+  const setProg = (msg: string): void => {
+    if (!payload.progressKey) return;
+    const key =
+      `${STORAGE_KEYS.AUDIENCIA_RESUMO_COLETA_PROGRESS_PREFIX}${payload.progressKey}`;
+    void chrome.storage.session.set({ [key]: { msg, ts: Date.now() } });
+  };
+  setProg('Abrindo o processo em uma aba auxiliar…');
+
+  const tab = await chrome.tabs.create({ url, active: false });
+  const tabId = tab.id;
+  if (typeof tabId !== 'number') {
+    sendResponse({ ok: false, error: 'Não foi possível criar a aba oculta do processo.' });
+    return;
+  }
+  console.info(`${LOG_HT} aba oculta criada: id=${tabId}`);
+
+  try {
+    setProg('Aguardando o PJe carregar o processo…');
+    await aguardarTabComplete(tabId, 30_000);
+    console.info(
+      `${LOG_HT} aba ${tabId} completou load em ${Date.now() - t0}ms ` +
+        `(inclui +1500ms built-in pra JSF)`
+    );
+
+    // RichFaces popula a árvore via JS DEPOIS do `complete`. Para processos
+    // grandes (50+ docs), o servidor demora mais para devolver e renderizar.
+    // 5 segundos cobre quase todos os casos observados.
+    setProg('Preparando a lista de documentos do processo…');
+    await new Promise((r) => setTimeout(r, 5_000));
+    console.info(`${LOG_HT} delay extra finalizado em ${Date.now() - t0}ms total`);
+
+    setProg('Iniciando coleta dos documentos…');
+    console.info(`${LOG_HT} enviando COLETAR_DOCS para tab ${tabId}…`);
+    const resp = await chrome.tabs.sendMessage(tabId, {
+      channel: MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_DOCS,
+      payload: {
+        legacyOrigin: payload.legacyOrigin,
+        idProcesso: payload.idProcesso,
+        ca: payload.ca,
+        modo: payload.modo,
+        progressKey: payload.progressKey
+      }
+    });
+    const r = resp as { ok?: boolean; totalListados?: number; totalBaixados?: number; error?: string } | undefined;
+    console.info(
+      `${LOG_HT} resposta da aba ${tabId} em ${Date.now() - t0}ms total: ` +
+        `ok=${r?.ok} listados=${r?.totalListados ?? '?'} baixados=${r?.totalBaixados ?? '?'} ` +
+        `erro=${r?.error ?? '-'}`
+    );
+    sendResponse(resp ?? { ok: false, error: 'Aba oculta do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_HT} falha na coleta via aba oculta:`, err);
+    sendResponse({
+      ok: false,
+      error: 'Falha na aba oculta: ' + errorMessage(err)
+    });
+  } finally {
+    // Fecha sempre — mesmo em erro pra não vazar abas órfãs.
+    try {
+      await chrome.tabs.remove(tabId);
+      console.info(`${LOG_HT} aba ${tabId} fechada.`);
+    } catch (err) {
+      console.info(`${LOG_HT} aba oculta ${tabId} já fechada:`, err);
+    }
+  }
+}
+
+async function handleAudienciaResumoColetarPauta(
+  payload: {
+    requestId: string;
+    legacyOrigin: string;
+    dataDe: string;
+    dataAte: string;
+    situacoes: string[];
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (
+      !payload ||
+      !payload.requestId ||
+      typeof payload.dataDe !== 'string' ||
+      typeof payload.dataAte !== 'string' ||
+      !Array.isArray(payload.situacoes)
+    ) {
+      sendResponse({ ok: false, error: 'Payload inválido.' });
+      return;
+    }
+    const rotaKeyResumo =
+      `${STORAGE_KEYS.AUDIENCIA_RESUMO_PAINEL_ROUTE_PREFIX}${payload.requestId}`;
+    const got = await chrome.storage.session.get(rotaKeyResumo);
+    const rota = got?.[rotaKeyResumo] as
+      | { painelTabId: number; pjeTabId: number }
+      | undefined;
+    if (!rota || typeof rota.pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão do Resumo da pauta expirou. Volte ao PJe e abra o Resumo novamente.'
+      });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.AUDIENCIA_RESUMO_COLETAR_PAUTA,
+      payload: {
+        legacyOrigin: payload.legacyOrigin,
+        dataDe: payload.dataDe,
+        dataAte: payload.dataAte,
+        situacoes: payload.situacoes
+      }
+    });
+    sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAudienciaResumoColetarPauta falhou:`, err);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(err) +
+        '. Verifique se a aba original do PJe ainda está aberta.'
+    });
   }
 }
 

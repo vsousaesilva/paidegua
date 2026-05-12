@@ -10,6 +10,7 @@
 import { LOG_PREFIX, PROVIDER_ENDPOINTS } from '../../shared/constants';
 import type { TestConnectionResult } from '../../shared/types';
 import type { LLMProvider, SendMessageParams, StreamChunk } from './base';
+import { fetchWithRetry } from './retry';
 import { parseSseStream } from './sse';
 
 interface GeminiContent {
@@ -80,30 +81,29 @@ export const geminiProvider: LLMProvider = {
       `${PROVIDER_ENDPOINTS.gemini.base}/models/${encodeURIComponent(params.model)}` +
       `:streamGenerateContent?alt=sse&key=${encodeURIComponent(params.apiKey)}`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      signal: params.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: params.systemPrompt }] },
-        contents,
-        safetySettings: SAFETY_SETTINGS_PERMISSIVE,
-        generationConfig: {
-          temperature: params.temperature,
-          maxOutputTokens: resolveGeminiMaxTokens(params.model, params.maxTokens),
-          // Modelos Gemini 2.5/3.x são "thinking models": gastam tokens em
-          // raciocínio interno antes de produzir texto. Para análise jurídica
-          // queremos a resposta direta, então zeramos o budget de thinking
-          // para liberar todo o maxOutputTokens para o output visível.
-          thinkingConfig: { thinkingBudget: 0 }
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await safeReadText(response);
-      throw new Error(`Gemini ${response.status}: ${errText}`);
-    }
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: 'POST',
+        signal: params.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: params.systemPrompt }] },
+          contents,
+          safetySettings: SAFETY_SETTINGS_PERMISSIVE,
+          generationConfig: {
+            temperature: params.temperature,
+            maxOutputTokens: resolveGeminiMaxTokens(params.model, params.maxTokens),
+            // Modelos Gemini 2.5/3.x são "thinking models": gastam tokens em
+            // raciocínio interno antes de produzir texto. Para análise jurídica
+            // queremos a resposta direta, então zeramos o budget de thinking
+            // para liberar todo o maxOutputTokens para o output visível.
+            thinkingConfig: { thinkingBudget: 0 }
+          }
+        })
+      },
+      { provider: 'gemini', model: params.model }
+    );
 
     let totalChunks = 0;
     let totalTextLen = 0;
@@ -202,26 +202,26 @@ export const geminiProvider: LLMProvider = {
     const url =
       `${PROVIDER_ENDPOINTS.gemini.base}/models/${model}:generateContent` +
       `?key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: 'Transcreva fielmente este áudio em português brasileiro. Responda apenas com a transcrição, sem comentários.' },
-              { inlineData: { mimeType, data: bytesToBase64(audioBytes) } }
-            ]
-          }
-        ],
-        generationConfig: { temperature: 0.0, maxOutputTokens: 2048 }
-      })
-    });
-    if (!response.ok) {
-      const errText = await safeReadText(response);
-      throw new Error(`Gemini STT ${response.status}: ${errText}`);
-    }
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: 'Transcreva fielmente este áudio em português brasileiro. Responda apenas com a transcrição, sem comentários.' },
+                { inlineData: { mimeType, data: bytesToBase64(audioBytes) } }
+              ]
+            }
+          ],
+          generationConfig: { temperature: 0.0, maxOutputTokens: 2048 }
+        })
+      },
+      { provider: 'gemini', model, resourceLabel: 'transcrição de áudio' }
+    );
     const json = (await response.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };

@@ -5561,6 +5561,41 @@
           "comando": "Smoke validado pelo owner: build local refletiu a mensagem nova, sync KV concluído, simulação de bloqueio confirmou mudança de comportamento. Card movido para lancado."
         }
       ]
+    },
+    {
+      "id": "ERG-16",
+      "titulo": "Retry automático + mensagem amigável para erros transitórios dos provedores de IA (503/529/429)",
+      "descricao": "Owner reportou em 2026-05-12 que 'Resumir o processo' falhou com 'Erro: Gemini 503: { \"error\": { \"code\": 503, \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\", \"status\": \"UNAVAILABLE\" } }' (provedor Google Gemini, modelo gemini-3-flash-preview). Causa: sobrecarga momentânea no servidor do modelo (comum em modelos -preview) — uma única falha já abortava todo o resumo, sem retry, e a mensagem na tela era o JSON cru da API.\n\nSolução: (1) novo helper src/background/providers/retry.ts com fetchWithRetry — retry exponencial com jitter (base 800ms, teto 8s) para status HTTP transitórios (429, 500, 502, 503, 504, 529), respeitando o cabeçalho Retry-After (teto 30s) e o AbortSignal; 3 tentativas, 4 para modelos com id -preview. Falhas de rede (firewall/DNS/offline) NÃO são repetidas — falham na hora para não atrasar a mensagem do ERG-15. (2) ProviderHttpError carrega status/provider/apiBody/attempts e tem .message já amigável (cita o rótulo do provedor via PROVIDER_LABELS, o código HTTP e a ação recomendada) — assim qualquer ponto que exiba error.message mostra algo compreensível. (3) describeHttpError mapeia: 5xx/529 → 'O provedor de IA (X) está sobrecarregado... não respondeu após N tentativas automáticas (erro NNN)... aguarde cerca de um minuto e tente novamente... pode selecionar outro modelo no popup ou usar outro provedor'; 429 → 'A chave de API... atingiu o limite de uso (erro 429)... verifique o limite/plano da chave'; 401/403 → 'A chave de API... foi recusada (erro NNN)... verifique se a chave está correta e ativa'; demais → repassa a mensagem da API com rótulo legível. NUNCA cita versão de modelo (a lista de modelos muda). (4) gemini.ts/openai.ts/anthropic.ts: sendMessage (chat/resumo/minutar/consultor — toda chamada que passa por provider.sendMessage) + transcribeAudio (Gemini e Whisper) + synthesizeSpeech (OpenAI TTS) passam a usar fetchWithRetry; testConnection fica como está (feedback rápido ao testar a chave). (5) friendlyChatError (background.ts) inalterado funcionalmente — ProviderHttpError.message já é amigável e a vertente 'rede/firewall' do ERG-15 segue tratando o TypeError do fetch; só o comentário foi atualizado.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "qa",
+      "origem": "sessão 12/05/2026 — feedback owner: print do 'Erro: Gemini 503 ... UNAVAILABLE' ao acionar Resumir; pedido para entender e tratar o erro",
+      "tags": ["providers", "retry", "resiliencia", "erro", "ux", "extensao", "chat", "resumo", "ia-gemini"],
+      "esforco": "S",
+      "depende": ["ERG-15"],
+      "aceitacao": [
+        "Novo módulo src/background/providers/retry.ts com fetchWithRetry + ProviderHttpError",
+        "503 transitório do Gemini → resumo tenta novamente automaticamente (3x; 4x se o modelo tem id -preview) antes de falhar",
+        "Retry respeita o cabeçalho Retry-After quando o provedor o envia (teto 30s)",
+        "Falha de rede (firewall/DNS) NÃO é repetida — a mensagem do ERG-15 aparece imediatamente",
+        "Esgotadas as tentativas: mensagem 'O provedor de IA (Google Gemini) está sobrecarregado... não respondeu após N tentativas automáticas (erro 503)... aguarde cerca de um minuto e tente novamente...' — sem citar versão de modelo",
+        "429 → mensagem de limite de uso da chave; 401/403 → mensagem de chave recusada",
+        "Os 3 provedores (sendMessage) + transcribeAudio (Gemini/Whisper) + TTS (OpenAI) usam o helper; testConnection permanece sem retry",
+        "Build do paidegua sem erros TS (build.bat)",
+        "Smoke do owner: acionar Resumir com Gemini sob carga e confirmar nova tentativa + mensagem amigável no esgotamento"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-12T14:00:00.000Z",
+      "atualizadoEm": "2026-05-12T14:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-12",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-12",
+          "data": "2026-05-12T14:00:00.000Z",
+          "comando": "Card aberto + implementado na mesma sessão a partir do print do erro 503 do Gemini enviado pelo owner. Textos das mensagens amigáveis revisados e aprovados pelo owner antes da implementação. Aguardando build local (build.bat) + smoke do owner para mover para lancado."
+        }
+      ]
     }
   ]
 }

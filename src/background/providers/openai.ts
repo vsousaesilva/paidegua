@@ -6,6 +6,7 @@
 import { PROVIDER_ENDPOINTS } from '../../shared/constants';
 import type { TestConnectionResult } from '../../shared/types';
 import type { LLMProvider, SendMessageParams, StreamChunk } from './base';
+import { fetchWithRetry } from './retry';
 import { parseSseStream } from './sse';
 
 interface OpenAiChatChunk {
@@ -44,26 +45,25 @@ export const openaiProvider: LLMProvider = {
       messages.push({ role: m.role, content: m.content });
     }
 
-    const response = await fetch(PROVIDER_ENDPOINTS.openai.chat, {
-      method: 'POST',
-      signal: params.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${params.apiKey}`
+    const response = await fetchWithRetry(
+      PROVIDER_ENDPOINTS.openai.chat,
+      {
+        method: 'POST',
+        signal: params.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${params.apiKey}`
+        },
+        body: JSON.stringify({
+          model: params.model,
+          temperature: params.temperature,
+          max_tokens: resolveOpenAiMaxTokens(params.model, params.maxTokens),
+          stream: true,
+          messages
+        })
       },
-      body: JSON.stringify({
-        model: params.model,
-        temperature: params.temperature,
-        max_tokens: resolveOpenAiMaxTokens(params.model, params.maxTokens),
-        stream: true,
-        messages
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await safeReadText(response);
-      throw new Error(`OpenAI ${response.status}: ${errText}`);
-    }
+      { provider: 'openai', model: params.model }
+    );
 
     for await (const event of parseSseStream(response, params.signal)) {
       if (!event.data || event.data === '[DONE]') {
@@ -122,15 +122,15 @@ export const openaiProvider: LLMProvider = {
     form.append('language', 'pt');
     form.append('response_format', 'json');
 
-    const response = await fetch(PROVIDER_ENDPOINTS.openai.transcriptions, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form
-    });
-    if (!response.ok) {
-      const errText = await safeReadText(response);
-      throw new Error(`Whisper ${response.status}: ${errText}`);
-    }
+    const response = await fetchWithRetry(
+      PROVIDER_ENDPOINTS.openai.transcriptions,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form
+      },
+      { provider: 'openai', model: 'whisper-1', resourceLabel: 'transcrição de áudio' }
+    );
     const json = (await response.json()) as { text?: string };
     return json.text ?? null;
   },
@@ -142,23 +142,23 @@ export const openaiProvider: LLMProvider = {
   ): Promise<{ audio: Uint8Array; mimeType: string } | null> {
     // Vozes femininas em pt-BR no OpenAI TTS: nova, shimmer, sage.
     const selectedVoice = voice && voice.length > 0 ? voice : 'nova';
-    const response = await fetch(PROVIDER_ENDPOINTS.openai.speech, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
+    const response = await fetchWithRetry(
+      PROVIDER_ENDPOINTS.openai.speech,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'tts-1',
+          voice: selectedVoice,
+          input: text,
+          response_format: 'mp3'
+        })
       },
-      body: JSON.stringify({
-        model: 'tts-1',
-        voice: selectedVoice,
-        input: text,
-        response_format: 'mp3'
-      })
-    });
-    if (!response.ok) {
-      const errText = await safeReadText(response);
-      throw new Error(`OpenAI TTS ${response.status}: ${errText}`);
-    }
+      { provider: 'openai', model: 'tts-1', resourceLabel: 'síntese de voz' }
+    );
     const buf = await response.arrayBuffer();
     return { audio: new Uint8Array(buf), mimeType: 'audio/mpeg' };
   }

@@ -13,6 +13,7 @@
 import { PROVIDER_ENDPOINTS } from '../../shared/constants';
 import type { TestConnectionResult } from '../../shared/types';
 import type { LLMProvider, SendMessageParams, StreamChunk } from './base';
+import { fetchWithRetry } from './retry';
 import { parseSseStream } from './sse';
 
 interface AnthropicSseDelta {
@@ -52,22 +53,21 @@ export const anthropicProvider: LLMProvider = {
         .map((m) => ({ role: m.role, content: m.content }))
     };
 
-    const response = await fetch(PROVIDER_ENDPOINTS.anthropic.messages, {
-      method: 'POST',
-      signal: params.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': params.apiKey,
-        'anthropic-version': PROVIDER_ENDPOINTS.anthropic.apiVersion,
-        'anthropic-dangerous-direct-browser-access': 'true'
+    const response = await fetchWithRetry(
+      PROVIDER_ENDPOINTS.anthropic.messages,
+      {
+        method: 'POST',
+        signal: params.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': params.apiKey,
+          'anthropic-version': PROVIDER_ENDPOINTS.anthropic.apiVersion,
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(body)
       },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-      const errText = await safeReadText(response);
-      throw new Error(`Anthropic ${response.status}: ${errText}`);
-    }
+      { provider: 'anthropic', model: params.model }
+    );
 
     for await (const event of parseSseStream(response, params.signal)) {
       if (!event.data || event.data === '[DONE]') {
