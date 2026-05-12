@@ -5594,6 +5594,105 @@
           "autor": "claude-code/sessao-2026-05-12",
           "data": "2026-05-12T14:00:00.000Z",
           "comando": "Card aberto + implementado na mesma sessão a partir do print do erro 503 do Gemini enviado pelo owner. Textos das mensagens amigáveis revisados e aprovados pelo owner antes da implementação. Aguardando build local (build.bat) + smoke do owner para mover para lancado."
+        },
+        {
+          "tipo": "editado",
+          "campos": ["build", "release"],
+          "autor": "claude-code/sessao-2026-05-12",
+          "data": "2026-05-12T18:00:00.000Z",
+          "comando": "build.bat OK (typecheck + webpack; dist/manifest.json em 1.6.1; BACKEND_URL preservada no bundle). Mudança commitada em 6445027 e pushada para origin/main. Embarcada na release v1.6.1 (REL-1.6.1), enviada à Chrome Web Store em 12/05/2026 e em revisão. Mover para lancado após aprovação CWS + smoke do owner."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.6.1",
+      "titulo": "Release v1.6.1 — resumo de audiência, OCR offscreen, retry de provedores de IA",
+      "descricao": "Publicação na Chrome Web Store em 2026-05-12 (em revisão). Bump 1.6.0 → 1.6.1.\n\nConteúdo: (1) ERG-16 — retry exponencial com backoff/jitter + mensagens amigáveis para erros transitórios dos provedores de IA (503/529/429), em src/background/providers/retry.ts. (2) Sincronização do conteúdo da v1.6.0 que havia sido publicado mas nunca commitado: módulo de resumo/minuta a partir da pauta de audiências (src/audiencia-resumo/, src/content/audiencia/, src/content/ui/audiencia-*), OCR offscreen (src/offscreen/), templates-client, ajustes em content/extractor/ocr/constants/fluxos-prompts/sidebar/webpack, permissão offscreen + CSP wasm-unsafe-eval no manifest. (3) .gitignore: docs/kanban-massificacao/scripts/backups/ + *.swp/*.swo/*~.\n\nO catálogo de fluxos foi mantido na versão enriquecida do HEAD (210 fluxos, camada FLUX-08); a regeração de 10/05 (catálogo base sem enriquecimento, 212 fluxos) foi descartada para não regredir os Mapas de Jornada — o fluxo faltante volta numa release futura (ver FLUX-18). Commit: 6445027.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "validacao",
+      "origem": "skill release-extensao — sessão 12/05/2026 (pedido de release urgente da 1.6.1)",
+      "tags": ["release", "extensao", "cws", "audiencia", "ocr", "retry"],
+      "esforco": "M",
+      "depende": ["ERG-16"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.6.1 idênticos; dist/manifest.json em 1.6.1",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/audiencia-resumo/*, dist/offscreen/*, dist/assets/fluxos-catalogo.json (210 fluxos, enriquecido) presentes",
+        "zip versoes/dist v1.6.1.zip com manifest.json na raiz, enviado à CWS",
+        "commit 6445027 pushado em origin/main",
+        "Aprovação CWS + smoke test do owner + pilotos comunicados → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-12T18:00:00.000Z",
+      "atualizadoEm": "2026-05-12T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-12",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-12",
+          "data": "2026-05-12T18:00:00.000Z",
+          "comando": "Release seguindo a skill release-extensao: bump 1.6.0→1.6.1, build local validado, zip empacotado via 'cd dist && tar -a -cf', upload manual no CWS Developer Dashboard (em revisão), commit 6445027 pushado. Nota: as releases v1.5.1 e v1.6.0 saíram sem card (a disciplina do mirror lapsou nessas duas) — REL-1.5.1 e REL-1.6.0 ficam a abrir retroativamente."
+        }
+      ]
+    },
+    {
+      "id": "FLUX-18",
+      "titulo": "Regenerar fluxos-catalogo.json enriquecido — pipeline FLUX-08 não está no repo",
+      "descricao": "Em 10/05/2026 o assets/fluxos-catalogo.json foi regerado pelo parser jPDL base (212 fluxos: +1 que faltava + 1 config ajustada), mas a regeração descartou a camada de enriquecimento FLUX-08 (enriquecidoEm + enriquecimento.{frase_humana, alertas, grau_total, grau_in, grau_out, top_origens, top_destinos}) — cerca de 10 mil linhas a menos. Como o enriquecimento alimenta os Mapas de Jornada (src/fluxos-jornadas/jornadas.ts: frase_humana, alertas) e o índice de tarefas (src/shared/tarefas-indice.ts), publicar o catálogo base seria regressão; por isso a v1.6.1 saiu com a versão enriquecida do HEAD (210 fluxos) e o fluxo novo ficou de fora.\n\nProblema: o pipeline de enriquecimento (parser + enriquecedor FLUX-08) NÃO está versionado neste repo — os tipos citam 'fluxos-pje/scripts/', pasta inexistente aqui. Foi feito numa sessão específica sem gerar pipeline nem documentação confiável.\n\nObjetivo: localizar ou reconstruir o passo de enriquecimento, rodá-lo sobre o catálogo base atual (com o fluxo novo), gerar o fluxos-catalogo.json enriquecido com N fluxos, validar contra os Mapas de Jornada, embarcar numa release. Bônus: versionar o pipeline (mjs em scripts/) para não se perder de novo.",
+      "categoria": "infra",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão 12/05/2026 — descoberto durante o release da v1.6.1; owner confirmou que a redução era acidental",
+      "tags": ["fluxos", "catalogo", "enriquecimento", "pipeline", "regressao-evitada"],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "Pipeline de geração + enriquecimento localizado ou reconstruído e versionado em scripts/",
+        "assets/fluxos-catalogo.json regerado com o fluxo faltante incluído E a camada de enriquecimento presente",
+        "Mapas de Jornada renderizam frase_humana e alertas a partir do novo catálogo",
+        "Embarcado numa release da extensão"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-12T18:00:00.000Z",
+      "atualizadoEm": "2026-05-12T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-12",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-12",
+          "data": "2026-05-12T18:00:00.000Z",
+          "comando": "Card aberto durante o release da v1.6.1: a regeração do catálogo de 10/05 derrubou o enriquecimento FLUX-08; revertido para a versão enriquecida no release. Pipeline de enriquecimento não está no repo — precisa ser localizado/reconstruído antes de reincluir o fluxo faltante."
+        }
+      ]
+    },
+    {
+      "id": "INFRA-20",
+      "titulo": "Migrar repositório paidegua para fora do OneDrive (locks em .git/objects no gc/push)",
+      "descricao": "O repo fica em 'C:\\Users\\...\\OneDrive - Justica Federal no Ceara\\Área de Trabalho\\Claude JF\\paidegua'. O OneDrive (e/ou antivírus/indexador) segura locks em arquivos de .git/objects/ durante a sincronização. Quando o git roda gc/repack automático após commit/push, falha ao apagar diretórios de objetos soltos e cai em prompt interativo 'Deletion of directory .git/objects/XX failed. Should I try again? (y/n)' — que trava blocos cmd e provavelmente causou commits quebrados anteriores (ex.: o commit d0b4877 com mensagem corrompida) e a v1.6.0 publicada sem ter sido commitada.\n\nMitigação já aplicada em 12/05: git config gc.auto 0 + core.fscache true (para de tentar repack automático nessa cópia). Solução definitiva: mover o repo para fora do OneDrive (ex.: C:\\dev\\paidegua) e deixar no OneDrive só o que precisa de backup (versoes/ etc.). Enquanto não migra: pausar a sincronização do OneDrive antes de operações git.",
+      "categoria": "infra",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão 12/05/2026 — prompt '(y/n)' de .git/objects durante o push da v1.6.1",
+      "tags": ["git", "onedrive", "tooling", "ambiente"],
+      "esforco": "S",
+      "depende": [],
+      "aceitacao": [
+        "Repo movido/clonado para um caminho fora do OneDrive",
+        "git gc / push rodam sem prompt interativo de deleção de .git/objects",
+        "Caminhos atualizados onde necessário (CLAUDE.md, skills, .bat)",
+        "OneDrive segue sincronizando apenas o que precisa de backup"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-12T18:00:00.000Z",
+      "atualizadoEm": "2026-05-12T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-12",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-12",
+          "data": "2026-05-12T18:00:00.000Z",
+          "comando": "Card aberto durante o release da v1.6.1 após o git push esbarrar no lock do OneDrive em .git/objects. Mitigação imediata aplicada (gc.auto 0). Migração do repo para fora do OneDrive fica pendente."
         }
       ]
     }
