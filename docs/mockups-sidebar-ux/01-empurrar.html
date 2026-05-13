@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>01 · Empurrar o PJe — mockup pAIdegua × PJe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,30..100,0..1;1,9..144,300..900,30..100,0..1&family=Public+Sans:ital,wght@0,300..800;1,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body class="mockup">
+
+  <div class="mockup-bar">
+    <a class="mockup-bar__back" href="index.html">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 8H3M7 4L3 8l4 4"/></svg>
+      Voltar
+    </a>
+    <span class="mockup-bar__id">01</span>
+    <span class="mockup-bar__title">Empurrar o PJe · mesma aba</span>
+    <div class="mockup-bar__spacer"></div>
+    <nav class="mockup-bar__nav">
+      <a href="00-sobreposicao.html">00</a>
+      <a href="01-empurrar.html" class="is-current">01</a>
+      <a href="02-side-panel.html">02</a>
+      <a href="03-janela-separada.html">03</a>
+    </nav>
+  </div>
+
+  <div class="mockup-stage">
+    <div class="mockup-frame">
+
+      <div class="browser">
+        <div class="browser-titlebar">
+          <div class="browser-controls">
+            <span class="browser-control browser-control--close"></span>
+            <span class="browser-control browser-control--min"></span>
+            <span class="browser-control browser-control--max"></span>
+          </div>
+          <div class="browser-tabs">
+            <div class="browser-tab browser-tab--active">
+              <span class="browser-tab__fav">P</span>
+              <span>PJe — Painel do usuário</span>
+              <span class="browser-tab__close">×</span>
+            </div>
+            <div class="browser-tab">
+              <span class="browser-tab__fav" style="background:#168821">G</span>
+              <span>Gmail — JFCE</span>
+              <span class="browser-tab__close">×</span>
+            </div>
+            <span class="browser-tab__add">+</span>
+          </div>
+        </div>
+
+        <div class="browser-toolbar">
+          <div class="browser-nav">
+            <button class="browser-nav__btn">←</button>
+            <button class="browser-nav__btn">→</button>
+            <button class="browser-nav__btn">⟳</button>
+          </div>
+          <div class="browser-url">
+            <span class="browser-url__lock">🔒</span>
+            <span class="browser-url__text">
+              <span class="domain">pje.trf5.jus.br</span><span class="path">/pje/Painel/painel_usuario/listView.seam</span>
+            </span>
+          </div>
+          <div class="browser-actions">
+            <button class="browser-ext"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#5f6368" stroke-width="1.6"><circle cx="8" cy="8" r="6"/></svg></button>
+            <button class="browser-ext browser-ext--paidegua is-active" title="pAIdegua">P</button>
+            <button class="browser-ext"><svg width="14" height="14" viewBox="0 0 16 16" fill="#5f6368"><circle cx="3" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="13" cy="8" r="1.6"/></svg></button>
+          </div>
+        </div>
+
+        <div class="browser-viewport">
+
+          <!-- PJe agora compartilha o viewport com o sidebar (não está mais coberto) -->
+          <div class="pje">
+            <div class="pje-govbr">
+              <span class="pje-govbr__brand">gov<em>.br</em></span>
+              <span>Serviços para o cidadão</span>
+              <a href="#">Acesso à informação</a>
+            </div>
+
+            <header class="pje-header">
+              <div class="pje-header__brand">
+                <div class="pje-header__logo">PJe</div>
+                <div class="pje-header__name">
+                  Processo Judicial Eletrônico
+                  <span>Justiça Federal · 5ª Região · 1º Grau</span>
+                </div>
+              </div>
+              <nav class="pje-menu">
+                <div class="pje-menu__item">Processo</div>
+                <div class="pje-menu__item">Atividades</div>
+                <div class="pje-menu__item pje-menu__item--active">Painel</div>
+                <div class="pje-menu__item">Acervo</div>
+                <div class="pje-menu__item">Audiências</div>
+              </nav>
+              <div class="pje-user">
+                <div class="pje-user__avatar">VS</div>
+              </div>
+            </header>
+
+            <div class="pje-subheader">
+              <div class="pje-breadcrumb">
+                <a href="#">Início</a><span class="pje-breadcrumb__sep">›</span>
+                <a href="#">Painel</a><span class="pje-breadcrumb__sep">›</span>
+                Painel do usuário interno
+              </div>
+              <h1 class="pje-page-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                Painel do usuário interno
+              </h1>
+              <div class="pje-tabs">
+                <div class="pje-tab pje-tab--active">Minhas tarefas <span class="pje-tab__count">42</span></div>
+                <div class="pje-tab">Tarefas do órgão julgador</div>
+                <div class="pje-tab">Acervo</div>
+                <div class="pje-tab">Etiquetas</div>
+              </div>
+            </div>
+
+            <div class="pje-content">
+              <div class="pje-toolbar">
+                <button class="pje-btn pje-btn--primary">Nova tarefa</button>
+                <button class="pje-btn">Filtros</button>
+                <button class="pje-btn pje-btn--ghost">Exportar</button>
+                <input type="text" class="pje-search" placeholder="Buscar processo…" />
+              </div>
+
+              <table class="pje-table">
+                <thead>
+                  <tr>
+                    <th class="col-icon"></th>
+                    <th>Processo</th>
+                    <th>Tarefa</th>
+                    <th>Última movimentação</th>
+                    <th>Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="col-icon"><span class="pje-pill pje-pill--prio">!</span></td>
+                    <td><span class="pje-process">0805123-45.2026.4.05.8100</span></td>
+                    <td>Conclusão para julgamento</td>
+                    <td><span class="pje-pill pje-pill--conc">Concluso ao juiz</span></td>
+                    <td>12/05/2026</td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0801234-56.2026.4.05.8100</span></td>
+                    <td>Triagem inicial</td>
+                    <td>Aguardando análise</td>
+                    <td>12/05/2026</td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0798765-43.2025.4.05.8100</span></td>
+                    <td>Designar audiência</td>
+                    <td><span class="pje-pill pje-pill--audi">Audiência</span></td>
+                    <td>11/05/2026</td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"><span class="pje-pill pje-pill--prio">!</span></td>
+                    <td><span class="pje-process">0807654-32.2025.4.05.8100</span></td>
+                    <td>Análise de petição</td>
+                    <td>Petição protocolada</td>
+                    <td>11/05/2026</td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0802345-67.2025.4.05.8100</span></td>
+                    <td>Controle de prazo</td>
+                    <td><span class="pje-pill pje-pill--prazo">Prazo em curso</span></td>
+                    <td>10/05/2026</td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0796543-21.2024.4.05.8100</span></td>
+                    <td>Perícia — Designar</td>
+                    <td><span class="pje-pill pje-pill--peric">Perícia</span></td>
+                    <td>09/05/2026</td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0795432-10.2024.4.05.8100</span></td>
+                    <td>Minutar despacho</td>
+                    <td>Aguardando minuta</td>
+                    <td>08/05/2026</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="pje-pagination">
+                <span>1–7 de 42</span>
+                <span>« &nbsp; 1 &nbsp; 2 &nbsp; 3 &nbsp; »</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- pAIdegua — variante PUSHED -->
+          <aside class="paidegua paidegua--pushed">
+            <header class="paidegua__header">
+              <span class="paidegua__logo">
+                <svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+                  <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+                  <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+                </svg>
+              </span>
+              <div class="paidegua__info">
+                <h2 class="paidegua__title">p<em>AI</em>degua</h2>
+                <div class="paidegua__processo">TRF5 · 1º GRAU · 0805123-45.2026.4.05.8100</div>
+                <div class="paidegua__provider">Claude Sonnet 4.6 · Gabinete</div>
+              </div>
+              <select class="paidegua__profile">
+                <option>Gabinete</option>
+                <option>Secretaria</option>
+                <option>Gestão</option>
+              </select>
+              <button class="paidegua__close">×</button>
+            </header>
+
+            <div class="paidegua__toolbar">
+              <button class="paidegua__btn paidegua__btn--primary">Carregar Documentos</button>
+              <button class="paidegua__btn" disabled>Resumir</button>
+              <button class="paidegua__btn" disabled>Resumir em áudio</button>
+              <button class="paidegua__btn" disabled>Anonimizar autos</button>
+              <button class="paidegua__btn" disabled>Minutar</button>
+              <div class="paidegua__divider"></div>
+              <div class="paidegua__label">Minutas com modelo</div>
+              <button class="paidegua__btn" disabled>Despacho ordinário</button>
+              <button class="paidegua__btn" disabled>Sentença previdenciária</button>
+              <button class="paidegua__btn" disabled>Decisão de tutela</button>
+              <div class="paidegua__divider"></div>
+              <div class="paidegua__label">Conhecimento</div>
+              <button class="paidegua__btn paidegua__btn--stack">
+                Consultor de fluxos
+                <small>Como o processo caminha no PJe</small>
+              </button>
+            </div>
+
+            <div class="paidegua__body">
+              <p class="paidegua__placeholder">
+                Clique em <strong>Carregar Documentos</strong> para listar as peças<br/>
+                dos autos digitais.
+              </p>
+            </div>
+
+            <footer class="paidegua__footer">
+              <textarea class="paidegua__input" placeholder="Digite sua pergunta ou clique no microfone…" disabled></textarea>
+              <button class="paidegua__mic">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3"/>
+                  <path d="M5 10v2a7 7 0 0 0 14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="22"/>
+                  <line x1="8" y1="22" x2="16" y2="22"/>
+                </svg>
+              </button>
+              <button class="paidegua__send">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </footer>
+          </aside>
+
+        </div>
+      </div>
+
+      <div class="mockup-notes">
+        <div class="mockup-note">
+          <div class="mockup-note__label">O que acontece</div>
+          <h3 class="mockup-note__title">A extensão redimensiona o PJe</h3>
+          <p class="mockup-note__body">
+            Ao abrir, a extensão aplica <code>html { margin-right: 580px }</code> e troca o
+            sidebar de <code>position: fixed</code> para um <code>aside</code> ancorado no
+            <strong>flexbox</strong> do viewport. PJe encolhe, sidebar ocupa o resto da
+            largura. Tudo permanece dentro da mesma aba.
+          </p>
+        </div>
+        <div class="mockup-note">
+          <div class="mockup-note__label">Custo</div>
+          <h3 class="mockup-note__title">~1 sprint, sem mudar arquitetura</h3>
+          <p class="mockup-note__body">
+            Toda a base atual de <code>src/content/ui/sidebar.ts</code> e do
+            <code>detector</code> continua valendo — muda só o CSS do
+            container e um pequeno gerente em <code>content.ts</code> para empurrar o
+            host. Pode ficar atrás de um toggle em &ldquo;Mais opções&rdquo;.
+          </p>
+        </div>
+        <div class="mockup-note">
+          <div class="mockup-note__label">Risco</div>
+          <h3 class="mockup-note__title">O PJe é JSF legado</h3>
+          <p class="mockup-note__body">
+            Várias telas medem largura em <strong>JS no load</strong> (datatables,
+            gráficos, modais centralizados em <code>vw</code>). Encolher o viewport pode
+            quebrar parte disso até o usuário recarregar — exige validação em
+            <strong>painel do usuário</strong>, <strong>audiência</strong>,
+            <strong>perícias</strong> e <strong>autos</strong>.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

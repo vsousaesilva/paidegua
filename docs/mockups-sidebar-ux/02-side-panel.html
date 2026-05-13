@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>02 · Side Panel do Chrome — mockup pAIdegua × PJe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,30..100,0..1;1,9..144,300..900,30..100,0..1&family=Public+Sans:ital,wght@0,300..800;1,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    /* Estilos específicos do Side Panel do Chrome (chrome do navegador,
+       não do site). São visualmente diferentes da extensão e do PJe — é o
+       que mostra ao analista que esta região está fora do tab. */
+    .chrome-sidepanel {
+      width: 480px;
+      flex-shrink: 0;
+      background: #F8F9FB;
+      border-left: 1px solid #DADCE0;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 6px 0 12px -6px rgba(0,0,0,0.08);
+    }
+    .chrome-sidepanel__header {
+      height: 40px;
+      background: #FFFFFF;
+      border-bottom: 1px solid #DADCE0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 6px 0 12px;
+      flex-shrink: 0;
+    }
+    .chrome-sidepanel__title {
+      font-size: 12.5px;
+      color: #3C4043;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+    .chrome-sidepanel__title-icon {
+      width: 18px; height: 18px;
+      border-radius: 4px;
+      background: var(--pd-gradient);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 9.5px; letter-spacing: -0.05em;
+      flex-shrink: 0;
+    }
+    .chrome-sidepanel__title-name strong {
+      font-weight: 600;
+    }
+    .chrome-sidepanel__title-name small {
+      display: block;
+      font-size: 10px;
+      color: #80868B;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-top: 1px;
+    }
+    .chrome-sidepanel__action {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: transparent;
+      color: #5F6368;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .chrome-sidepanel__action:hover { background: #F1F3F4; }
+    .chrome-sidepanel__body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+    }
+    /* Ícone de side panel no toolbar do Chrome */
+    .browser-ext--sidepanel {
+      background: #E8F0FE;
+      color: #1967D2;
+      position: relative;
+    }
+    .browser-ext--sidepanel::after {
+      content: "";
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0; height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 5px solid #1967D2;
+    }
+  </style>
+</head>
+<body class="mockup">
+
+  <div class="mockup-bar">
+    <a class="mockup-bar__back" href="index.html">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 8H3M7 4L3 8l4 4"/></svg>
+      Voltar
+    </a>
+    <span class="mockup-bar__id">02</span>
+    <span class="mockup-bar__title">Side Panel do Chrome · painel nativo do navegador</span>
+    <div class="mockup-bar__spacer"></div>
+    <nav class="mockup-bar__nav">
+      <a href="00-sobreposicao.html">00</a>
+      <a href="01-empurrar.html">01</a>
+      <a href="02-side-panel.html" class="is-current">02</a>
+      <a href="03-janela-separada.html">03</a>
+    </nav>
+  </div>
+
+  <div class="mockup-stage">
+    <div class="mockup-frame">
+
+      <div class="browser">
+        <div class="browser-titlebar">
+          <div class="browser-controls">
+            <span class="browser-control browser-control--close"></span>
+            <span class="browser-control browser-control--min"></span>
+            <span class="browser-control browser-control--max"></span>
+          </div>
+          <div class="browser-tabs">
+            <div class="browser-tab browser-tab--active">
+              <span class="browser-tab__fav">P</span>
+              <span>PJe — Painel do usuário</span>
+              <span class="browser-tab__close">×</span>
+            </div>
+            <div class="browser-tab">
+              <span class="browser-tab__fav" style="background:#168821">G</span>
+              <span>Gmail — JFCE</span>
+              <span class="browser-tab__close">×</span>
+            </div>
+            <span class="browser-tab__add">+</span>
+          </div>
+        </div>
+
+        <div class="browser-toolbar">
+          <div class="browser-nav">
+            <button class="browser-nav__btn">←</button>
+            <button class="browser-nav__btn">→</button>
+            <button class="browser-nav__btn">⟳</button>
+          </div>
+          <div class="browser-url">
+            <span class="browser-url__lock">🔒</span>
+            <span class="browser-url__text">
+              <span class="domain">pje.trf5.jus.br</span><span class="path">/pje/Painel/painel_usuario/listView.seam</span>
+            </span>
+          </div>
+          <div class="browser-actions">
+            <button class="browser-ext"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#5f6368" stroke-width="1.6"><circle cx="8" cy="8" r="6"/></svg></button>
+            <button class="browser-ext browser-ext--paidegua" title="pAIdegua">P</button>
+            <!-- ícone nativo do Chrome "Painel lateral" — destacado para indicar que está aberto -->
+            <button class="browser-ext browser-ext--sidepanel" title="Painel lateral">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+                <rect x="2" y="3" width="12" height="10" rx="1.5"/>
+                <line x1="10" y1="3" x2="10" y2="13"/>
+              </svg>
+            </button>
+            <button class="browser-ext"><svg width="14" height="14" viewBox="0 0 16 16" fill="#5f6368"><circle cx="3" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="13" cy="8" r="1.6"/></svg></button>
+          </div>
+        </div>
+
+        <div class="browser-viewport">
+
+          <!-- PJe ocupa só a área do tab — não sabe que existe side panel -->
+          <div class="pje">
+            <div class="pje-govbr">
+              <span class="pje-govbr__brand">gov<em>.br</em></span>
+              <span>Serviços para o cidadão</span>
+            </div>
+
+            <header class="pje-header">
+              <div class="pje-header__brand">
+                <div class="pje-header__logo">PJe</div>
+                <div class="pje-header__name">
+                  Processo Judicial Eletrônico
+                  <span>Justiça Federal · 5ª Região · 1º Grau</span>
+                </div>
+              </div>
+              <nav class="pje-menu">
+                <div class="pje-menu__item">Processo</div>
+                <div class="pje-menu__item">Atividades</div>
+                <div class="pje-menu__item pje-menu__item--active">Painel</div>
+                <div class="pje-menu__item">Acervo</div>
+                <div class="pje-menu__item">Audiências</div>
+              </nav>
+              <div class="pje-user">
+                <div class="pje-user__avatar">VS</div>
+              </div>
+            </header>
+
+            <div class="pje-subheader">
+              <div class="pje-breadcrumb">
+                <a href="#">Início</a><span class="pje-breadcrumb__sep">›</span>
+                <a href="#">Painel</a><span class="pje-breadcrumb__sep">›</span>
+                Painel do usuário interno
+              </div>
+              <h1 class="pje-page-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                Painel do usuário interno
+              </h1>
+              <div class="pje-tabs">
+                <div class="pje-tab pje-tab--active">Minhas tarefas <span class="pje-tab__count">42</span></div>
+                <div class="pje-tab">Tarefas do órgão julgador</div>
+                <div class="pje-tab">Acervo</div>
+                <div class="pje-tab">Etiquetas</div>
+              </div>
+            </div>
+
+            <div class="pje-content">
+              <div class="pje-toolbar">
+                <button class="pje-btn pje-btn--primary">Nova tarefa</button>
+                <button class="pje-btn">Filtros</button>
+                <button class="pje-btn pje-btn--ghost">Exportar</button>
+                <input type="text" class="pje-search" placeholder="Buscar processo…" />
+              </div>
+
+              <table class="pje-table">
+                <thead>
+                  <tr>
+                    <th class="col-icon"></th>
+                    <th>Processo</th>
+                    <th>Tarefa</th>
+                    <th>Última movimentação</th>
+                    <th>Data</th>
+                    <th class="col-actions">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="col-icon"><span class="pje-pill pje-pill--prio">!</span></td>
+                    <td><span class="pje-process">0805123-45.2026.4.05.8100</span></td>
+                    <td>Conclusão para julgamento</td>
+                    <td><span class="pje-pill pje-pill--conc">Concluso ao juiz</span></td>
+                    <td>12/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0801234-56.2026.4.05.8100</span></td>
+                    <td>Triagem inicial</td>
+                    <td>Aguardando análise da secretaria</td>
+                    <td>12/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0798765-43.2025.4.05.8100</span></td>
+                    <td>Designar audiência</td>
+                    <td><span class="pje-pill pje-pill--audi">Audiência</span></td>
+                    <td>11/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"><span class="pje-pill pje-pill--prio">!</span></td>
+                    <td><span class="pje-process">0807654-32.2025.4.05.8100</span></td>
+                    <td>Análise de petição</td>
+                    <td>Petição protocolada pela parte autora</td>
+                    <td>11/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0802345-67.2025.4.05.8100</span></td>
+                    <td>Controle de prazo</td>
+                    <td><span class="pje-pill pje-pill--prazo">Prazo em curso</span></td>
+                    <td>10/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0796543-21.2024.4.05.8100</span></td>
+                    <td>Perícia — Designar / Agendar</td>
+                    <td><span class="pje-pill pje-pill--peric">Perícia</span></td>
+                    <td>09/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-icon"></td>
+                    <td><span class="pje-process">0795432-10.2024.4.05.8100</span></td>
+                    <td>Minutar despacho</td>
+                    <td>Aguardando minuta do gabinete</td>
+                    <td>08/05/2026</td>
+                    <td class="col-actions"><button class="pje-icon-btn">▤</button><button class="pje-icon-btn">⤴</button></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="pje-pagination">
+                <span>1–7 de 42</span>
+                <span>« &nbsp; 1 &nbsp; 2 &nbsp; 3 &nbsp; »</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Side Panel do Chrome (chrome do navegador, fora do tab) -->
+          <div class="chrome-sidepanel">
+            <header class="chrome-sidepanel__header">
+              <span class="chrome-sidepanel__title">
+                <span class="chrome-sidepanel__title-icon">P</span>
+                <span class="chrome-sidepanel__title-name">
+                  <strong>pAIdegua</strong>
+                  <small>painel lateral · chrome</small>
+                </span>
+              </span>
+              <button class="chrome-sidepanel__action" title="Fixar"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2v8M5 7l3 3 3-3M3 14h10"/></svg></button>
+              <button class="chrome-sidepanel__action" title="Fechar">×</button>
+            </header>
+            <div class="chrome-sidepanel__body">
+              <!-- pAIdegua, agora em layout estreito (single-column) -->
+              <aside class="paidegua paidegua--sidepanel paidegua--narrow">
+                <header class="paidegua__header">
+                  <span class="paidegua__logo">
+                    <svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+                      <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+                      <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+                    </svg>
+                  </span>
+                  <div class="paidegua__info">
+                    <h2 class="paidegua__title">p<em>AI</em>degua</h2>
+                    <div class="paidegua__processo">TRF5 · 1º GRAU · 0805123-45.2026.4.05.8100</div>
+                    <div class="paidegua__provider">Claude Sonnet 4.6 · Gabinete</div>
+                  </div>
+                  <select class="paidegua__profile">
+                    <option>Gabinete</option>
+                    <option>Secretaria</option>
+                    <option>Gestão</option>
+                  </select>
+                </header>
+
+                <div class="paidegua__toolbar">
+                  <button class="paidegua__btn paidegua__btn--primary">Carregar Documentos</button>
+                  <button class="paidegua__btn" disabled>Resumir</button>
+                  <button class="paidegua__btn" disabled>Resumir em áudio</button>
+                  <button class="paidegua__btn" disabled>Anonimizar autos</button>
+                  <button class="paidegua__btn" disabled>Minutar</button>
+                  <div class="paidegua__divider"></div>
+                  <div class="paidegua__label">Minutas com modelo</div>
+                  <button class="paidegua__btn" disabled>Despacho ordinário</button>
+                  <button class="paidegua__btn" disabled>Sentença previdenciária</button>
+                  <div class="paidegua__divider"></div>
+                  <div class="paidegua__label">Conhecimento</div>
+                  <button class="paidegua__btn paidegua__btn--stack">
+                    Consultor de fluxos
+                    <small>Como o processo caminha no PJe</small>
+                  </button>
+                </div>
+
+                <div class="paidegua__body">
+                  <p class="paidegua__placeholder">
+                    Clique em <strong>Carregar Documentos</strong> para listar as peças<br/>
+                    dos autos digitais.
+                  </p>
+                </div>
+
+                <footer class="paidegua__footer">
+                  <textarea class="paidegua__input" placeholder="Digite sua pergunta…" disabled></textarea>
+                  <button class="paidegua__mic">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="2" width="6" height="12" rx="3"/>
+                      <path d="M5 10v2a7 7 0 0 0 14 0v-2"/>
+                      <line x1="12" y1="19" x2="12" y2="22"/>
+                      <line x1="8" y1="22" x2="16" y2="22"/>
+                    </svg>
+                  </button>
+                  <button class="paidegua__send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="22" y1="2" x2="11" y2="13"/>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                  </button>
+                </footer>
+              </aside>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="mockup-notes">
+        <div class="mockup-note">
+          <div class="mockup-note__label">O que acontece</div>
+          <h3 class="mockup-note__title">Painel desenhado pelo Chrome</h3>
+          <p class="mockup-note__body">
+            A extensão registra um <code>sidepanel.html</code> via API
+            <code>chrome.sidePanel</code>. O Chrome reserva uma faixa à direita da janela
+            e renderiza nela <strong>fora do tab</strong>. O PJe não sabe que o painel existe
+            — não há mexida em CSS do host.
+          </p>
+        </div>
+        <div class="mockup-note">
+          <div class="mockup-note__label">Custo</div>
+          <h3 class="mockup-note__title">v2 da camada de UI</h3>
+          <p class="mockup-note__body">
+            O sidebar passa a viver em <strong>outro contexto</strong> que o content script.
+            Toda comunicação detector ↔ sidebar (carregar documentos, OCR, abrir painel de
+            audiência) vira <code>chrome.runtime.sendMessage</code>. Vários painéis montados
+            <em>dentro</em> do PJe seguem como overlay; o sidebar fica enxuto.
+          </p>
+        </div>
+        <div class="mockup-note">
+          <div class="mockup-note__label">Vantagem</div>
+          <h3 class="mockup-note__title">Risco zero no PJe</h3>
+          <p class="mockup-note__body">
+            Como o painel não convive com o DOM do host, nenhum layout do PJe é afetado —
+            datatables, modais, gráficos seguem desenhando como sempre. O usuário ainda
+            pode redimensionar a faixa via gesture nativa do Chrome.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

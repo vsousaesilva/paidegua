@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pAIdegua × PJe — quatro caminhos de convivência</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,30..100,0..1;1,9..144,300..900,30..100,0..1&family=Public+Sans:ital,wght@0,300..800;1,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body class="editorial">
+  <article class="dossier">
+
+    <!-- ─────────── CABEÇALHO ─────────── -->
+    <header class="dossier-masthead">
+      <div class="dossier-meta">
+        <span><strong>JFCE</strong> · pAIdegua · análise interna de UX</span>
+        <time datetime="2026-05-13">13 de maio de 2026</time>
+      </div>
+
+      <h1 class="dossier-title">
+        Quatro <em>caminhos</em><br/>
+        para o pAIdegua<br/>
+        conviver com o PJe.
+      </h1>
+
+      <p class="dossier-lead">
+        Hoje o painel lateral da extensão <em>se sobrepõe</em> à tela do PJe — quando aberto,
+        cobre o conteúdo dos autos e do painel do usuário. Este dossiê compara, lado a lado,
+        as quatro arquiteturas possíveis para que os dois ambientes ocupem a tela ao mesmo
+        tempo. Cada caminho tem um mockup navegável e uma leitura honesta de custo e risco.
+      </p>
+    </header>
+
+    <!-- ─────────── OS CAMINHOS ─────────── -->
+    <section class="dossier-section">
+      <div class="dossier-eyebrow">Os caminhos</div>
+
+      <div class="paths">
+
+        <article class="path">
+          <div class="path-num">00</div>
+          <h2 class="path-title">Sobreposição</h2>
+          <p class="path-subtitle">estado atual · linha de base</p>
+          <p class="path-desc">
+            O sidebar desliza da direita por cima do PJe. É a forma como o pAIdegua opera
+            hoje. Serve de referência para comparar com as três alternativas.
+          </p>
+          <ul class="path-tags">
+            <li class="path-tag">esforço <b>nenhum</b></li>
+            <li class="path-tag">risco <b>nenhum</b></li>
+            <li class="path-tag">UX <b>cobre o PJe</b></li>
+          </ul>
+          <a class="path-link" href="00-sobreposicao.html">
+            Abrir mockup
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+        </article>
+
+        <article class="path">
+          <div class="path-num">01</div>
+          <h2 class="path-title">Empurrar o&nbsp;PJe</h2>
+          <p class="path-subtitle">mesma aba · CSS no host</p>
+          <p class="path-desc">
+            Ao abrir, a extensão aplica margem à direita no documento do PJe e ocupa o
+            espaço liberado. Tudo numa só aba — sem comunicação entre contextos.
+          </p>
+          <ul class="path-tags">
+            <li class="path-tag">esforço <b>baixo</b></li>
+            <li class="path-tag">risco <b>médio (layout)</b></li>
+            <li class="path-tag">UX <b>lado a lado</b></li>
+          </ul>
+          <a class="path-link" href="01-empurrar.html">
+            Abrir mockup
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+        </article>
+
+        <article class="path">
+          <div class="path-num">02</div>
+          <h2 class="path-title">Side Panel do&nbsp;Chrome</h2>
+          <p class="path-subtitle">painel nativo do navegador</p>
+          <p class="path-desc">
+            A extensão migra para a API <code>chrome.sidePanel</code>. O painel passa a ser
+            desenhado pelo Chrome — o PJe não sabe que ele existe e nada no DOM do host muda.
+          </p>
+          <ul class="path-tags">
+            <li class="path-tag">esforço <b>alto</b></li>
+            <li class="path-tag">risco <b>baixo no PJe</b></li>
+            <li class="path-tag">UX <b>ideal</b></li>
+          </ul>
+          <a class="path-link" href="02-side-panel.html">
+            Abrir mockup
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+        </article>
+
+        <article class="path">
+          <div class="path-num">03</div>
+          <h2 class="path-title">Janela separada</h2>
+          <p class="path-subtitle">popup desacoplado · multi-monitor</p>
+          <p class="path-desc">
+            <code>chrome.windows.create</code> abre o pAIdegua em uma janela própria, que o
+            usuário posiciona ao lado do PJe — ou em outro monitor. Total liberdade,
+            mais custo de comunicação.
+          </p>
+          <ul class="path-tags">
+            <li class="path-tag">esforço <b>médio</b></li>
+            <li class="path-tag">risco <b>baixo</b></li>
+            <li class="path-tag">UX <b>livre / desordenada</b></li>
+          </ul>
+          <a class="path-link" href="03-janela-separada.html">
+            Abrir mockup
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+        </article>
+      </div>
+    </section>
+
+    <!-- ─────────── COMPARATIVO ─────────── -->
+    <section class="dossier-section">
+      <div class="dossier-eyebrow">Comparativo técnico</div>
+
+      <table class="comparison">
+        <thead>
+          <tr>
+            <th>Dimensão</th>
+            <th><span class="col-num">00</span>Sobreposição</th>
+            <th><span class="col-num">01</span>Empurrar</th>
+            <th><span class="col-num">02</span>Side Panel</th>
+            <th><span class="col-num">03</span>Janela</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Esforço de dev</td>
+            <td><span class="dot dot--none">já existe</span></td>
+            <td><span class="dot dot--low">baixo</span></td>
+            <td><span class="dot dot--high">alto · v2</span></td>
+            <td><span class="dot dot--med">médio</span></td>
+          </tr>
+          <tr>
+            <td>Risco no PJe</td>
+            <td><span class="dot dot--low">nenhum</span></td>
+            <td><span class="dot dot--med">médio · CSS do host</span></td>
+            <td><span class="dot dot--low">nenhum</span></td>
+            <td><span class="dot dot--low">nenhum</span></td>
+          </tr>
+          <tr>
+            <td>Conteúdo visível</td>
+            <td><span class="dot dot--high">tapa PJe</span></td>
+            <td><span class="dot dot--low">100% lado a lado</span></td>
+            <td><span class="dot dot--low">100% lado a lado</span></td>
+            <td><span class="dot dot--med">depende do usuário</span></td>
+          </tr>
+          <tr>
+            <td>Comunicação interna</td>
+            <td><span class="dot dot--low">DOM direto</span></td>
+            <td><span class="dot dot--low">DOM direto</span></td>
+            <td><span class="dot dot--high">messaging entre contextos</span></td>
+            <td><span class="dot dot--med">postMessage cross-window</span></td>
+          </tr>
+          <tr>
+            <td>Multi-monitor</td>
+            <td><span class="dot dot--high">não</span></td>
+            <td><span class="dot dot--high">não</span></td>
+            <td><span class="dot dot--med">parcial</span></td>
+            <td><span class="dot dot--low">nativo</span></td>
+          </tr>
+          <tr>
+            <td>Compatibilidade</td>
+            <td><span class="dot dot--low">Chrome + Edge</span></td>
+            <td><span class="dot dot--low">Chrome + Edge</span></td>
+            <td><span class="dot dot--med">Chrome ≥ 114 / Edge</span></td>
+            <td><span class="dot dot--low">Chrome + Edge</span></td>
+          </tr>
+          <tr>
+            <td>Tempo até MVP</td>
+            <td><span class="dot dot--low">—</span></td>
+            <td><span class="dot dot--low">1 sprint</span></td>
+            <td><span class="dot dot--high">3+ sprints</span></td>
+            <td><span class="dot dot--med">2 sprints</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ─────────── RECOMENDAÇÃO ─────────── -->
+    <section class="dossier-section">
+      <div class="dossier-eyebrow">Recomendação</div>
+
+      <div class="recommendation">
+        <p>
+          Para um <em>experimento</em> rápido, ir de <strong>01 · Empurrar</strong>
+          atrás de um toggle em &ldquo;Mais opções&rdquo;.
+          Para o pAIdegua duradouro, planejar <strong>02 · Side Panel</strong>
+          como um projeto dedicado de UI v2.
+        </p>
+        <p class="recommendation-meta">
+          O caminho 01 cabe num MVP comprovável em uma sprint e usa toda a base de código
+          atual — com a ressalva clara de que pode quebrar telas específicas do PJe e exige
+          validação por tela. O caminho 02 é a arquitetura tecnicamente correta para o longo
+          prazo, mas exige refatorar a camada de UI: separar a árvore de componentes do
+          DOM do host, mover o orquestrador para um <code>sidepanel.html</code> próprio e
+          reescrever a comunicação detector ↔ sidebar via <code>chrome.runtime</code>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ─────────── RODAPÉ ─────────── -->
+    <footer class="dossier-footer">
+      <span>pAIdegua · extensão para o PJe</span>
+      <span>análise · UX-001</span>
+      <span>JFCE · 2026</span>
+    </footer>
+  </article>
+</body>
+</html>

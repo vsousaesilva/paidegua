@@ -5711,6 +5711,42 @@
           "comando": "Card aberto durante o release da v1.6.1 após o git push esbarrar no lock do OneDrive em .git/objects. Mitigação imediata aplicada (gc.auto 0). Migração do repo para fora do OneDrive fica pendente."
         }
       ]
+    },
+    {
+      "id": "ERG-17",
+      "titulo": "Migrar pAIdegua para o Side Panel nativo do Chrome (chrome.sidePanel)",
+      "descricao": "Hoje o painel da extensão é um aside position:fixed em Shadow DOM (src/content/ui/sidebar.ts) que se sobrepõe ao PJe ao abrir — cobre o conteúdo dos autos e do Painel do usuário. Em 13/05/2026 foi feito um dossiê comparativo (docs/mockups-sidebar-ux/) com 4 caminhos navegáveis: (00) sobreposição/estado atual, (01) empurrar o PJe via CSS na mesma aba, (02) Side Panel nativo do Chrome, (03) janela separada/popup. Este card cobre o caminho 02 — recomendado como arquitetura de longo prazo.\n\nMudança arquitetural: registrar sidepanel.html via API chrome.sidePanel; o painel passa a viver em outro contexto que o content script. A faixa é desenhada pelo navegador — risco zero no DOM do PJe (datatables/modais/gráficos do PrimeFaces seguem desenhando como hoje). Toda comunicação detector ↔ sidebar (Carregar Documentos, OCR, abrir painéis nativos de audiência/perícia/prazos) vira chrome.runtime.sendMessage / chrome.tabs.connect com tabId. Os painéis pesados (Audiência pAIdegua, Perícias pAIdegua, Sigcrim, Central de Comunicação, Prazos na Fita, Painel Gerencial, Triagem Inteligente) continuam montando no DOM do PJe via content script; apenas o orquestrador, o chat e a toolbar migram para o sidepanel.\n\nPara um experimento rápido sem mudar arquitetura, há o caminho 01 (empurrar o PJe via CSS no host) — não há card aberto para ele ainda; decisão de abrir ou não fica para sprint planning.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão 13/05/2026 — análise UX-001 (dossiê em docs/mockups-sidebar-ux/)",
+      "tags": ["sidebar", "side-panel", "chrome-api", "ux", "extensao", "v2", "arquitetura"],
+      "esforco": "L",
+      "depende": [],
+      "aceitacao": [
+        "sidepanel.html registrado via chrome.sidePanel.setOptions e aberto pelo clique no ícone da extensão",
+        "Sidebar opera fora do DOM do PJe — nenhum CSS do host alterado, nenhum Shadow DOM injetado",
+        "Detector segue no content script; eventos detector → sidepanel viam chrome.runtime.sendMessage com tabId",
+        "Carregar Documentos, Resumir, Resumir em áudio, Anonimizar autos e Minutar funcionam a partir do sidepanel",
+        "Painéis nativos do PJe (Audiência pAIdegua, Perícias pAIdegua, Sigcrim, Central de Comunicação, Prazos na Fita, Painel Gerencial, Triagem Inteligente) continuam abrindo no DOM do PJe via content script — o gatilho parte do sidepanel",
+        "Consultor de fluxos abre como hoje (nova aba estática)",
+        "Perfis (Gabinete/Secretaria/Gestão) preservados; visibilidade condicional por data-painel-usuario e data-processo-aberto mantida",
+        "Toggle em 'Mais opções' do popup permite alternar entre Side Panel (novo) e overlay (legado) durante a transição",
+        "Compatibilidade declarada: Chrome ≥ 114, Edge equivalente; degradação automática para overlay em navegadores sem a API",
+        "Build sem erros TS (build.bat) + smoke do owner OK + comunicação aos pilotos antes da release"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-13T00:00:00.000Z",
+      "atualizadoEm": "2026-05-13T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-13",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-13",
+          "data": "2026-05-13T00:00:00.000Z",
+          "comando": "Card aberto a partir do dossiê UX-001 (docs/mockups-sidebar-ux/index.html). Owner pediu análise comparativa de 4 caminhos para o sidebar conviver com o PJe sem cobrir conteúdo. Gerados mockups navegáveis: 00-sobreposicao.html (estado atual), 01-empurrar.html (CSS no host, MVP rápido), 02-side-panel.html (este card — arquitetura de longo prazo), 03-janela-separada.html (popup multi-monitor). Recomendação do dossiê: caminho 02 como projeto dedicado de UI v2. Aguarda decisão go/no-go em sprint planning."
+        }
+      ]
     }
   ]
 }

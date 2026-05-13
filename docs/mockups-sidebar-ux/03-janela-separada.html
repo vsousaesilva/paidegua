@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03 · Janela separada — mockup pAIdegua × PJe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,30..100,0..1;1,9..144,300..900,30..100,0..1&family=Public+Sans:ital,wght@0,300..800;1,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    /* Estado "desktop" com duas janelas independentes do Chrome.
+       Renderiza um wallpaper sutil + barra de tarefas para deixar claro
+       que são DOIS processos do navegador, não uma única aba. */
+    .desktop {
+      flex: 1;
+      background:
+        radial-gradient(900px 600px at 30% 20%, rgba(36, 70, 130, 0.55), transparent 60%),
+        radial-gradient(700px 500px at 75% 80%, rgba(120, 55, 30, 0.35), transparent 60%),
+        linear-gradient(160deg, #0F1B33 0%, #1B2742 55%, #2A1A18 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      box-shadow:
+        0 50px 100px -30px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+    }
+    .desktop::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      mix-blend-mode: overlay;
+      pointer-events: none;
+    }
+
+    /* Layout das duas janelas */
+    .windows {
+      flex: 1;
+      padding: 28px;
+      display: grid;
+      grid-template-columns: 1.55fr 1fr;
+      gap: 24px;
+      min-height: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .windows .browser { border-radius: 8px; }
+
+    /* Janela popup (type: 'popup') — sem tabs, com URL bar minimalista
+       e título próprio (Chrome desenha "pAIdegua" como nome da janela). */
+    .popup-window {
+      display: flex;
+      flex-direction: column;
+      background: #E8EAED;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow:
+        0 40px 80px -20px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(0,0,0,0.25);
+      min-height: 0;
+    }
+    .popup-window__chrome {
+      background: #E8EAED;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      flex-shrink: 0;
+    }
+    .popup-window__controls { display: flex; gap: 8px; }
+    .popup-window__controls span {
+      width: 12px; height: 12px; border-radius: 50%;
+      box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.08);
+    }
+    .popup-window__controls span:nth-child(1) { background: #FF5F57; }
+    .popup-window__controls span:nth-child(2) { background: #FEBC2E; }
+    .popup-window__controls span:nth-child(3) { background: #28C840; }
+    .popup-window__title {
+      flex: 1;
+      text-align: center;
+      font-size: 11.5px;
+      color: var(--pje-text);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+    .popup-window__title-dot {
+      width: 12px; height: 12px;
+      border-radius: 3px;
+      background: var(--pd-gradient);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 8px; letter-spacing: -0.05em;
+    }
+    .popup-window__urlbar {
+      background: #fff;
+      border-bottom: 1px solid #E1E3E8;
+      padding: 7px 14px;
+      font-size: 11.5px;
+      color: #5F6368;
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+    .popup-window__urlbar code {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #F1F3F4;
+      padding: 2px 8px;
+      border-radius: 10px;
+      color: var(--pje-text);
+    }
+    .popup-window__body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      background: var(--pd-bg);
+    }
+
+    /* Taskbar do Windows */
+    .taskbar {
+      height: 44px;
+      background: rgba(20, 25, 38, 0.78);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+    .taskbar__start {
+      width: 28px; height: 28px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .taskbar__start svg { color: #6FA3FF; }
+    .taskbar__item {
+      height: 30px;
+      padding: 0 10px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11.5px;
+      color: rgba(255,255,255,0.78);
+      background: rgba(255,255,255,0.04);
+      position: relative;
+    }
+    .taskbar__item--active {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+    .taskbar__item--active::after {
+      content: "";
+      position: absolute;
+      bottom: -2px;
+      left: 20%;
+      right: 20%;
+      height: 2px;
+      background: var(--pje-blue-light);
+      border-radius: 2px;
+    }
+    .taskbar__item-icon {
+      width: 16px; height: 16px;
+      border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 9px; color: #fff;
+      letter-spacing: -0.05em;
+    }
+    .taskbar__spacer { flex: 1; }
+    .taskbar__clock {
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+      text-align: right;
+      line-height: 1.2;
+      padding-right: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .taskbar__clock small { display: block; font-size: 10px; opacity: 0.7; }
+
+    /* Etiqueta "Monitor 1" / "Monitor 2" para reforçar o multi-monitor opcional */
+    .monitor-label {
+      position: absolute;
+      top: 12px;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.35);
+      z-index: 2;
+      padding: 3px 9px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.18);
+    }
+    .monitor-label--left { left: 40px; }
+    .monitor-label--right { right: 40px; }
+
+    /* Conexão visual entre as duas janelas */
+    .link-line {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body class="mockup">
+
+  <div class="mockup-bar">
+    <a class="mockup-bar__back" href="index.html">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 8H3M7 4L3 8l4 4"/></svg>
+      Voltar
+    </a>
+    <span class="mockup-bar__id">03</span>
+    <span class="mockup-bar__title">Janela separada · popup desacoplado</span>
+    <div class="mockup-bar__spacer"></div>
+    <nav class="mockup-bar__nav">
+      <a href="00-sobreposicao.html">00</a>
+      <a href="01-empurrar.html">01</a>
+      <a href="02-side-panel.html">02</a>
+      <a href="03-janela-separada.html" class="is-current">03</a>
+    </nav>
+  </div>
+
+  <div class="mockup-stage">
+    <div class="mockup-frame">
+
+      <!-- Desktop com duas janelas -->
+      <div class="desktop">
+
+        <span class="monitor-label monitor-label--left">Monitor 1 · PJe</span>
+        <span class="monitor-label monitor-label--right">Monitor 1 · pAIdegua</span>
+
+        <div class="windows">
+
+          <!-- ─────────── JANELA 1: Chrome com PJe ─────────── -->
+          <div class="browser">
+            <div class="browser-titlebar">
+              <div class="browser-controls">
+                <span class="browser-control browser-control--close"></span>
+                <span class="browser-control browser-control--min"></span>
+                <span class="browser-control browser-control--max"></span>
+              </div>
+              <div class="browser-tabs">
+                <div class="browser-tab browser-tab--active">
+                  <span class="browser-tab__fav">P</span>
+                  <span>PJe — Painel</span>
+                  <span class="browser-tab__close">×</span>
+                </div>
+                <div class="browser-tab">
+                  <span class="browser-tab__fav" style="background:#168821">G</span>
+                  <span>Gmail</span>
+                  <span class="browser-tab__close">×</span>
+                </div>
+                <span class="browser-tab__add">+</span>
+              </div>
+            </div>
+
+            <div class="browser-toolbar">
+              <div class="browser-nav">
+                <button class="browser-nav__btn">←</button>
+                <button class="browser-nav__btn">→</button>
+                <button class="browser-nav__btn">⟳</button>
+              </div>
+              <div class="browser-url">
+                <span class="browser-url__lock">🔒</span>
+                <span class="browser-url__text">
+                  <span class="domain">pje.trf5.jus.br</span><span class="path">/pje/Painel/painel_usuario/listView.seam</span>
+                </span>
+              </div>
+              <div class="browser-actions">
+                <button class="browser-ext browser-ext--paidegua is-active" title="pAIdegua">P</button>
+                <button class="browser-ext"><svg width="14" height="14" viewBox="0 0 16 16" fill="#5f6368"><circle cx="3" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="13" cy="8" r="1.6"/></svg></button>
+              </div>
+            </div>
+
+            <div class="browser-viewport">
+              <div class="pje">
+                <div class="pje-govbr">
+                  <span class="pje-govbr__brand">gov<em>.br</em></span>
+                </div>
+
+                <header class="pje-header">
+                  <div class="pje-header__brand">
+                    <div class="pje-header__logo">PJe</div>
+                    <div class="pje-header__name">
+                      Processo Judicial Eletrônico
+                      <span>Justiça Federal · 5ª Região</span>
+                    </div>
+                  </div>
+                  <nav class="pje-menu">
+                    <div class="pje-menu__item">Processo</div>
+                    <div class="pje-menu__item pje-menu__item--active">Painel</div>
+                    <div class="pje-menu__item">Acervo</div>
+                  </nav>
+                  <div class="pje-user">
+                    <div class="pje-user__avatar">VS</div>
+                  </div>
+                </header>
+
+                <div class="pje-subheader">
+                  <div class="pje-breadcrumb">
+                    <a href="#">Início</a><span class="pje-breadcrumb__sep">›</span>
+                    <a href="#">Painel</a><span class="pje-breadcrumb__sep">›</span>
+                    Painel do usuário interno
+                  </div>
+                  <h1 class="pje-page-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    Painel do usuário interno
+                  </h1>
+                  <div class="pje-tabs">
+                    <div class="pje-tab pje-tab--active">Minhas tarefas <span class="pje-tab__count">42</span></div>
+                    <div class="pje-tab">Tarefas do órgão julgador</div>
+                    <div class="pje-tab">Acervo</div>
+                  </div>
+                </div>
+
+                <div class="pje-content">
+                  <div class="pje-toolbar">
+                    <button class="pje-btn pje-btn--primary">Nova tarefa</button>
+                    <button class="pje-btn">Filtros</button>
+                    <input type="text" class="pje-search" placeholder="Buscar…" />
+                  </div>
+
+                  <table class="pje-table">
+                    <thead>
+                      <tr>
+                        <th class="col-icon"></th>
+                        <th>Processo</th>
+                        <th>Tarefa</th>
+                        <th>Movimentação</th>
+                        <th>Data</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td class="col-icon"><span class="pje-pill pje-pill--prio">!</span></td>
+                        <td><span class="pje-process">0805123-45.2026.4.05.8100</span></td>
+                        <td>Conclusão para julgamento</td>
+                        <td><span class="pje-pill pje-pill--conc">Concluso</span></td>
+                        <td>12/05/2026</td>
+                      </tr>
+                      <tr>
+                        <td class="col-icon"></td>
+                        <td><span class="pje-process">0801234-56.2026.4.05.8100</span></td>
+                        <td>Triagem inicial</td>
+                        <td>Aguardando</td>
+                        <td>12/05/2026</td>
+                      </tr>
+                      <tr>
+                        <td class="col-icon"></td>
+                        <td><span class="pje-process">0798765-43.2025.4.05.8100</span></td>
+                        <td>Designar audiência</td>
+                        <td><span class="pje-pill pje-pill--audi">Audiência</span></td>
+                        <td>11/05/2026</td>
+                      </tr>
+                      <tr>
+                        <td class="col-icon"><span class="pje-pill pje-pill--prio">!</span></td>
+                        <td><span class="pje-process">0807654-32.2025.4.05.8100</span></td>
+                        <td>Análise de petição</td>
+                        <td>Petição protocolada</td>
+                        <td>11/05/2026</td>
+                      </tr>
+                      <tr>
+                        <td class="col-icon"></td>
+                        <td><span class="pje-process">0802345-67.2025.4.05.8100</span></td>
+                        <td>Controle de prazo</td>
+                        <td><span class="pje-pill pje-pill--prazo">Em curso</span></td>
+                        <td>10/05/2026</td>
+                      </tr>
+                      <tr>
+                        <td class="col-icon"></td>
+                        <td><span class="pje-process">0796543-21.2024.4.05.8100</span></td>
+                        <td>Perícia — Designar</td>
+                        <td><span class="pje-pill pje-pill--peric">Perícia</span></td>
+                        <td>09/05/2026</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ─────────── JANELA 2: Popup do pAIdegua ─────────── -->
+          <div class="popup-window">
+            <div class="popup-window__chrome">
+              <div class="popup-window__controls"><span></span><span></span><span></span></div>
+              <div class="popup-window__title">
+                <span class="popup-window__title-dot">P</span>
+                pAIdegua
+              </div>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="popup-window__urlbar">
+              <span style="color:#1351B4;">🔒</span>
+              <code>chrome-extension://…/sidepanel.html</code>
+              <span style="margin-left:auto; font-size:10px; color:#80868B; letter-spacing:0.05em; text-transform:uppercase;">popup window</span>
+            </div>
+            <div class="popup-window__body">
+
+              <aside class="paidegua paidegua--window paidegua--narrow">
+                <header class="paidegua__header">
+                  <span class="paidegua__logo">
+                    <svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+                      <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+                      <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+                    </svg>
+                  </span>
+                  <div class="paidegua__info">
+                    <h2 class="paidegua__title">p<em>AI</em>degua</h2>
+                    <div class="paidegua__processo">TRF5 · 1º GRAU · 0805123-45.2026.4.05.8100</div>
+                    <div class="paidegua__provider">Claude Sonnet 4.6 · Gabinete</div>
+                  </div>
+                  <select class="paidegua__profile">
+                    <option>Gabinete</option>
+                    <option>Secretaria</option>
+                    <option>Gestão</option>
+                  </select>
+                </header>
+
+                <div class="paidegua__toolbar">
+                  <button class="paidegua__btn paidegua__btn--primary">Carregar Documentos</button>
+                  <button class="paidegua__btn" disabled>Resumir</button>
+                  <button class="paidegua__btn" disabled>Resumir em áudio</button>
+                  <button class="paidegua__btn" disabled>Anonimizar autos</button>
+                  <button class="paidegua__btn" disabled>Minutar</button>
+                  <div class="paidegua__divider"></div>
+                  <div class="paidegua__label">Minutas com modelo</div>
+                  <button class="paidegua__btn" disabled>Despacho ordinário</button>
+                  <button class="paidegua__btn" disabled>Sentença previdenciária</button>
+                  <div class="paidegua__divider"></div>
+                  <div class="paidegua__label">Conhecimento</div>
+                  <button class="paidegua__btn paidegua__btn--stack">
+                    Consultor de fluxos
+                    <small>Como o processo caminha no PJe</small>
+                  </button>
+                </div>
+
+                <div class="paidegua__body">
+                  <p class="paidegua__placeholder">
+                    Volte ao PJe e clique em <strong>Carregar Documentos</strong><br/>
+                    para listar as peças dos autos digitais.
+                  </p>
+                </div>
+
+                <footer class="paidegua__footer">
+                  <textarea class="paidegua__input" placeholder="Digite sua pergunta…" disabled></textarea>
+                  <button class="paidegua__mic">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="2" width="6" height="12" rx="3"/>
+                      <path d="M5 10v2a7 7 0 0 0 14 0v-2"/>
+                      <line x1="12" y1="19" x2="12" y2="22"/>
+                      <line x1="8" y1="22" x2="16" y2="22"/>
+                    </svg>
+                  </button>
+                  <button class="paidegua__send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="22" y1="2" x2="11" y2="13"/>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                  </button>
+                </footer>
+              </aside>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Taskbar do Windows reforça que são duas janelas independentes -->
+        <div class="taskbar">
+          <div class="taskbar__start">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/></svg>
+          </div>
+          <div class="taskbar__item taskbar__item--active">
+            <span class="taskbar__item-icon" style="background:var(--pje-blue);">P</span>
+            PJe — Painel do usuário
+          </div>
+          <div class="taskbar__item taskbar__item--active">
+            <span class="taskbar__item-icon" style="background:var(--pd-gradient);">P</span>
+            pAIdegua
+          </div>
+          <div class="taskbar__item">
+            <span class="taskbar__item-icon" style="background:#168821;">G</span>
+            Gmail — JFCE
+          </div>
+          <div class="taskbar__spacer"></div>
+          <div class="taskbar__clock">
+            14:38
+            <small>13/05/2026</small>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mockup-notes">
+        <div class="mockup-note">
+          <div class="mockup-note__label">O que acontece</div>
+          <h3 class="mockup-note__title">Duas janelas, dois processos</h3>
+          <p class="mockup-note__body">
+            O ícone da extensão chama <code>chrome.windows.create({ type: 'popup' })</code>
+            e abre o pAIdegua numa janela própria — sem tabs, com URL bar minimalista.
+            O usuário pode <strong>tilar</strong> as duas no mesmo monitor ou mandar a
+            do pAIdegua para um <strong>segundo monitor</strong>.
+          </p>
+        </div>
+        <div class="mockup-note">
+          <div class="mockup-note__label">Custo</div>
+          <h3 class="mockup-note__title">Comunicação cross-window</h3>
+          <p class="mockup-note__body">
+            O sidebar deixa de ter acesso ao DOM do PJe — toda comunicação vira
+            <code>chrome.runtime.sendMessage</code> entre o content script (no tab) e o
+            popup. A reescrita é parecida com o caminho 02, mas o popup precisa
+            também rastrear qual aba está ativa para saber de que processo está falando.
+          </p>
+        </div>
+        <div class="mockup-note">
+          <div class="mockup-note__label">Vantagem · limite</div>
+          <h3 class="mockup-note__title">Multi-monitor é nativo</h3>
+          <p class="mockup-note__body">
+            É o único caminho que <strong>libera o segundo monitor</strong>. O preço é a
+            UX desordenada: o usuário precisa organizar manualmente as janelas, e em
+            monitor único isso é <em>pior</em> que o estado atual. Indicado para
+            magistrados que já usam multi-monitor e pedem explicitamente.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>
