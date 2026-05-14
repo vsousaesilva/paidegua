@@ -128,6 +128,9 @@ export default {
       if (url.pathname === '/api/team/welcome-extensao' && request.method === 'POST') {
         return await handleWelcomeExtensaoBatch(request, env, auth);
       }
+      if (url.pathname === '/api/team/sync-audience' && request.method === 'POST') {
+        return await handleSyncAudience(request, env, auth);
+      }
       const memberMatch = url.pathname.match(/^\/api\/team\/members\/([^/]+)$/);
       if (memberMatch && request.method === 'DELETE') {
         return await handleRemoveMember(env, decodeURIComponent(memberMatch[1]), auth);
@@ -664,6 +667,92 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// ============== Resend Audience (lista de contatos dos pilotos) ==============
+// Mantém o audience configurado em RESEND_AUDIENCE_ID espelhando os membros com
+// equipes contendo 'extensao' e ativo !== false. Falhas nunca derrubam o fluxo
+// principal de gestão de membros — apenas logam.
+
+function splitNome(nome) {
+  const clean = String(nome ?? '').trim().replace(/\s+/g, ' ');
+  if (!clean) return { firstName: '', lastName: '' };
+  const idx = clean.indexOf(' ');
+  if (idx < 0) return { firstName: clean, lastName: '' };
+  return { firstName: clean.slice(0, idx), lastName: clean.slice(idx + 1) };
+}
+
+async function addToResendAudience(env, email, nome) {
+  if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY não configurado');
+  if (!env.RESEND_AUDIENCE_ID) throw new Error('RESEND_AUDIENCE_ID não configurado');
+  const { firstName, lastName } = splitNome(nome);
+  const resp = await fetch(`https://api.resend.com/audiences/${env.RESEND_AUDIENCE_ID}/contacts`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      unsubscribed: false,
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Resend add contact ${resp.status}: ${err}`);
+  }
+  return await resp.json().catch(() => ({}));
+}
+
+async function removeFromResendAudience(env, email) {
+  if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY não configurado');
+  if (!env.RESEND_AUDIENCE_ID) throw new Error('RESEND_AUDIENCE_ID não configurado');
+  const url = `https://api.resend.com/audiences/${env.RESEND_AUDIENCE_ID}/contacts/${encodeURIComponent(email)}`;
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` },
+  });
+  if (!resp.ok && resp.status !== 404) {
+    const err = await resp.text();
+    throw new Error(`Resend remove contact ${resp.status}: ${err}`);
+  }
+}
+
+async function listResendAudienceContacts(env) {
+  if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY não configurado');
+  if (!env.RESEND_AUDIENCE_ID) throw new Error('RESEND_AUDIENCE_ID não configurado');
+  const resp = await fetch(`https://api.resend.com/audiences/${env.RESEND_AUDIENCE_ID}/contacts`, {
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` },
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Resend list contacts ${resp.status}: ${err}`);
+  }
+  const data = await resp.json();
+  return Array.isArray(data?.data) ? data.data : [];
+}
+
+// Reflete num único passo o estado do membro no audience: piloto ativo entra,
+// resto sai. Sempre seguro chamar — silencia 404/duplicado e nunca lança.
+async function reflectMemberInAudience(env, member) {
+  if (!env.RESEND_AUDIENCE_ID) return;
+  try {
+    const equipes = Array.isArray(member.equipes) ? member.equipes : [];
+    const devePertencer = member.ativo !== false && equipes.includes('extensao');
+    if (devePertencer) {
+      await addToResendAudience(env, member.email, member.nome).catch(async (err) => {
+        // Resend retorna 409/422 quando o contato já existe; trate como ok.
+        if (/already exists|409|422/i.test(err.message)) return;
+        throw err;
+      });
+    } else {
+      await removeFromResendAudience(env, member.email);
+    }
+  } catch (err) {
+    console.error('reflectMemberInAudience falhou', member.email, err.message);
+  }
+}
+
 // ============== Team handlers ==============
 async function handleListMembers(env) {
   return json({ ok: true, members: await loadMembers(env) });
@@ -717,6 +806,9 @@ async function handleAddMember(request, env, auth) {
       console.error('welcome extensão falhou', m.email, err.message);
     }
   }
+
+  // Reflete o estado do membro no Resend Audience (piloto ativo entra, resto sai).
+  if (m) await reflectMemberInAudience(env, m);
 
   await saveMembers(env, list);
   return json({ ok: true, members: list });
@@ -788,11 +880,85 @@ async function handleWelcomeExtensaoBatch(request, env, auth) {
   return json({ ok: true, dias, force, totalAlvos: alvos.length, enviados, falhas });
 }
 
+/**
+ * Reconcilia o Resend Audience com a lista de pilotos no KV.
+ *
+ * Espelha: adiciona quem está em team:members com equipes:['extensao'] ativo
+ * e remove da audience quem não atende esse critério.
+ *
+ * Body opcional: { dryRun?: boolean }
+ */
+async function handleSyncAudience(request, env, auth) {
+  if (!(await isAdmin(auth.email, env))) return json({ error: 'Apenas admin' }, 403);
+  if (!env.RESEND_AUDIENCE_ID) return json({ error: 'RESEND_AUDIENCE_ID não configurado' }, 500);
+  const body = await request.json().catch(() => ({}));
+  const dryRun = body.dryRun === true;
+
+  const members = await loadMembers(env);
+  const pilotos = new Map(
+    members
+      .filter((m) => m.ativo !== false && Array.isArray(m.equipes) && m.equipes.includes('extensao'))
+      .map((m) => [m.email.toLowerCase(), m]),
+  );
+
+  const contatos = await listResendAudienceContacts(env);
+  const naAudience = new Set(contatos.map((c) => String(c.email || '').toLowerCase()).filter(Boolean));
+
+  const aAdicionar = [];
+  for (const [email, m] of pilotos) {
+    if (!naAudience.has(email)) aAdicionar.push({ email, nome: m.nome });
+  }
+  const aRemover = [];
+  for (const email of naAudience) {
+    if (!pilotos.has(email)) aRemover.push(email);
+  }
+
+  if (dryRun) {
+    return json({
+      ok: true,
+      dryRun: true,
+      audience: env.RESEND_AUDIENCE_ID,
+      totalPilotos: pilotos.size,
+      totalAudience: naAudience.size,
+      aAdicionar,
+      aRemover,
+    });
+  }
+
+  const adicionados = [];
+  const removidos = [];
+  const falhas = [];
+  for (const { email, nome } of aAdicionar) {
+    try { await addToResendAudience(env, email, nome); adicionados.push(email); }
+    catch (err) { falhas.push({ email, op: 'add', erro: err.message }); }
+  }
+  for (const email of aRemover) {
+    try { await removeFromResendAudience(env, email); removidos.push(email); }
+    catch (err) { falhas.push({ email, op: 'remove', erro: err.message }); }
+  }
+
+  return json({
+    ok: true,
+    audience: env.RESEND_AUDIENCE_ID,
+    totalPilotos: pilotos.size,
+    totalAudience: naAudience.size,
+    adicionados,
+    removidos,
+    falhas,
+  });
+}
+
 async function handleRemoveMember(env, email, auth) {
   if (!(await isAdmin(auth.email, env))) return json({ error: 'Apenas admin' }, 403);
+  const target = email.toLowerCase();
   const list = await loadMembers(env);
-  const next = list.filter((m) => m.email !== email.toLowerCase());
+  const next = list.filter((m) => m.email !== target);
   await saveMembers(env, next);
+  // Garante saída da audience também (membro removido nunca pode permanecer lá).
+  if (env.RESEND_AUDIENCE_ID) {
+    try { await removeFromResendAudience(env, target); }
+    catch (err) { console.error('remove audience falhou', target, err.message); }
+  }
   return json({ ok: true });
 }
 

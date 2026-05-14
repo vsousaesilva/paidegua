@@ -36,6 +36,11 @@ ADMIN_EMAILS = "vsousaesilva@jfce.jus.br"
 MAIL_FROM = "noreply@paidegua.ia.br"
 MAIL_FROM_NAME = "pAIdegua / Inovajus"
 
+# Audience da Resend que reflete os pilotos da extensão (equipe 'extensao' ativos).
+# O Worker mantém este audience sincronizado automaticamente em add/remove/update de
+# membros. Para backfill manual: POST /api/team/sync-audience (admin).
+RESEND_AUDIENCE_ID = "0762d792-aeda-4115-81b8-ab410c47f1d4"
+
 # Integração GitHub.
 # Cards com prefixo KAN-* viram issues em GH_REPO_KANBAN; demais em GH_REPO_DEFAULT.
 GH_REPO_DEFAULT = "vsousaesilva/paidegua"

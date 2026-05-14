@@ -2920,6 +2920,65 @@
       ]
     },
     {
+      "id": "OPS-13",
+      "titulo": "Sincronizar pilotos da extensão com Resend Audience",
+      "descricao": "Manter o Resend Audience (id 0762d792-aeda-4115-81b8-ab410c47f1d4 — 'pAIdegua / Pilotos') sempre espelhando team:members do KV: contato existe na audience se, e somente se, o membro tem equipes contendo 'extensao' e ativo !== false.\n\nMotivação: hoje o audience está vazio/desatualizado, então comunicados em massa (newsletter de versão, comunicados de manutenção, pesquisa com pilotos) precisariam ser disparados manualmente um a um. Com a audience espelhada, o Resend pode enviar broadcast para a lista inteira sem que o Worker precise iterar membros.\n\nEntregas:\n- worker.js: helpers `addToResendAudience` / `removeFromResendAudience` / `listResendAudienceContacts` + `reflectMemberInAudience` (idempotente, silencia 404/duplicado, nunca lança).\n- worker.js: hook em `handleAddMember` chamando reflect (cobre add, update de equipes, toggle ativo) e em `handleRemoveMember` chamando remove.\n- worker.js: endpoint admin `POST /api/team/sync-audience` com `dryRun` para reconciliação completa (adiciona quem falta + remove quem sobrou).\n- scripts/sync-audience-resend.mjs: CLI que chama o endpoint admin, lê PAIDEGUA_BEARER do env, suporta --dry-run.\n- wrangler.toml: var `RESEND_AUDIENCE_ID` (UUID público, não secret).\n\nEspelhamento estrito (add + remove): se um e-mail sair do piloto (ativo=false ou perder 'extensao' das equipes), o Worker já remove da audience na mesma chamada.",
+      "categoria": "operacional",
+      "prioridade": "P1",
+      "coluna": "lancado",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "origem": "pedido do usuário 2026-05-14 — atualizar a audiência do Resend com os pilotos atuais; pré-requisito para futuros broadcasts",
+      "fase": "F3",
+      "tags": [
+        "resend",
+        "piloto",
+        "worker",
+        "automacao",
+        "comunicacao",
+        "concluido"
+      ],
+      "esforco": "S",
+      "depende": [
+        "OPS-11"
+      ],
+      "dataCriacao": "2026-05-14T12:00:00.000Z",
+      "dataConclusao": "2026-05-14T17:30:00.000Z",
+      "aceitacao": [
+        "POST /api/team/members adicionando membro com equipes=['extensao'] ativo adiciona o contato na audience configurada em RESEND_AUDIENCE_ID.",
+        "PUT do mesmo membro removendo 'extensao' das equipes (ou marcando ativo=false) remove o contato da audience.",
+        "DELETE /api/team/members/:email remove o contato da audience mesmo que o membro nunca tenha sido piloto (idempotente — 404 da Resend é tolerado).",
+        "POST /api/team/sync-audience com {dryRun:true} retorna {aAdicionar, aRemover, totalPilotos, totalAudience} sem escrever na audience.",
+        "POST /api/team/sync-audience (sem dryRun) reconcilia: adiciona quem é piloto e não está + remove quem está e não é piloto.",
+        "Script scripts/sync-audience-resend.mjs roda com PAIDEGUA_BEARER e imprime adicionados/removidos/falhas.",
+        "Falha do Resend Audience nunca derruba o cadastro do membro (logada, segue 200)."
+      ],
+      "checklist": [
+        { "id": "ops13-1", "texto": "wrangler secret confirmado: RESEND_API_KEY já presente (reaproveitado do welcome)", "feito": true },
+        { "id": "ops13-2", "texto": "wrangler.toml com RESEND_AUDIENCE_ID = 0762d792-aeda-4115-81b8-ab410c47f1d4", "feito": true },
+        { "id": "ops13-3", "texto": "Deploy do Worker (wrangler deploy)", "feito": true },
+        { "id": "ops13-4", "texto": "Backfill: rodar sync-audience-resend.mjs --dry-run para conferir diff", "feito": true },
+        { "id": "ops13-5", "texto": "Backfill: rodar sync-audience-resend.mjs (sem --dry-run)", "feito": true },
+        { "id": "ops13-6", "texto": "Smoke: conferir audience no painel Resend (28 pilotos) + OTP da extensão ainda funcionando com a key Full Access nova", "feito": true },
+        { "id": "ops13-7", "texto": "Mover card para 'lancado' após smoke OK", "feito": true }
+      ],
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T12:00:00.000Z",
+          "comando": "Card aberto a partir do pedido do owner: 'gostaria de atualizar a audiência do resend com os pilotos que estão testando o paidegua'. Audience já existia no painel Resend (id informado pelo owner). Implementação espelha estritamente (add + remove) e plugada nos hooks de membros para evitar deriva futura."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-14T17:30:00.000Z",
+          "comando": "Backfill aplicado: 28 pilotos adicionados na audience 0762d792-... (0 falhas). Smoke OK no painel Resend (lista mostra os 28). Smoke OK no OTP da extensão (key Full Access nova entrega e-mails sem problema). Daqui em diante, a sincronização é automática via reflectMemberInAudience nos hooks de handleAddMember e handleRemoveMember.\n\nIncidentes durante a execução, todos contornados:\n- API key inicial era 'Sending only' (erro 401 restricted) → trocada para Full Access via wrangler secret put.\n- Audience id informado pelo owner (General) estava vazio na API, enquanto o painel web mostrava 18 contatos numa camada paralela (lista geral do team). Resolvido populando a audience-entidade General com os 28 do KV.\n- Duas keys API expostas no chat durante o diagnóstico (uma como argumento de set, outra dentro de curl com cookies de sessão completos). Owner revogou ambas as keys + invalidou sessões Resend + removeu OAuth Google + criou key nova limpa."
+        }
+      ]
+    },
+    {
       "id": "ATD-01",
       "titulo": "Mini balcão virtual integrado",
       "descricao": "Botão 'Falar com a unidade' nos painéis do servidor abrindo agendamento do balcão virtual da unidade. Para servidor que precisa contatar outra vara.",
@@ -5984,6 +6043,40 @@
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T18:00:00.000Z",
           "comando": "Card aberto a pedido do owner ao final do desenrolar do BUG-21. Cobre as duas frentes que ficaram suboptimal após a refatoração arquitetural: tempo de OCR em audiência (lento por throttling de tab background) e qualidade de reconhecimento (docs com texto vazio que Tesseract não consegue ler). Não é regressão — comportamento similar à v1.6.0, mas agora ficou explícito e mensurável."
+        }
+      ]
+    },
+    {
+      "id": "CONTAD-01",
+      "titulo": "Módulo Contadoria do Foro — discovery (entrevista + realinhamento antes de codar)",
+      "descricao": "Recebido em 14/05/2026 pacote externo pacote-contadoria-r1.zip do autor Victor Falcão (JFCE/INOVAJUS Eixo III) com proposta de funcionalidade Contadoria do Foro. Análise concluiu que NÃO pode ser plugado ao paidegua atual: (1) escrito contra v1.2.1 com pAIdegua hoje em v1.6.3 — quatro minor à frente; (2) instrui colar arquivos em dist/, ignorando que dist/ é saída do build TypeScript; (3) inventa handlers PAIDEGUA_LLM_CALL e PAIDEGUA_PDF_EXTRACT que não existem (gateway real é CHAT_STREAM via porta long-lived); (4) ignora ritos institucionais (toggle em Mais opções, Kanban, export PDF+DOCX, comunicação aos pilotos).\n\nEm paralelo, existe demanda formalizada de um servidor da Contadoria do Foro solicitando a funcionalidade — esse é o cliente real do módulo. Como o autor Victor não participa daqui pra frente (entrega fire-and-forget), a base de conhecimento de domínio precisa vir do servidor solicitante.\n\nObjetivo do módulo (intenção conceitual aproveitada do pacote, código a ser reescrito do zero em TS): substituir a leitura linear cronológica dos autos pela leitura temática organizada em quatro blocos da rotina contábil — Títulos Executivos (sentença, acórdão, certidão de trânsito), Despachos (remessa à contadoria + outros), Cálculos das Partes (cálculo do exequente, impugnação da União, contra-impugnação), Subsídios Financeiros (ficha financeira, GFIP, GPS/DARF/GRU, comprovantes) — mais bloco Incertos para revisão. Heurística (regex de nome + tipo PJe) primeiro; LLM em incertos via CHAT_STREAM; reclassificação manual com drag-drop; export do roteiro em PDF+DOCX.\n\nRecursos da pAIdegua a reutilizar: extrator ProcessoDocumento (src/content/extractor.ts + adapters), gateway LLM multi-provedor (src/background/background.ts + providers), parser pdfjs + OCR Tesseract offscreen (src/content/pdf-parser.ts + src/offscreen/ocr.ts), helpers de export DOCX (src/shared/docx-export.ts) e PDF via html2pdf (padrão audiencia-resumo), toggle em Mais opções (src/shared/ui-toggles.ts), padrão de painel (src/<x>-painel/ + registro no manifest).\n\nPlano aprovado em sessão 14/05/2026: Fase 0 discovery (este card) → Bloco 1 esqueleto+heurística+export (~3-4d) → Bloco 2 LLM em incertos (~2-3d) → Bloco 3 reclassificação (~1-2d) → Piloto de 2 semanas → decisão GO/NO-GO. Toggle default false (opt-in) em uma futura v1.7. Categoria 'contadoria' pode ser criada futuramente — por ora usando 'calculadoras' como aproximação.\n\nRITO INEGOCIÁVEL (gravado na memória persistente do projeto): nenhuma linha de código antes de (a) entrevista com o servidor solicitante usando questionário estruturado preparado em 14/05/2026, (b) realinhamento conjunto do plano com owner, (c) autorização expressa do owner para iniciar codificação, (d) abertura dos sub-cards técnicos (CONTAD-02 Bloco 1, CONTAD-03 Bloco 2, CONTAD-04 Bloco 3, CONTAD-05 Piloto) com aceitação detalhada.",
+      "categoria": "calculadoras",
+      "prioridade": "P2",
+      "coluna": "discovery",
+      "origem": "pacote-contadoria-r1.zip recebido em 14/05/2026 + demanda formalizada de servidor da Contadoria do Foro — sessão de análise 14/05/2026",
+      "tags": ["contadoria", "modulo-novo", "discovery", "entrevista", "previdenciario", "v1.7"],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "Entrevista realizada com o servidor da Contadoria solicitante usando o questionário estruturado de 6 blocos preparado em 14/05/2026",
+        "Taxonomia validada contra prática real: 4 blocos confirmados (ou ajustados), 13 categorias canônicas confirmadas (ou ajustadas), regras heurísticas revisadas por quem usa",
+        "3-5 processos-teste anonimizados coletados como suite de validação",
+        "Casos-limite documentados (ex.: certidão de trânsito embutida no PDF da sentença, cálculo do INSS administrativo vs cálculo da CONTADORIA judicial)",
+        "docs/contadoria-foro.md criado como fonte de verdade do módulo (padrão paralelo a manual-massificacao-pje.md)",
+        "Realinhamento do plano com owner após entrevista, com ajustes de escopo se necessário",
+        "Autorização expressa do owner registrada para iniciar codificação",
+        "Sub-cards técnicos abertos: CONTAD-02 (Bloco 1 esqueleto+heurística+export), CONTAD-03 (Bloco 2 LLM), CONTAD-04 (Bloco 3 drag-drop), CONTAD-05 (Piloto)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-14T19:00:00.000Z",
+      "atualizadoEm": "2026-05-14T19:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T19:00:00.000Z",
+          "comando": "Card aberto após análise do pacote externo pacote-contadoria-r1.zip e decisão conjunta (owner + claude) de seguir com módulo nativo na pAIdegua aproveitando apenas a estrutura conceitual (taxonomia + 4 blocos + lógica heurística+LLM+manual). Plano aprovado pelo owner em sessão 14/05/2026. Próximos passos antes de qualquer código: (1) entrevista com o servidor da Contadoria solicitante usando questionário estruturado preparado nesta sessão, (2) realinhamento do plano, (3) autorização expressa para codificar, (4) abertura dos sub-cards CONTAD-02 a CONTAD-05. Rito gravado também na memória persistente do projeto (feedback_rito_modulo_novo.md)."
         }
       ]
     }
