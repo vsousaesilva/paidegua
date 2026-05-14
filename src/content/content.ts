@@ -159,7 +159,7 @@ import {
   activateDocumentInPje,
   extractContents,
   getOcrPendingDocuments,
-  runOcrOnDocuments
+  runOcrOnDocumentsViaOffscreen
 } from './extractor';
 import { startRecording, blobToBase64, type RecorderHandle } from './audio-recorder';
 import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
@@ -447,7 +447,7 @@ async function handleRunOcr(): Promise<void> {
 
   try {
     const maxPages = memory.settings?.ocrMaxPages;
-    const merged = await runOcrOnDocuments(
+    const merged = await runOcrOnDocumentsViaOffscreen(
       pendentes,
       (event) => {
       // Rótulo identificador do documento — sempre presente nos eventos

@@ -2822,6 +2822,63 @@
       ]
     },
     {
+      "id": "OPS-11",
+      "titulo": "Welcome email automático para membros do piloto da extensão (Resend)",
+      "descricao": "Quando um e-mail é cadastrado em team:members com 'extensao' nas equipes e ativo=true, o Worker dispara automaticamente um e-mail de boas-vindas via Resend. Idempotente: marca `welcomeExtensaoEnviadoEm` no membro para não duplicar. Falha de envio não derruba o cadastro (loga e segue).\n\nConteúdo do e-mail (template aprovado em 2026-05-13):\n- Identidade gov.br/PJe (faixa amarela #FFCD07, hero gradiente #1351B4→#0C326F).\n- Saudação fixa 'Olá, piloto' (sem dependência do campo nome no team:members).\n- 2 passos: (1) Instalar pela Chrome Web Store, (2) Entrar com o próprio e-mail (OTP de 6 dígitos).\n- Caixa de destaque em âmbar para quem já usa versão dev (pasta dist): exportar configurações → remover → instalar via CWS → importar configurações.\n- 1 CTA único 'Instalar a extensão' (link removido para manual — paidegua.ia.br/manual não existe e o manual.md está desatualizado).\n- Bloco de privacidade citando CNJ 615/2025 e LGPD.\n- Suporte por reply-to.\n\nEntregas:\n- worker.js: `sendWelcomeExtensaoEmail(to, nome, env)` (HTML + texto plain) + hook em `handleAddMember` (idempotente via flag welcomeExtensaoEnviadoEm).\n- worker.js: endpoint admin `POST /api/team/welcome-extensao` para disparo em lote (catch-up), com filtros `dias` (default 3), `force`, `emails[]`, `dryRun`.\n- scripts/enviar-welcome-extensao.mjs: CLI que chama o endpoint admin. Lê `PAIDEGUA_BEARER` do env. Suporta `--dias=N`, `--dry-run`, `--force`, `--emails=a@x,b@y`.\n- welcome-extensao-preview.html: preview standalone para validação visual.\n- wrangler.toml: var opcional `CWS_URL` (default hardcoded para o listing atual).",
+      "categoria": "operacional",
+      "prioridade": "P1",
+      "coluna": "lancado",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "origem": "pedido do usuário 2026-05-13 — automatizar boas-vindas do piloto + catch-up dos últimos 3 dias",
+      "fase": "F3",
+      "tags": [
+        "release",
+        "piloto",
+        "resend",
+        "worker",
+        "automacao",
+        "comunicacao",
+        "concluido"
+      ],
+      "esforco": "S",
+      "depende": [
+        "INFRA-19"
+      ],
+      "dataCriacao": "2026-05-13T17:30:00.000Z",
+      "dataConclusao": "2026-05-13T18:30:00.000Z",
+      "aceitacao": [
+        "Cadastrar novo membro com equipes=['extensao'] dispara um e-mail Resend com assunto 'pAIdegua — seu acesso ao grupo piloto foi liberado'.",
+        "Reenviar o POST /api/team/members do mesmo membro NÃO duplica (flag welcomeExtensaoEnviadoEm respeitada).",
+        "POST /api/team/welcome-extensao com {dryRun:true} retorna lista de alvos sem enviar.",
+        "POST /api/team/welcome-extensao com {dias:3} envia para membros adicionadoEm>=now-3d, ativos, equipe extensao, sem flag — e grava welcomeExtensaoEnviadoEm.",
+        "Script scripts/enviar-welcome-extensao.mjs roda com PAIDEGUA_BEARER e imprime os enviados/falhas.",
+        "Falha do Resend não derruba o cadastro do membro (logado, não 500)."
+      ],
+      "checklist": [
+        { "id": "ops11-1", "texto": "Deploy do Worker (wrangler deploy)", "feito": true },
+        { "id": "ops11-2", "texto": "Smoke: cadastrar e-mail teste via UI Equipe → conferir caixa", "feito": true },
+        { "id": "ops11-3", "texto": "Catch-up: rodar enviar-welcome-extensao.mjs --dry-run para revisar alvos", "feito": true },
+        { "id": "ops11-4", "texto": "Catch-up: rodar enviar-welcome-extensao.mjs (sem --dry-run)", "feito": true },
+        { "id": "ops11-5", "texto": "Mover card para 'lancado' após smoke OK", "feito": true }
+      ],
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-13",
+          "data": "2026-05-13T17:30:00.000Z",
+          "comando": "Card aberto a partir do pedido do owner em 13/05/2026 — automatizar boas-vindas via Resend + catch-up dos últimos 3 dias (10 pilotos cadastrados em 11-13/05)."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-13T18:30:00.000Z",
+          "comando": "Disparo em lote concluído: 9/10 entregues no primeiro lote + 1 retry bem-sucedido para renata@jfce.jus.br (falha transitória da Resend). Pré-header corrigido durante o smoke (removida menção a 'manual'). Hero ajustado para Outlook desktop (bgcolor sólido + remoção de rgba; gradiente preservado em clients modernos). Memória feedback_email_html_outlook registrada para futuros e-mails transacionais."
+        }
+      ]
+    },
+    {
       "id": "ATD-01",
       "titulo": "Mini balcão virtual integrado",
       "descricao": "Botão 'Falar com a unidade' nos painéis do servidor abrindo agendamento do balcão virtual da unidade. Para servidor que precisa contatar outra vara.",
@@ -5745,6 +5802,70 @@
           "autor": "claude-code/sessao-2026-05-13",
           "data": "2026-05-13T00:00:00.000Z",
           "comando": "Card aberto a partir do dossiê UX-001 (docs/mockups-sidebar-ux/index.html). Owner pediu análise comparativa de 4 caminhos para o sidebar conviver com o PJe sem cobrir conteúdo. Gerados mockups navegáveis: 00-sobreposicao.html (estado atual), 01-empurrar.html (CSS no host, MVP rápido), 02-side-panel.html (este card — arquitetura de longo prazo), 03-janela-separada.html (popup multi-monitor). Recomendação do dossiê: caminho 02 como projeto dedicado de UI v2. Aguarda decisão go/no-go em sprint planning."
+        }
+      ]
+    },
+    {
+      "id": "BUG-21",
+      "titulo": "Botão 'Rodar OCR' do popup principal falha com erro de Worker cross-origin",
+      "descricao": "Usuária relatou em 13/05/2026 frustração ao tentar OCR em processo com 11 documentos. Console anexado mostra erro do Chrome MV3:\n\n  Failed to construct 'Worker': Script at 'chrome-extension://belangijcipajlpcofhljhgjeemkbofk/libs/tesseract/worker.min.js' cannot be accessed from origin 'https://pje1g.trf5.jus.br'.\n\nCausa raiz: content script roda na ORIGEM da página (pje1g.trf5.jus.br); ao tentar `new Worker(chrome-extension://...)`, o Chrome aplica same-origin e bloqueia — mesmo com libs/* declarado em web_accessible_resources. Sem worker, Tesseract não inicializa, OCR retorna 0/N documentos processados.\n\nA v1.6.1 já havia introduzido o caminho offscreen (runOcrOnDocumentsViaOffscreen) justamente para resolver isso — o offscreen document roda em origem chrome-extension://, então o Worker é same-origin. Funciona no fluxo de Resumo de Audiência (src/content/audiencia/audiencia-resumo-docs.ts:321). Porém o BOTÃO 'Rodar OCR' do popup principal (src/content/content.ts:450) ficou esquecido no caminho legado runOcrOnDocuments, que dispara o erro acima em todo Chrome moderno.\n\nFix v1.6.2: troca de import + call site em src/content/content.ts (162 e 450) para usar runOcrOnDocumentsViaOffscreen. Mesma assinatura de retorno e handler de progresso. Único side-effect: offscreen processa em batch e não emite o evento ocr-page (progresso por página dentro do mesmo documento); a barra de status passa a atualizar por documento, não por página. Aceitável dado que o estado anterior era OCR não-funcional.",
+      "categoria": "ergonomia",
+      "prioridade": "P0",
+      "coluna": "dev",
+      "origem": "relato de usuária 13/05/2026 (console anexado) — sessão 14/05/2026 (diagnóstico + fix)",
+      "tags": ["ocr", "tesseract", "offscreen", "mv3", "worker", "bug", "extensao"],
+      "esforco": "XS",
+      "depende": [],
+      "aceitacao": [
+        "src/content/content.ts importa runOcrOnDocumentsViaOffscreen (não runOcrOnDocuments)",
+        "src/content/content.ts:450 chama runOcrOnDocumentsViaOffscreen",
+        "build.bat OK (typecheck + webpack) com manifest.json em 1.6.2",
+        "Em uso real, console NÃO mostra mais 'Failed to construct Worker' para libs/tesseract/worker.min.js",
+        "OCR processa documentos escaneados e popula textoExtraido (smoke do owner em processo com PDFs imagem)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-14T00:00:00.000Z",
+      "atualizadoEm": "2026-05-14T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T00:00:00.000Z",
+          "comando": "Diagnóstico do console enviado pela usuária: o popup principal cai no caminho legado runOcrOnDocuments (Worker no content script), enquanto o resumo de audiência já usa runOcrOnDocumentsViaOffscreen (Worker no offscreen, same-origin com chrome-extension://). Fix aplicado: 1 troca de import + 1 troca de chamada em src/content/content.ts. Bump 1.6.1 → 1.6.2 em manifest.json + package.json. build.bat OK (typecheck + webpack compilou sem warnings). Próximo passo: REL-1.6.2 (release-extensao)."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.6.2",
+      "titulo": "Release v1.6.2 — fix do OCR no popup principal (caminho offscreen)",
+      "descricao": "Hotfix de BUG-21. Bump 1.6.1 → 1.6.2 carregando uma única correção: o botão 'Rodar OCR' do popup principal passa a usar runOcrOnDocumentsViaOffscreen (Worker no offscreen, same-origin com chrome-extension://) em vez de runOcrOnDocuments (Worker no content script, bloqueado por same-origin contra a página do PJe).\n\nEscopo cirúrgico: 2 linhas em src/content/content.ts (import + call site). Sem mudança de manifest além de version. Sem mudança em background, offscreen ou outros fluxos — o caminho offscreen já estava pronto e validado na v1.6.1 pelo fluxo de Resumo de Audiência.\n\nUX: o usuário perde o detalhe de 'OCR: página N/M' (offscreen processa em batch e devolve por documento), mas ganha OCR funcional. Trade-off aceitável.",
+      "categoria": "infra",
+      "prioridade": "P0",
+      "coluna": "dev",
+      "origem": "skill release-extensao — sessão 14/05/2026 (hotfix de BUG-21)",
+      "tags": ["release", "extensao", "cws", "ocr", "hotfix"],
+      "esforco": "XS",
+      "depende": ["BUG-21"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.6.2; dist/manifest.json em 1.6.2",
+        "dist/content.js contém runOcrOnDocumentsViaOffscreen na chamada do handleRunOcr",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/offscreen/* presente (já vindo da v1.6.1)",
+        "zip versoes/dist v1.6.2.zip com manifest.json na raiz, enviado à CWS",
+        "Commit do fix pushado em origin/main",
+        "Aprovação CWS + smoke test do owner + pilotos comunicados → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-14T00:00:00.000Z",
+      "atualizadoEm": "2026-05-14T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T00:00:00.000Z",
+          "comando": "Card aberto durante o hotfix de BUG-21. Aguarda execução da skill release-extensao (zip via cd dist + tar -a -cf, upload manual ao CWS Developer Dashboard, commit + push, comunicação aos pilotos)."
         }
       ]
     }
