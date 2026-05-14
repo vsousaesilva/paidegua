@@ -1,33 +1,53 @@
 /**
- * Offscreen document para OCR — fix do problema de Chrome throttling
- * tabs em background (Chrome ≥88), que torna o Tesseract irresponsivo
- * quando a aba PJe não é a aba ativa.
+ * Offscreen document para OCR — recebe imagens JÁ renderizadas pelo
+ * content script e roda apenas o Tesseract.
  *
- * O offscreen é um contexto HTML invisível, NÃO throttled, com acesso
- * a Web Workers + WASM + fetch com cookies (host_permissions). É o
- * único caminho proper em MV3 para tarefas de longo runtime que
- * precisam ser independentes do estado de visibilidade da aba.
+ * Por que offscreen: tabs em background (Chrome ≥88) são throttled
+ * — postMessage main↔worker é atrasado e o Tesseract (uso intensivo
+ * de mensagens main↔worker) pendura. Offscreen documents NÃO são
+ * throttled.
+ *
+ * Por que NÃO rodar o pdf.js aqui: tentamos na v1.6.1/1.6.2 e
+ * `page.render()` trava silenciosamente em offscreen documents
+ * — algo no canal interno de decodificação de imagem do pdf.js
+ * (provavelmente `Image.decode()` ou rAF) não responde quando
+ * o document não tem composição visual. Render fica no content
+ * script (onde sempre funcionou); offscreen recebe JPEGs prontos.
  *
  * Fluxo:
- *  1. Background SW cria este offscreen sob demanda (chrome.offscreen.createDocument)
- *  2. Content script envia OCR_OFFSCREEN_BATCH com array de { id, url }
- *  3. Aqui: para cada url, fetch (com cookies de jus.br) → ocrPdf → texto
- *  4. Devolve map id→{ text, ok, error }
- *
- * Reusa `createOcrWorker` + `ocrPdf` de `content/ocr.ts` — código compartilhado,
- * sem duplicação. Cria UM worker por batch e termina no final (cap de
- * memória; cada worker carrega ~25MB de por.traineddata).
+ *  1. Background SW cria este offscreen sob demanda.
+ *  2. Content script envia OCR_OFFSCREEN_BATCH com:
+ *     docs: [{ id, pageImages: Blob[] }]  (já renderizado lá)
+ *  3. Aqui: para cada doc, para cada Blob, createImageBitmap →
+ *     canvas → worker.recognize → texto.
+ *  4. Devolve map id→{ text, ok, error }.
  */
 
 import { LOG_PREFIX, MESSAGE_CHANNELS } from '../shared/constants';
-import { createOcrWorker, ocrPdf, type TesseractWorker } from '../content/ocr';
+import { createOcrWorker, type TesseractWorker } from '../content/ocr';
 
 const LOG = `${LOG_PREFIX} [offscreen/ocr]`;
 
+interface OcrDocInput {
+  id: string;
+  /**
+   * Páginas como data URLs `data:image/jpeg;base64,…` (geradas no content
+   * via canvas.toDataURL). Blobs não atravessam chrome.runtime.sendMessage
+   * intactos — serialização JSON entre contextos os transforma em `{}`.
+   */
+  pageImages: string[];
+}
+
 interface OcrBatchRequest {
   type: typeof MESSAGE_CHANNELS.OCR_OFFSCREEN_BATCH;
-  docs: Array<{ id: string; url: string }>;
-  options?: { maxPages?: number };
+  docs: OcrDocInput[];
+  /**
+   * IDs para streaming de progresso (start/done/error por doc).
+   * Quando ambos presentes, o offscreen emite OCR_OFFSCREEN_PROGRESS
+   * ao background, que repassa via chrome.tabs.sendMessage(tabId, …).
+   */
+  batchId?: string;
+  tabId?: number;
 }
 
 interface OcrDocResult {
@@ -40,9 +60,35 @@ interface OcrDocResult {
 
 type OcrBatchResponse = Record<string, OcrDocResult>;
 
-// Timeout duro por documento — evita pendurar mesmo aqui (improvável,
-// mas se um PDF estiver corrompido, a chamada do Tesseract pode hang).
-const PER_DOC_TIMEOUT_MS = 90_000;
+/**
+ * Timeout duro por documento. Cada página leva ~2-5s no Tesseract LSTM-PT
+ * (PDF imagem). 30 páginas × 5s = 150s + buffer. 300s dá folga 2× sobre
+ * o pior caso prático.
+ */
+const PER_DOC_TIMEOUT_MS = 300_000;
+
+function emitProgress(
+  batchId: string | undefined,
+  tabId: number | undefined,
+  event: Record<string, unknown>
+): void {
+  if (!batchId || tabId == null) return;
+  // fire-and-forget: o background é quem entrega ao tab; se o tab fechou
+  // antes do progress chegar, o erro é silencioso (não afeta o batch).
+  // Usamos `channel` (não `type`) porque o switch do background ouvinte
+  // discrimina por message.channel; type é usado pelo handler do BATCH
+  // dentro deste mesmo offscreen.
+  void chrome.runtime
+    .sendMessage({
+      channel: MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS,
+      batchId,
+      tabId,
+      event
+    })
+    .catch(() => {
+      /* ignore */
+    });
+}
 
 console.info(`${LOG} carregado, aguardando batches.`);
 
@@ -57,7 +103,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`${LOG} batch falhou globalmente:`, message);
-      // Retorna ok=false para todos os docs do batch
       const fallback: OcrBatchResponse = {};
       for (const d of req.docs) {
         fallback[d.id] = { text: '', ok: false, error: message };
@@ -88,18 +133,46 @@ async function handleBatch(req: OcrBatchRequest): Promise<OcrBatchResponse> {
   }
 
   try {
-    for (const doc of req.docs) {
+    for (let index = 0; index < req.docs.length; index++) {
+      const doc = req.docs[index]!;
+      emitProgress(req.batchId, req.tabId, {
+        type: 'ocr-document-start',
+        index,
+        documento: { id: doc.id }
+      });
       try {
         const result = await comTimeout(
-          processarDoc(doc, worker, req.options),
+          processarDoc(doc, worker),
           PER_DOC_TIMEOUT_MS,
           `OCR doc ${doc.id}`
         );
         out[doc.id] = result;
+        if (result.ok) {
+          emitProgress(req.batchId, req.tabId, {
+            type: 'ocr-document-done',
+            index,
+            documento: { id: doc.id },
+            pagesProcessed: result.pagesProcessed ?? 0,
+            pagesSkipped: result.pagesSkipped ?? 0
+          });
+        } else {
+          emitProgress(req.batchId, req.tabId, {
+            type: 'ocr-document-error',
+            index,
+            documento: { id: doc.id },
+            error: result.error ?? 'erro desconhecido'
+          });
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.warn(`${LOG} doc ${doc.id} falhou:`, message);
         out[doc.id] = { text: '', ok: false, error: message };
+        emitProgress(req.batchId, req.tabId, {
+          type: 'ocr-document-error',
+          index,
+          documento: { id: doc.id },
+          error: message
+        });
       }
     }
   } finally {
@@ -114,36 +187,47 @@ async function handleBatch(req: OcrBatchRequest): Promise<OcrBatchResponse> {
 }
 
 async function processarDoc(
-  doc: { id: string; url: string },
-  worker: TesseractWorker,
-  options: { maxPages?: number } | undefined
+  doc: OcrDocInput,
+  worker: TesseractWorker
 ): Promise<OcrDocResult> {
-  // Fetch com cookies de jus.br — funciona porque:
-  //  (a) host_permissions inclui https://*.jus.br/*
-  //  (b) credentials:'include' faz o navegador enviar cookies do
-  //      ORIGIN ALVO (jus.br), não do origin do offscreen (chrome-extension://)
-  const resp = await fetch(doc.url, {
-    method: 'GET',
-    credentials: 'include',
-    headers: { Accept: 'application/pdf,application/octet-stream,*/*' }
-  });
-  if (!resp.ok) {
-    return { text: '', ok: false, error: `HTTP ${resp.status}` };
-  }
-  const buffer = await resp.arrayBuffer();
-  if (buffer.byteLength === 0) {
-    return { text: '', ok: false, error: '0 bytes' };
+  if (!doc.pageImages || doc.pageImages.length === 0) {
+    return { text: '', ok: false, error: 'sem páginas para OCR' };
   }
 
-  const result = await ocrPdf(buffer, undefined, {
-    maxPages: options?.maxPages,
-    worker
-  });
+  const pageTexts: string[] = [];
+  for (let i = 0; i < doc.pageImages.length; i++) {
+    const dataUrl = doc.pageImages[i]!;
+    // Decodifica a data URL em ImageBitmap via fetch (que aceita data: URLs
+    // sem fricção e devolve Blob) — caminho mais simples e que evita o
+    // bloqueio cross-origin que img.src/createObjectURL tem entre o
+    // content (origem page) e este offscreen (origem extensão).
+    const resp = await fetch(dataUrl);
+    const blob = await resp.blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return { text: '', ok: false, error: 'canvas 2d context indisponível' };
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    const { data } = await worker.recognize(canvas);
+    pageTexts.push((data.text || '').trim());
+  }
+
+  const text = pageTexts
+    .map((t, i) => `=== Página ${i + 1} (OCR) ===\n${t}`)
+    .join('\n\n');
+
   return {
-    text: result.text,
+    text,
     ok: true,
-    pagesProcessed: result.pagesProcessed,
-    pagesSkipped: result.pagesSkipped
+    pagesProcessed: doc.pageImages.length,
+    pagesSkipped: 0
   };
 }
 

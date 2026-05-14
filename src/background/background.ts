@@ -1117,12 +1117,77 @@ function dispatchMessage(
 
       case MESSAGE_CHANNELS.OCR_OFFSCREEN_ENSURE:
         void ensureOcrOffscreenDocument()
-          .then(() => sendResponse({ ok: true }))
+          .then(() => sendResponse({ ok: true, tabId: sender.tab?.id }))
           .catch((err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
             sendResponse({ ok: false, error: message });
           });
         return true;
+
+      case MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS: {
+        // Repasse de progresso do offscreen ao tab que originou o batch.
+        // O offscreen não tem acesso a chrome.tabs; o background sim.
+        const payload = message as {
+          tabId?: number;
+          batchId?: string;
+          event?: unknown;
+        };
+        if (typeof payload.tabId === 'number' && payload.batchId && payload.event) {
+          void chrome.tabs
+            .sendMessage(payload.tabId, {
+              channel: MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS,
+              batchId: payload.batchId,
+              event: payload.event
+            })
+            .catch(() => {
+              /* tab fechou — ignore */
+            });
+        }
+        sendResponse({ ok: true });
+        return false;
+      }
+
+      case MESSAGE_CHANNELS.OCR_FOCUS_TAB: {
+        // Mitigação de throttling em audiência: content da aba PJe (em
+        // background) pede para a aba virar ativa antes de rodar pdf.js
+        // render, e depois restaurar a aba anterior.
+        const payload = message as {
+          request?: 'activate' | 'restore';
+          previousActiveTabId?: number;
+        };
+        const senderTabId = sender.tab?.id;
+        const windowId = sender.tab?.windowId;
+        if (payload.request === 'activate' && senderTabId != null && windowId != null) {
+          void (async (): Promise<void> => {
+            try {
+              const tabs = await chrome.tabs.query({ active: true, windowId });
+              const previousActiveTabId = tabs[0]?.id;
+              await chrome.tabs.update(senderTabId, { active: true });
+              sendResponse({ ok: true, previousActiveTabId });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              sendResponse({ ok: false, error: msg });
+            }
+          })();
+          return true;
+        }
+        if (payload.request === 'restore' && payload.previousActiveTabId != null) {
+          void (async (): Promise<void> => {
+            try {
+              await chrome.tabs.update(payload.previousActiveTabId!, {
+                active: true
+              });
+              sendResponse({ ok: true });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              sendResponse({ ok: false, error: msg });
+            }
+          })();
+          return true;
+        }
+        sendResponse({ ok: false, error: 'request inválido ou tab sem id' });
+        return false;
+      }
 
       case MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR:
         void handleOpenFluxosConsultor(sendResponse);
@@ -2942,6 +3007,19 @@ interface ActiveChat {
 const activeChats = new WeakMap<chrome.runtime.Port, ActiveChat>();
 
 chrome.runtime.onConnect.addListener((port) => {
+  // Keepalive port do OCR — content abre durante o batch para manter
+  // o service worker vivo enquanto o render acontece no main thread
+  // do PJe. Sem isso, o SW pode adormecer e canais long-lived
+  // (ex.: sendMessage do background → aba oculta em audiência)
+  // fecham antes da resposta voltar.
+  if (port.name === 'paidegua/ocr-keepalive') {
+    console.log(`${LOG_PREFIX} OCR keepalive port conectada`);
+    port.onDisconnect.addListener(() => {
+      console.log(`${LOG_PREFIX} OCR keepalive port desconectada`);
+    });
+    return;
+  }
+
   if (port.name !== PORT_NAMES.CHAT_STREAM) {
     return;
   }

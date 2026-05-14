@@ -23,6 +23,7 @@ import {
   createOcrWorker,
   MAX_OCR_PAGES,
   ocrPdf,
+  renderPdfToImages,
   type OcrOptions,
   type OcrProgress,
   type TesseractWorker
@@ -817,24 +818,29 @@ export async function runOcrOnDocuments(
 // ============================================================================
 
 /**
- * Variante de `runOcrOnDocuments` que delega o OCR a um offscreen document.
+ * Pipeline OCR híbrido: render no content + Tesseract no offscreen.
  *
- * Por que: Chrome ≥88 throttla tabs em background (timer cap ~1Hz, postMessage
- * enfileirado). O Tesseract usa Web Worker + postMessage intenso entre wasm
- * e main thread → quando a aba PJe não é a ativa (caso típico do fluxo de
- * Resumo da Pauta), OCR pendura. Offscreen documents NÃO sofrem throttling.
+ * Por que dividir:
+ *  - pdf.js v5 trava em `page.render()` quando rodado dentro de um
+ *    offscreen document (BUG-21, diagnóstico em 2026-05-14). Render
+ *    fica no content script onde sempre funcionou.
+ *  - Tesseract.js usa postMessage intenso main↔worker. Em tab background
+ *    isso é throttled e pendura — por isso o OCR roda no offscreen
+ *    (não throttled).
  *
  * Arquitetura:
- *   content script ─► background (ENSURE) ─► offscreen criado
- *   content script ─► offscreen (BATCH com URLs) ─► offscreen fetch+ocr
- *   offscreen ─► content script (resposta com map id→texto)
+ *   content ─► background (ENSURE offscreen + obter tabId próprio)
+ *   content: para cada doc → fetch + renderPdfToImages → Blob[] JPEG
+ *   content ─► offscreen (BATCH com docs: [{id, pageImages: Blob[]}])
+ *   offscreen: createImageBitmap + worker.recognize por página
+ *   offscreen ─► content (resposta map id→texto + eventos de progresso
+ *     via background.tabs.sendMessage durante o processo)
  *
- * O offscreen faz o fetch dos PDFs ele mesmo, com `credentials: 'include'`,
- * herdando os cookies de jus.br via `host_permissions`. Não precisamos
- * transferir buffers (que seriam serializados via JSON via runtime msg).
- *
- * Devolve um array no mesmo formato do `runOcrOnDocuments` clássico, mantendo
- * `isScanned: true` nos docs efetivamente OCRados.
+ * Mitigação de tab background: se este content rodar com
+ * visibilityState === 'hidden' (caso típico de audiência),
+ * pede ao background para ATIVAR esta aba antes de renderizar, e
+ * RESTAURA a aba previamente ativa ao terminar. Garante render rápido
+ * sem o usuário precisar trocar de aba manualmente.
  */
 export async function runOcrOnDocumentsViaOffscreen(
   docs: ProcessoDocumento[],
@@ -849,8 +855,9 @@ export async function runOcrOnDocumentsViaOffscreen(
     return docs;
   }
 
-  // 1. Garante que o offscreen document existe (background é o único
-  //    contexto que pode chamar chrome.offscreen.createDocument).
+  // 1. Garante offscreen + obtém tabId próprio (para o background
+  //    rotear OCR_OFFSCREEN_PROGRESS de volta a este content).
+  let tabId: number | undefined;
   try {
     const ack = await chrome.runtime.sendMessage({
       channel: MESSAGE_CHANNELS.OCR_OFFSCREEN_ENSURE
@@ -858,6 +865,7 @@ export async function runOcrOnDocumentsViaOffscreen(
     if (!ack?.ok) {
       throw new Error(ack?.error || 'background não confirmou ensure offscreen');
     }
+    tabId = typeof ack.tabId === 'number' ? ack.tabId : undefined;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn(
@@ -868,14 +876,78 @@ export async function runOcrOnDocumentsViaOffscreen(
     return docs;
   }
 
-  // 2. Notifica o início de cada doc (UI puxa contagem progressiva apesar
-  //    de não termos progresso real por página — offscreen processa em
-  //    batch e devolve tudo de uma vez).
-  for (let i = 0; i < targets.length; i++) {
-    onProgress?.({ type: 'ocr-document-start', index: i, documento: targets[i]! });
+  // 2. Mitigação de throttling: se a aba está oculta E o chamador não
+  //    pediu para pular focus, ativa-a antes de renderizar. Audiência
+  //    passa skipTabFocus=true porque opera dentro de aba oculta
+  //    auxiliar — roubar foco da aba do usuário (que está na aba do
+  //    Resumo) é pior que tolerar throttling de timer.
+  const tabaOriginalmenteOculta = document.visibilityState === 'hidden';
+  const skipTabFocus = options?.skipTabFocus === true;
+  let previousActiveTabId: number | undefined;
+  if (tabaOriginalmenteOculta && !skipTabFocus) {
+    try {
+      const focusAck = await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.OCR_FOCUS_TAB,
+        request: 'activate'
+      });
+      if (focusAck?.ok) {
+        previousActiveTabId = focusAck.previousActiveTabId;
+      } else {
+        console.info(
+          `${LOG_PREFIX} OCR: não conseguiu ativar a aba (segue mesmo assim):`,
+          focusAck?.error
+        );
+      }
+    } catch (err: unknown) {
+      console.info(`${LOG_PREFIX} OCR: focus-tab falhou (segue mesmo assim):`, err);
+    }
   }
 
-  // 3. Envia batch ao offscreen e aguarda resposta única.
+  // 3. Listener temporário de progresso. O offscreen emite por doc;
+  //    o background repassa via chrome.tabs.sendMessage.
+  const batchId = `ocr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const targetsById = new Map(targets.map((d, i) => [d.id, { doc: d, index: i }]));
+  const progressListener = (msg: {
+    channel?: string;
+    batchId?: string;
+    event?: {
+      type: 'ocr-document-start' | 'ocr-document-done' | 'ocr-document-error';
+      index: number;
+      documento: { id: string };
+      pagesProcessed?: number;
+      pagesSkipped?: number;
+      error?: string;
+    };
+  }): void => {
+    if (msg?.channel !== MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS) return;
+    if (msg.batchId !== batchId || !msg.event) return;
+    const entry = targetsById.get(msg.event.documento.id);
+    if (!entry) return;
+    if (msg.event.type === 'ocr-document-start') {
+      onProgress?.({
+        type: 'ocr-document-start',
+        index: entry.index,
+        documento: entry.doc
+      });
+    } else if (msg.event.type === 'ocr-document-done') {
+      onProgress?.({
+        type: 'ocr-document-done',
+        index: entry.index,
+        documento: entry.doc,
+        pagesProcessed: msg.event.pagesProcessed ?? 0,
+        pagesSkipped: msg.event.pagesSkipped ?? 0
+      });
+    } else if (msg.event.type === 'ocr-document-error') {
+      onProgress?.({
+        type: 'ocr-document-error',
+        index: entry.index,
+        documento: entry.doc,
+        error: msg.event.error ?? 'erro desconhecido'
+      });
+    }
+  };
+  chrome.runtime.onMessage.addListener(progressListener);
+
   type OcrDocResult = {
     text: string;
     ok: boolean;
@@ -884,44 +956,111 @@ export async function runOcrOnDocumentsViaOffscreen(
     pagesSkipped?: number;
   };
   let resultados: Record<string, OcrDocResult> = {};
+  const renderErrors = new Map<string, string>();
+
+  // Keepalive port: mantém o service worker do background vivo durante
+  // o render no content. Sem isso, o SW dorme em ~30s de inatividade,
+  // e canais long-lived como o sendMessage do `handleAudienciaResumoColetarDocs`
+  // → aba oculta fecham antes da resposta voltar (BUG-21, sessão 2026-05-14).
+  // Port mantém SW vivo até 5min (limite do Chrome 116+).
+  let keepAlivePort: chrome.runtime.Port | null = null;
   try {
-    resultados = (await chrome.runtime.sendMessage({
-      type: MESSAGE_CHANNELS.OCR_OFFSCREEN_BATCH,
-      docs: targets.map((d) => ({ id: d.id, url: d.url })),
-      options: { maxPages: options?.maxPages }
-    })) as Record<string, OcrDocResult>;
+    keepAlivePort = chrome.runtime.connect({ name: 'paidegua/ocr-keepalive' });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(`${LOG_PREFIX} OCR offscreen batch falhou:`, message);
-    onProgress?.({ type: 'ocr-done', updated: [] });
-    return docs;
+    console.info(`${LOG_PREFIX} keepalive port não pôde ser aberta:`, err);
   }
 
-  // 4. Aplica resultados nos docs.
+  try {
+    // 4. Para cada doc: fetch + render no content. Construímos o batch
+    //    com dataURLs JPEG por página (Blob não atravessa
+    //    chrome.runtime.sendMessage — vira `{}` na serialização JSON).
+    //    Fetch tem timeout duro; se um doc falhar, registramos o erro
+    //    e continuamos com os demais.
+    const docsParaOcr: Array<{ id: string; pageImages: string[] }> = [];
+    for (let index = 0; index < targets.length; index++) {
+      const doc = targets[index]!;
+      try {
+        const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const buffer = await response.arrayBuffer();
+        if (buffer.byteLength === 0) {
+          throw new Error('PDF veio com 0 bytes');
+        }
+        const rendered = await renderPdfToImages(buffer, {
+          maxPages: options?.maxPages
+        });
+        if (rendered.images.length === 0) {
+          throw new Error('render não produziu imagens');
+        }
+        docsParaOcr.push({
+          id: doc.id,
+          pageImages: rendered.images.map((img) => img.dataUrl)
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        renderErrors.set(doc.id, message);
+        onProgress?.({
+          type: 'ocr-document-error',
+          index,
+          documento: doc,
+          error: `render: ${message}`
+        });
+      }
+    }
+
+    // 5. Envia o batch ao offscreen e aguarda. Progresso por documento
+    //    chega via progressListener acima durante este await.
+    if (docsParaOcr.length > 0) {
+      try {
+        resultados = (await chrome.runtime.sendMessage({
+          type: MESSAGE_CHANNELS.OCR_OFFSCREEN_BATCH,
+          docs: docsParaOcr,
+          batchId,
+          tabId
+        })) as Record<string, OcrDocResult>;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`${LOG_PREFIX} OCR offscreen batch falhou:`, message);
+      }
+    }
+  } finally {
+    chrome.runtime.onMessage.removeListener(progressListener);
+
+    // 6. Restaura a aba originalmente ativa, se a trocamos.
+    if (previousActiveTabId != null) {
+      try {
+        await chrome.runtime.sendMessage({
+          channel: MESSAGE_CHANNELS.OCR_FOCUS_TAB,
+          request: 'restore',
+          previousActiveTabId
+        });
+      } catch (err: unknown) {
+        console.info(`${LOG_PREFIX} OCR: restore-tab falhou:`, err);
+      }
+    }
+
+    // 7. Fecha keepalive port — libera o service worker para dormir.
+    if (keepAlivePort) {
+      try {
+        keepAlivePort.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  // 7. Aplica resultados nos docs. Eventos de progresso já saíram via
+  //    streaming — não duplicar aqui.
   const updatedMap = new Map<string, ProcessoDocumento>();
-  for (let index = 0; index < targets.length; index++) {
-    const doc = targets[index]!;
+  for (const doc of targets) {
     const r = resultados[doc.id];
     if (r?.ok && r.text.trim().length > 0) {
-      const updated: ProcessoDocumento = {
+      updatedMap.set(doc.id, {
         ...doc,
         textoExtraido: r.text,
         isScanned: true
-      };
-      updatedMap.set(doc.id, updated);
-      onProgress?.({
-        type: 'ocr-document-done',
-        index,
-        documento: updated,
-        pagesProcessed: r.pagesProcessed ?? 0,
-        pagesSkipped: r.pagesSkipped ?? 0
-      });
-    } else {
-      onProgress?.({
-        type: 'ocr-document-error',
-        index,
-        documento: doc,
-        error: r?.error || 'sem resultado do offscreen'
       });
     }
   }
@@ -932,7 +1071,7 @@ export async function runOcrOnDocumentsViaOffscreen(
 
   console.log(
     `${LOG_PREFIX} OCR offscreen concluído: ${updatedList.length}/${targets.length} ` +
-      `documentos processados.`
+      `documentos processados${renderErrors.size > 0 ? ` (${renderErrors.size} falharam no render)` : ''}.`
   );
 
   return merged;

@@ -433,6 +433,7 @@ async function handleRunOcr(): Promise<void> {
     return;
   }
   const sidebar = mounted.sidebar;
+  const docList = mounted.docList;
   const pendentes = getOcrPendingDocuments(getExtraidosArray());
   if (pendentes.length === 0) {
     sidebar.setOcrPending(0);
@@ -444,6 +445,12 @@ async function handleRunOcr(): Promise<void> {
     `Iniciando OCR de ${pendentes.length} documento(s)… isto pode levar alguns minutos.`,
     'info'
   );
+  docList?.setGlobalStatus(
+    `OCR em execução — 0/${pendentes.length} documento(s) digitalizado(s)…`
+  );
+
+  let ocrProcessados = 0;
+  let ocrFalhas = 0;
 
   try {
     const maxPages = memory.settings?.ocrMaxPages;
@@ -471,15 +478,23 @@ async function handleRunOcr(): Promise<void> {
           );
           break;
         case 'ocr-document-done':
+          ocrProcessados++;
           sidebar.setGlobalNotice(
             `OCR: ${event.index + 1}/${pendentes.length} ${rotuloDoc(event.documento)} concluído (${event.pagesProcessed} páginas${event.pagesSkipped > 0 ? `, ${event.pagesSkipped} puladas` : ''}).`,
             'info'
           );
+          docList?.setGlobalStatus(
+            `OCR em execução — ${ocrProcessados}/${pendentes.length} processado(s)${ocrFalhas > 0 ? `, ${ocrFalhas} com erro` : ''}…`
+          );
           break;
         case 'ocr-document-error':
+          ocrFalhas++;
           sidebar.setGlobalNotice(
             `OCR: falha em ${rotuloDoc(event.documento)} — ${event.error}`,
             'warn'
+          );
+          docList?.setGlobalStatus(
+            `OCR em execução — ${ocrProcessados}/${pendentes.length} processado(s), ${ocrFalhas} com erro…`
           );
           console.warn(
             `${LOG_PREFIX} OCR falhou no documento:`,
@@ -511,18 +526,27 @@ async function handleRunOcr(): Promise<void> {
     sidebar.setOcrPending(stillPending);
     if (stillPending === 0) {
       sidebar.setGlobalNotice('OCR concluído — todos os documentos digitalizados foram processados.', 'info');
+      docList?.setGlobalStatus(
+        `OCR concluído — ${ocrProcessados} documento(s) digitalizado(s) processado(s). Todos prontos para o chat.`
+      );
     } else {
       const rotulo = (d: ProcessoDocumento): string => {
         const base = d.tipo || d.descricao || `doc ${d.id}`;
         return `${base} (id ${d.id})`;
       };
-      const MAX_EXIBIR = 3;
+      const MAX_EXIBIR = 5;
       const lista = pendentesApos.slice(0, MAX_EXIBIR).map(rotulo).join('; ');
       const sufixo =
         stillPending > MAX_EXIBIR ? `; e mais ${stillPending - MAX_EXIBIR}` : '';
+      const reconhecidos = ocrProcessados - stillPending;
       sidebar.setGlobalNotice(
-        `OCR parcial — ${stillPending} documento(s) ainda sem texto: ${lista}${sufixo}. Tente novamente ou revise manualmente.`,
+        `OCR concluído — ${reconhecidos} doc(s) reconhecido(s), ${stillPending} sem texto extraível ` +
+          `(provavelmente carimbos, assinaturas ou imagens sem texto): ${lista}${sufixo}.`,
         'warn'
+      );
+      docList?.setGlobalStatus(
+        `OCR concluído — ${reconhecidos}/${pendentes.length} reconhecido(s), ` +
+          `${stillPending} sem texto extraível.`
       );
       console.warn(
         `${LOG_PREFIX} OCR parcial — documentos pendentes:`,
@@ -537,6 +561,7 @@ async function handleRunOcr(): Promise<void> {
   } catch (error: unknown) {
     sidebar.setOcrPending(pendentes.length, false);
     sidebar.setGlobalNotice(`Falha no OCR: ${errorMessage(error)}`, 'error');
+    docList?.setGlobalStatus(`Falha no OCR: ${errorMessage(error)}`);
   }
 }
 

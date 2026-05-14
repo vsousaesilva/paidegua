@@ -311,7 +311,7 @@ export async function coletarDocumentosDoProcesso(
       let ocrCount = 0;
       setProg(
         `Reconhecendo texto em ${totalOcr} documento(s) digitalizado(s) ` +
-          `(pode levar até 1 minuto)...`
+          `(pode levar alguns minutos, mantenha esta aba aberta)...`
       );
 
       // Timeout total: 90s/doc é o orçamento (offscreen tem timeout
@@ -328,7 +328,12 @@ export async function coletarDocumentosDoProcesso(
               );
             }
           },
-          { maxPages }
+          // skipTabFocus: estamos rodando em aba oculta auxiliar criada
+          // pelo background. NÃO podemos pedir para ativar essa aba — isso
+          // roubaria o foco do usuário (que está na aba do Resumo da Pauta).
+          // O custo de tolerar throttling de timer é menor que o custo de
+          // UX de a aba PJe pular para o primeiro plano sem pedido.
+          { maxPages, skipTabFocus: true }
         ),
         timeoutMs,
         'OCR offscreen global'

@@ -683,6 +683,27 @@ export const MESSAGE_CHANNELS = {
    * host_permissions do manifest). Resposta é um map id→{text, ok, error}.
    */
   OCR_OFFSCREEN_BATCH: 'paidegua/ocr-offscreen/batch',
+  /**
+   * OCR offscreen — evento de progresso (start/done/error por documento)
+   * emitido pelo offscreen durante o batch. Vai do offscreen para o
+   * background, que repassa via chrome.tabs.sendMessage para o tab que
+   * originou o batch (tabId carregado no payload do BATCH original).
+   * Sem este canal a UI fica congelada em "N/N" desde o início porque o
+   * batch retorna tudo de uma vez no final.
+   */
+  OCR_OFFSCREEN_PROGRESS: 'paidegua/ocr-offscreen/progress',
+  /**
+   * OCR — solicitação para focar/restaurar a aba do PJe durante o
+   * render de PDFs. Render do pdf.js no content script em tab background
+   * pode ficar lento por throttling de timers (await internos do pdf.js
+   * usam setTimeout). Quando o content detecta document.visibilityState
+   * === 'hidden', pede ao background para ativar a aba ANTES de renderizar,
+   * e para restaurar a aba anterior ao terminar.
+   *
+   * payload: { request: 'activate' } → resp { previousActiveTabId }
+   * payload: { request: 'restore', previousActiveTabId } → resp { ok }
+   */
+  OCR_FOCUS_TAB: 'paidegua/ocr/focus-tab',
 
   /**
    * Canal do "Consultor de fluxos" — abre a página estática

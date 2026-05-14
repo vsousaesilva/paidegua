@@ -5874,32 +5874,37 @@
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T00:00:00.000Z",
           "comando": "Diagnóstico do console enviado pela usuária: o popup principal cai no caminho legado runOcrOnDocuments (Worker no content script), enquanto o resumo de audiência já usa runOcrOnDocumentsViaOffscreen (Worker no offscreen, same-origin com chrome-extension://). Fix aplicado: 1 troca de import + 1 troca de chamada em src/content/content.ts. Bump 1.6.1 → 1.6.2 em manifest.json + package.json. build.bat OK (typecheck + webpack compilou sem warnings). Próximo passo: REL-1.6.2 (release-extensao)."
+        },
+        {
+          "tipo": "comentado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T18:00:00.000Z",
+          "comando": "Investigação aprofundada após 1ª release: o fix do popup (trocar para runOcrOnDocumentsViaOffscreen) expôs cadeia de 8 bugs latentes na v1.6.1 que ninguém havia disparado porque audiência aparentemente não rodava OCR para PDFs imagem em produção. Desenrolar: (1) pdfjs workerSrc faltando no offscreen → fix em src/offscreen/ocr.ts. (2) Rodapé do docList congelado em 'Extração concluída' durante OCR → fix com setGlobalStatus dinâmico em content.ts. (3) Progresso 'N/N' desde o início → implementado streaming OCR_OFFSCREEN_PROGRESS via background.tabs.sendMessage. (4) PDF.js page.render TRAVA no offscreen document (hang silencioso após operadores extraídos — descobrimos via instrumentação cirúrgica: createImageBitmap funciona, OffscreenCanvas→<canvas> não resolve, fake worker não resolve, é hang interno do pdf.js v5 em offscreen documents). Solução: REFATORAÇÃO ARQUITETURAL — render fica no content script (onde sempre funcionou), offscreen recebe imagens JPEG já renderizadas (dataURLs porque Blob não atravessa runtime.sendMessage) e roda só Tesseract. (5) Mitigação de tab background via OCR_FOCUS_TAB (foca aba PJe se hidden, restaura no fim). (6) Service worker dormindo durante render → keepalive port chrome.runtime.connect('paidegua/ocr-keepalive'). (7) Mitigação OCR_FOCUS_TAB roubava foco em audiência (aba oculta auxiliar) → flag skipTabFocus:true em OcrOptions. (8) Mensagens UX confusas: 'falhou' para docs que apenas não têm texto extraível (carimbos, assinaturas, imagens sem texto) → ajustada para 'docs reconhecidos / sem texto extraível' com IDs visíveis. Estado: build OK, testado popup (vitória), testado audiência (funciona, ~3-5min por doc em background — aceitável vs OCR não-funcional; performance é OCR-22). Pronto para 2º upload à CWS substituindo v1.6.2 em revisão."
         }
       ]
     },
     {
       "id": "REL-1.6.2",
-      "titulo": "Release v1.6.2 — fix do OCR no popup principal (caminho offscreen)",
-      "descricao": "Hotfix de BUG-21. Bump 1.6.1 → 1.6.2 carregando uma única correção: o botão 'Rodar OCR' do popup principal passa a usar runOcrOnDocumentsViaOffscreen (Worker no offscreen, same-origin com chrome-extension://) em vez de runOcrOnDocuments (Worker no content script, bloqueado por same-origin contra a página do PJe).\n\nEscopo cirúrgico: 2 linhas em src/content/content.ts (import + call site). Sem mudança de manifest além de version. Sem mudança em background, offscreen ou outros fluxos — o caminho offscreen já estava pronto e validado na v1.6.1 pelo fluxo de Resumo de Audiência.\n\nUX: o usuário perde o detalhe de 'OCR: página N/M' (offscreen processa em batch e devolve por documento), mas ganha OCR funcional. Trade-off aceitável.",
+      "titulo": "Release v1.6.2 — fix inicial do OCR no popup principal (troca para caminho offscreen)",
+      "descricao": "Hotfix da reportagem da usuária (BUG-21 — 1ª iteração). Bump 1.6.1 → 1.6.2. Escopo: 2 linhas em src/content/content.ts — botão 'Rodar OCR' do popup principal passa a usar runOcrOnDocumentsViaOffscreen (Worker no offscreen) em vez de runOcrOnDocuments (Worker no content, bloqueado por same-origin do Chrome MV3 contra a origem do PJe).\n\nEscopo cirúrgico que se mostrou INSUFICIENTE em produção: o caminho offscreen, embora pronto na v1.6.1 para audiência, tinha bugs latentes nunca exercitados (page.render do pdf.js trava no offscreen document, workerSrc faltando, UI sem progresso real, etc.). A v1.6.2 foi aprovada e publicada antes desses bugs serem descobertos. REL-1.6.3 traz a refatoração arquitetural completa.",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "dev",
-      "origem": "skill release-extensao — sessão 14/05/2026 (hotfix de BUG-21)",
+      "coluna": "lancado",
+      "origem": "skill release-extensao — sessão 14/05/2026 (hotfix de BUG-21 — 1ª iteração)",
       "tags": ["release", "extensao", "cws", "ocr", "hotfix"],
       "esforco": "XS",
       "depende": ["BUG-21"],
       "aceitacao": [
         "manifest.json e package.json em 1.6.2; dist/manifest.json em 1.6.2",
-        "dist/content.js contém runOcrOnDocumentsViaOffscreen na chamada do handleRunOcr",
+        "dist/content.js usa runOcrOnDocumentsViaOffscreen no handleRunOcr",
         "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
-        "dist/offscreen/* presente (já vindo da v1.6.1)",
         "zip versoes/dist v1.6.2.zip com manifest.json na raiz, enviado à CWS",
         "Commit do fix pushado em origin/main",
-        "Aprovação CWS + smoke test do owner + pilotos comunicados → mover para lancado"
+        "Aprovação CWS + comunicação aos pilotos"
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-14T00:00:00.000Z",
-      "atualizadoEm": "2026-05-14T00:00:00.000Z",
+      "atualizadoEm": "2026-05-14T18:00:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-05-14",
       "historico": [
         {
@@ -5907,6 +5912,78 @@
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T00:00:00.000Z",
           "comando": "Card aberto durante o hotfix de BUG-21. Aguarda execução da skill release-extensao (zip via cd dist + tar -a -cf, upload manual ao CWS Developer Dashboard, commit + push, comunicação aos pilotos)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-14T17:00:00.000Z",
+          "comando": "v1.6.2 aprovada pela Chrome Web Store e em produção em 14/05/2026. Smoke test apontou que o fix do popup era insuficiente — o caminho offscreen tem bugs latentes (page.render trava, sem progresso, etc.). Continuação dos fixes vai na REL-1.6.3."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.6.3",
+      "titulo": "Release v1.6.3 — refatoração arquitetural do OCR (render no content + Tesseract no offscreen)",
+      "descricao": "Continuação imediata do BUG-21 após a v1.6.2 entrar em produção: o fix do popup (REL-1.6.2) apenas trocou o caminho para offscreen, mas o caminho offscreen tinha 7 bugs latentes nunca exercitados em produção (provavelmente porque ninguém testou audiência com PDF imagem desde a v1.6.1).\n\nEscopo (7 fixes consolidados):\n1. pdf.js workerSrc setado no contexto do offscreen (estava só no content)\n2. Streaming OCR_OFFSCREEN_PROGRESS via background.tabs.sendMessage — UI mostra progresso real por doc em vez de 'N/N' desde o início\n3. Rodapé do docList atualiza durante OCR (antes congelava em 'Extração concluída')\n4. REFATORAÇÃO ARQUITETURAL: render do PDF fica no content script (pdf.js v5 TRAVA em page.render dentro de offscreen document — hang silencioso após operadores extraídos, descoberto via instrumentação cirúrgica). Offscreen recebe imagens JPEG dataURL (Blob não atravessa runtime.sendMessage) e roda só Tesseract.\n5. Mitigação de tab background (OCR_FOCUS_TAB): se aba PJe está hidden no popup principal, content pede para background ativar a aba antes do render e restaurar a aba anterior no fim. NÃO é acionada em audiência (skipTabFocus:true) porque a aba oculta auxiliar não deve roubar foco do usuário.\n6. Keepalive port (chrome.runtime.connect 'paidegua/ocr-keepalive') durante o batch — mantém service worker vivo durante render no content. Sem isso, SW dormia em ~30s e quebrava o chrome.tabs.sendMessage do background → aba oculta de audiência.\n7. UX: mensagens diferenciam 'sem texto extraível' (carimbos, assinaturas, imagens) de 'falha técnica', mostrando IDs dos docs. Audiência: timeout de 1 minuto removido da mensagem ('pode levar alguns minutos, mantenha esta aba aberta').\n\nArquivos modificados: src/content/ocr.ts (renderPdfToImages + limpa instrumentação), src/offscreen/ocr.ts (recebe dataURLs, sem pdf.js), src/content/extractor.ts (runOcrOnDocumentsViaOffscreen reescrito), src/content/audiencia/audiencia-resumo-docs.ts (passa skipTabFocus), src/background/background.ts (OCR_FOCUS_TAB + keepalive port), src/shared/constants.ts (canais novos).\n\nLimitação conhecida em audiência: render em aba background é lento por throttling do Chrome 116+ — ~3-5min por doc imagem. Aceitável vs OCR não-funcional. Card OCR-22 cobre evolução futura.",
+      "categoria": "infra",
+      "prioridade": "P0",
+      "coluna": "dev",
+      "origem": "skill release-extensao — sessão 14/05/2026 (continuação após v1.6.2 entrar em produção)",
+      "tags": ["release", "extensao", "cws", "ocr", "hotfix", "refatoracao"],
+      "esforco": "M",
+      "depende": ["REL-1.6.2", "BUG-21"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.6.3; dist/manifest.json em 1.6.3",
+        "dist/content.js contém canal 'paidegua/ocr-offscreen' e 'paidegua/ocr-keepalive'",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/offscreen/ocr.js NÃO importa mais pdf.js (só Tesseract)",
+        "zip versoes/dist v1.6.3.zip com manifest.json na raiz, enviado à CWS",
+        "Smoke test: popup principal OCRa PDF imagem; audiência OCRa PDF imagem (mesmo que lento)",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-14T18:00:00.000Z",
+      "atualizadoEm": "2026-05-14T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T18:00:00.000Z",
+          "comando": "Card aberto após a v1.6.2 entrar em produção e revelar que o caminho offscreen tinha 7 bugs latentes. Investigação cirúrgica via instrumentação confirmou que pdf.js v5 page.render trava em offscreen documents (não é Worker, não é canvas, não é createImageBitmap — provavelmente Image.decode interno). Solução: refatoração arquitetural — render volta para o content, offscreen fica só com Tesseract. Bump 1.6.2 → 1.6.3. Build local OK + testado popup (vitória) + testado audiência (funciona, lento mas aceitável)."
+        }
+      ]
+    },
+    {
+      "id": "OCR-22",
+      "titulo": "Performance do OCR — tempo de leitura em audiência e qualidade de reconhecimento",
+      "descricao": "Tech-debt aberto durante o desenrolar do BUG-21 (sessão 14/05/2026). Duas dimensões a investigar:\n\n## (1) Tempo — render lento em aba background (audiência)\n\nNa nova arquitetura (REL-1.6.2), render do PDF roda no content script da aba oculta de audiência. Chrome 116+ throttla tabs em background: setTimeout(0) pode virar setTimeout(1000+ms), e o fake worker do pdf.js (que roda no main thread) é especialmente afetado. Resultado prático: 1 doc imagem leva 3-5 minutos para OCRar (esperado seria <1min em aba ativa).\n\nNão é regressão da v1.6.0 (que provavelmente tinha o mesmo throttle), só ficou mais visível agora que a arquitetura está clara.\n\nCaminhos a investigar:\n- (a) Render dentro de Web Worker no content (Workers não são throttled como main thread)\n- (b) Render em aba popup off-screen (visualmente 'ativa' mas fora do campo de visão — chrome.windows.create com left/top fora da tela)\n- (c) Voltar render ao offscreen com fix para o hang do page.render (precisa investigar Image.decode() que não foi testado isoladamente — pode ser ele que pendura)\n- (d) Forçar a aba oculta de audiência a ser type:'popup' com janela própria não-minimizada\n\n## (2) Qualidade — docs OCR retornam texto vazio\n\nEm processos previdenciários típicos (laudos, RGs, CPFs digitalizados), 10-20% dos docs imagem voltam com texto vazio mesmo com OCR rodando. Causa: Tesseract emite warnings 'Image too small to scale!!' (fragmentos com 1-2 pixels de largura) e 'Line cannot be recognized!!' (qualidade de digitalização insuficiente). A UI hoje mostra esses docs como 'sem texto extraível' com IDs (não como falha técnica).\n\nCaminhos a investigar:\n- (a) Pré-processamento da imagem antes do OCR (deskew, threshold, contraste) — melhoraria taxa de reconhecimento em scans tortos/desbotados\n- (b) RENDER_SCALE adaptativo (atualmente 2.0 fixo) — aumentar para 3.0/4.0 em scans pequenos pode quebrar o limiar de tamanho mínimo do Tesseract\n- (c) Tessdata 'best' em vez de 'fast' (LSTM melhor treinado, ~3x maior, mais lento mas mais preciso)\n- (d) Fallback para Gemini Vision quando Tesseract devolve vazio — IA multimodal pode extrair texto de carimbos/assinaturas que Tesseract pula\n\n## Decisão para a release v1.6.2\n\nMantemos a arquitetura atual. OCR no popup ficou rápido e funcional (caso comum). Audiência ficou lenta mas funcional. Esse card cobre evoluções futuras quando houver banda.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "sessão 14/05/2026 — desenrolar do BUG-21 expôs limitações de performance + qualidade do pipeline OCR",
+      "tags": ["ocr", "tesseract", "performance", "audiencia", "tech-debt", "ux"],
+      "esforco": "M",
+      "depende": ["BUG-21", "REL-1.6.3"],
+      "aceitacao": [
+        "Pesquisa documentada dos caminhos (a-d) de cada dimensão com prós/contras e POC mínima",
+        "Decisão go/no-go para cada caminho com base em medição (tempo médio por doc + taxa de reconhecimento)",
+        "Implementação dos caminhos aprovados em release dedicada",
+        "Regressão zero em audiência e popup"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-14T18:00:00.000Z",
+      "atualizadoEm": "2026-05-14T18:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T18:00:00.000Z",
+          "comando": "Card aberto a pedido do owner ao final do desenrolar do BUG-21. Cobre as duas frentes que ficaram suboptimal após a refatoração arquitetural: tempo de OCR em audiência (lento por throttling de tab background) e qualidade de reconhecimento (docs com texto vazio que Tesseract não consegue ler). Não é regressão — comportamento similar à v1.6.0, mas agora ficou explícito e mensurável."
         }
       ]
     }

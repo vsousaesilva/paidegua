@@ -1,24 +1,24 @@
 /**
  * OCR de PDFs digitalizados usando Tesseract.js + pdf.js.
  *
- * Roda inteiramente no content script (isolated world) — sem dependência de
- * rede. Todos os assets (worker, core wasm, por.traineddata) são empacotados
- * na extensão e servidos via chrome.runtime.getURL (web_accessible_resources
- * `libs/*` no manifest).
+ * Arquitetura (após investigação BUG-21):
+ *  - pdf.js render: SEMPRE no content script. No offscreen document
+ *    `page.render` trava silenciosamente após o tick 1 (algo no canal
+ *    de decodificação de imagem JPEG embutida não retorna). No content
+ *    script o pdf.js cai no fake worker e funciona via import() ESM.
+ *  - Tesseract.recognize: no offscreen quando chamado via offscreen
+ *    document (popup principal e audiência), no content quando chamado
+ *    pelo `ocrPdf` direto. O offscreen evita throttling de tab background
+ *    e contorna o bloqueio cross-origin de Worker do Tesseract no content.
  *
- * Pipeline:
- *  1. pdf.js abre o PDF e, para cada página (até MAX_OCR_PAGES), renderiza
- *     em um OffscreenCanvas 2x (DPI maior → melhor acurácia de OCR).
- *  2. Tesseract.js (language=por, OEM=LSTM, SIMD) reconhece o canvas e
- *     devolve o texto.
- *  3. Texto de todas as páginas é concatenado no mesmo formato do pdf-parser.ts
- *     (`=== Página N ===\n<texto>`) para o modelo ver uma estrutura consistente.
- *
- * O worker Tesseract pode ser criado externamente e reutilizado entre vários
- * documentos via `createOcrWorker` + `ocrPdf({ worker })` — isso elimina o
- * overhead de ~3-5s por documento de carregar `por.traineddata` (~25MB)
- * cada vez. O orquestrador `runOcrOnDocuments` em extractor.ts faz isso
- * automaticamente em batch.
+ * Funções principais:
+ *  - `renderPdfToImages(buffer)` — só render do PDF para Blob[] JPEG.
+ *    Pensado para ser chamado no content e os Blobs serem mandados ao
+ *    offscreen para OCR.
+ *  - `ocrPdf(buffer)` — pipeline completo render+OCR no MESMO contexto.
+ *    Mantido para compatibilidade do caminho legado (`runOcrOnDocuments`
+ *    no extractor) — não é mais usado pelo caminho via offscreen.
+ *  - `createOcrWorker` — fábrica do worker Tesseract reutilizável.
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
@@ -41,6 +41,14 @@ export interface OcrOptions {
    * para 10 docs economiza ~30-50s.
    */
   worker?: TesseractWorker;
+  /**
+   * Quando true, desabilita a "mitigação de aba ativa" do
+   * runOcrOnDocumentsViaOffscreen — o content não pede para o background
+   * focar a aba. Útil quando o chamador SABE que está rodando numa aba
+   * auxiliar (ex.: aba oculta de audiência) e roubar foco do usuário
+   * seria pior que esperar render mais lento sob throttling de tab background.
+   */
+  skipTabFocus?: boolean;
 }
 
 /** Fator de escala aplicado ao render do PDF antes do OCR. */
@@ -111,21 +119,21 @@ export async function ocrPdf(
       const page = await doc.getPage(pageIndex);
       const viewport = page.getViewport({ scale: RENDER_SCALE });
 
-      // OffscreenCanvas é mais barato que <canvas> no DOM e não é afetado
-      // por CSS da página hospedeira.
-      const canvas = new OffscreenCanvas(
-        Math.ceil(viewport.width),
-        Math.ceil(viewport.height)
-      );
+      // <canvas> HTML "solto" (sem appendChild): funciona em ambos os
+      // contextos. OffscreenCanvas no offscreen document fazia page.render
+      // pendurar — ver doc do módulo.
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
       const context = canvas.getContext('2d');
       if (!context) {
-        throw new Error('OffscreenCanvas 2d context indisponível');
+        throw new Error('canvas 2d context indisponível');
       }
 
       await page.render({
-        canvasContext: context as unknown as CanvasRenderingContext2D,
+        canvasContext: context,
         viewport,
-        canvas: canvas as unknown as HTMLCanvasElement
+        canvas
       }).promise;
       page.cleanup();
 
@@ -136,10 +144,7 @@ export async function ocrPdf(
         status: 'rendering'
       });
 
-      // Tesseract aceita OffscreenCanvas diretamente em v5.
-      const { data } = await worker.recognize(
-        canvas as unknown as HTMLCanvasElement
-      );
+      const { data } = await worker.recognize(canvas);
       pageTexts.push((data.text || '').trim());
 
       onProgress?.({
@@ -173,6 +178,101 @@ export async function ocrPdf(
 
   return {
     text,
+    pagesProcessed: pagesToProcess,
+    pagesSkipped: Math.max(0, totalPages - pagesToProcess),
+    totalPages
+  };
+}
+
+export interface RenderedPdfImage {
+  /**
+   * Data URL `data:image/jpeg;base64,…` da página renderizada.
+   * Formato escolhido (em vez de Blob direto) porque chrome.runtime.sendMessage
+   * serializa via JSON entre contextos — Blobs viram `{}` vazios. Data URL é
+   * string, atravessa runtime msg sem perda. Overhead ~33% no tamanho vs Blob.
+   */
+  dataUrl: string;
+  /** Largura da imagem em pixels (após escala). */
+  width: number;
+  /** Altura da imagem em pixels (após escala). */
+  height: number;
+}
+
+export interface RenderPdfResult {
+  images: RenderedPdfImage[];
+  pagesProcessed: number;
+  pagesSkipped: number;
+  totalPages: number;
+}
+
+/**
+ * Renderiza um PDF para uma lista de imagens JPEG (uma por página).
+ *
+ * Usado para separar render (que precisa ser no content script porque
+ * pdf.js v5 trava no offscreen document — ver doc do módulo) do OCR
+ * em si (que roda no offscreen via Tesseract). Os Blobs gerados são
+ * mandados ao offscreen via `chrome.runtime.sendMessage`.
+ *
+ * JPEG (qualidade 0.92) reduz drasticamente o tamanho da mensagem
+ * em comparação com PNG ou ImageData cru, mantendo qualidade suficiente
+ * para OCR (Tesseract LSTM é robusto a artefatos JPEG moderados).
+ */
+export async function renderPdfToImages(
+  buffer: ArrayBuffer,
+  options?: { maxPages?: number; jpegQuality?: number }
+): Promise<RenderPdfResult> {
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(buffer),
+    disableFontFace: true,
+    useSystemFonts: false,
+    isEvalSupported: false,
+    verbosity: 0
+  });
+  const doc = await loadingTask.promise;
+  const totalPages = doc.numPages;
+  const effectiveCap =
+    options?.maxPages && options.maxPages > 0 ? options.maxPages : MAX_OCR_PAGES;
+  const pagesToProcess = Math.min(totalPages, effectiveCap);
+  const jpegQuality = options?.jpegQuality ?? 0.92;
+
+  const images: RenderedPdfImage[] = [];
+
+  try {
+    for (let pageIndex = 1; pageIndex <= pagesToProcess; pageIndex++) {
+      const page = await doc.getPage(pageIndex);
+      const viewport = page.getViewport({ scale: RENDER_SCALE });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const context = canvas.getContext('2d');
+      if (!context) {
+        throw new Error('canvas 2d context indisponível');
+      }
+
+      await page.render({
+        canvasContext: context,
+        viewport,
+        canvas
+      }).promise;
+      page.cleanup();
+
+      // toDataURL retorna string base64 — atravessa chrome.runtime.sendMessage
+      // sem ser serializada como objeto vazio (problema com Blob).
+      const dataUrl = canvas.toDataURL('image/jpeg', jpegQuality);
+      images.push({ dataUrl, width: canvas.width, height: canvas.height });
+    }
+  } finally {
+    try {
+      await doc.cleanup();
+      await doc.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return {
+    images,
     pagesProcessed: pagesToProcess,
     pagesSkipped: Math.max(0, totalPages - pagesToProcess),
     totalPages
