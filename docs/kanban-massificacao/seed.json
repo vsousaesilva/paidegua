@@ -2879,6 +2879,47 @@
       ]
     },
     {
+      "id": "OPS-12",
+      "titulo": "Site institucional paidegua.ia.br + Manual público (Cloudflare Pages)",
+      "descricao": "Publicar o domínio raiz paidegua.ia.br com (a) landing institucional do pAIdegua e (b) manual de instalação e uso público em paidegua.ia.br/manual, refletindo o estado atual da extensão v1.6.1.\n\nMotivação: o link 'Ler o manual' nos comunicados (welcome email, materiais de divulgação para pilotos) apontava para uma URL inexistente; o manual.md em docs/ estava desatualizado e não havia versão pública. Após atualizar o conteúdo, foi pedido pelo owner publicar em paidegua.ia.br/manual.\n\nEscopo de conteúdo:\n- Atualização integral do docs/manual-instalacao-uso.md para refletir v1.6.1 (7 abas do popup, 10 módulos, login OTP, instalação via Chrome Web Store apenas — sem modo desenvolvedor como caminho recomendado).\n- Mantida apenas a seção 'Migração da versão de desenvolvedor para a Chrome Web Store' (export → remover → instalar → import) para piloto que veio do dist.\n- Nenhuma referência ao Kanban no site público (kanban.paidegua.ia.br é reservado à equipe Inovajus).\n\nEscopo técnico (docs/site/):\n- index.html — landing institucional (hero gov.br/PJe + 8 cards de funcionalidade + CTA para CWS).\n- manual/index.html — manual HTML estilizado com TOC lateral fixa, busca textual client-side (atalho '/'), drawer mobile.\n- assets/site.css — paleta gov.br/PJe (espelha kanban.css), responsivo.\n- assets/manual.js — TOC active state via IntersectionObserver + busca textual com debounce.\n- assets/logo.png — cópia de icons/icon128.png (logo oficial da extensão).\n\nDeploy: novo Cloudflare Pages 'paidegua-site' apontando para docs/site/, com custom domain paidegua.ia.br (apex). DNS apex configurado no Cloudflare (zona já cadastrada).",
+      "categoria": "operacional",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "origem": "pedido do usuário 2026-05-13/14 — manual atualizado + publicação em paidegua.ia.br/manual",
+      "fase": "F3",
+      "tags": [
+        "site",
+        "manual",
+        "cloudflare-pages",
+        "comunicacao",
+        "documentacao",
+        "release"
+      ],
+      "esforco": "M",
+      "depende": [
+        "OPS-11"
+      ],
+      "dataCriacao": "2026-05-14T11:00:00.000Z",
+      "aceitacao": [
+        "paidegua.ia.br (apex) serve landing institucional com identidade gov.br/PJe e CTA para a Chrome Web Store.",
+        "paidegua.ia.br/manual serve o manual HTML estilizado com TOC lateral, busca textual e responsivo até 360px.",
+        "Manual reflete o estado da extensão v1.6.1: 7 abas do popup, 10 módulos (Triagem, Etiquetas, Perícias, Audiência, Sigcrim, Comunicação, Metas CNJ, Painel Gerencial, Prazos na Fita, Consultor de Fluxos), login OTP, instalação só via CWS.",
+        "Nenhuma referência ao Kanban no site público (mantido como interno da equipe Inovajus).",
+        "Logo da extensão (icons/icon128.png) usada como brand do header e favicon.",
+        "Botão 'Instalar' do header com fundo azul + texto branco + borda azul-escura fina (regressão visual corrigida)."
+      ],
+      "checklist": [
+        { "id": "ops12-1", "texto": "Copiar icons/icon128.png para docs/site/assets/logo.png", "feito": true },
+        { "id": "ops12-2", "texto": "Validação visual local pelo owner (index.html + manual/index.html)", "feito": true },
+        { "id": "ops12-3", "texto": "Cloudflare Pages: criar projeto 'paidegua-site' apontando para docs/site/", "feito": false },
+        { "id": "ops12-4", "texto": "Cloudflare Pages: adicionar custom domain paidegua.ia.br (apex)", "feito": false },
+        { "id": "ops12-5", "texto": "DNS: confirmar que registro apex aponta para Pages (auto-criado pela Cloudflare)", "feito": false },
+        { "id": "ops12-6", "texto": "Smoke: paidegua.ia.br/manual renderiza no Chrome, Edge e mobile", "feito": false },
+        { "id": "ops12-7", "texto": "Mover card para 'lancado' após smoke OK", "feito": false }
+      ]
+    },
+    {
       "id": "ATD-01",
       "titulo": "Mini balcão virtual integrado",
       "descricao": "Botão 'Falar com a unidade' nos painéis do servidor abrindo agendamento do balcão virtual da unidade. Para servidor que precisa contatar outra vara.",

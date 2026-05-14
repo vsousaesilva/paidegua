@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual — pAIdegua · Inovajus / JFCE</title>
+<meta name="description" content="Manual de instalação e uso da extensão pAIdegua, plataforma de apoio à atividade judicial no PJe — triagem, minutas, pauta de audiência e perícia, controle criminal, comunicação, Metas CNJ, Painel Gerencial e Prazos na Fita.">
+<link rel="icon" href="../assets/logo.png">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<div class="govbr-strip"></div>
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="site-header__brand" href="../">
+      <img class="site-header__logo" src="../assets/logo.png" alt="pAIdegua">
+      <span>pAIdegua</span>
+    </a>
+    <span class="site-header__tag">Manual</span>
+    <nav class="site-header__nav">
+      <a href="../">Início</a>
+      <a class="btn" href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">Instalar</a>
+    </nav>
+  </div>
+</header>
+
+<button class="toc-toggle" aria-label="Abrir índice">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+
+<div class="manual-layout">
+  <aside class="toc" aria-label="Índice do manual">
+    <div class="toc__search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input id="manual-search" type="search" placeholder="Buscar no manual..." aria-label="Buscar no manual">
+    </div>
+    <p class="toc__hint">Atalho: pressione <code>/</code> para focar a busca.</p>
+    <ul class="toc__list toc__list--h2">
+      <li><a href="#parte-1-instalacao">1. Instalação</a></li>
+      <li><a href="#parte-2-primeiro-acesso">2. Primeiro acesso</a></li>
+      <li><a href="#parte-3-popup">3. O popup</a>
+        <ul class="toc__list toc__list--h3">
+          <li><a href="#popup-geral">3.1 Geral</a></li>
+          <li><a href="#popup-triagem">3.2 Triagem Inteligente</a></li>
+          <li><a href="#popup-etiquetas">3.3 Etiquetas Inteligentes</a></li>
+          <li><a href="#popup-pericias">3.4 Perícias</a></li>
+          <li><a href="#popup-comunicacao">3.5 Central de Comunicação</a></li>
+          <li><a href="#popup-mapas">3.6 Mapas de Jornada</a></li>
+          <li><a href="#popup-mais">3.7 Mais opções</a></li>
+          <li><a href="#popup-rodape">Rodapé</a></li>
+        </ul>
+      </li>
+      <li><a href="#parte-4-perfis">4. Perfis de trabalho</a></li>
+      <li><a href="#parte-5-painel">5. Painel lateral</a>
+        <ul class="toc__list toc__list--h3">
+          <li><a href="#acessar">5.1 Acessar</a></li>
+          <li><a href="#carregar-documentos">5.2 Carregar Documentos</a></li>
+          <li><a href="#ferramentas-gabinete">5.3 Gabinete</a></li>
+          <li><a href="#ferramentas-secretaria">5.4 Secretaria</a></li>
+          <li><a href="#ferramentas-gestao">5.5 Gestão</a></li>
+          <li><a href="#consultor-fluxos">5.6 Consultor de Fluxos</a></li>
+          <li><a href="#icones-linha">5.7 Ícones por linha</a></li>
+          <li><a href="#chat-livre">5.8 Chat livre</a></li>
+          <li><a href="#acoes-minuta">5.9 Ações em respostas</a></li>
+        </ul>
+      </li>
+      <li><a href="#parte-6-modelos">6. Pasta de modelos</a></li>
+      <li><a href="#parte-7-problemas">7. Solução de problemas</a></li>
+    </ul>
+  </aside>
+
+  <main class="manual-content">
+    <h1>Manual de Instalação e Uso</h1>
+    <p class="manual-meta">Versão <strong>1.6.1</strong> · Atualizado em 13/05/2026 · Mantido pelo <strong>Inovajus / JFCE</strong></p>
+    <p class="manual-lede">Plataforma de apoio à atividade e à gestão judicial no PJe — triagem inteligente, minutas com IA, pauta de audiência e perícia, controle criminal (Sigcrim), Central de Comunicação, Metas CNJ, Painel Gerencial, Prazos na Fita, Consultor de Fluxos e chat livre sobre os autos. Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
+
+    <h2 id="parte-1-instalacao">PARTE 1 — Instalação</h2>
+
+    <h3 id="navegadores">Navegadores suportados</h3>
+    <ul>
+      <li><strong>Chrome / Edge</strong> (versão 110 ou superior) — versão oficial, indicada para uso diário nas unidades.</li>
+      <li><strong>Firefox</strong> (versão 115 ou superior) — em desenvolvimento, disponibilizada separadamente para testes. <strong>Não use em produção.</strong></li>
+    </ul>
+
+    <h3 id="requisitos">Requisitos</h3>
+    <ul>
+      <li>Acesso ao PJe institucional (<code>pje1g.trf5.jus.br</code>, <code>pje2g.trf5.jus.br</code> ou <code>pjett.trf5.jus.br</code>).</li>
+      <li>E-mail institucional autorizado pelo Inovajus (a equipe libera o acesso conforme ingresso no grupo piloto).</li>
+      <li>Chave de API de um dos provedores: <strong>Google Gemini</strong>, <strong>Anthropic Claude</strong> ou <strong>OpenAI</strong>.</li>
+    </ul>
+
+    <h3 id="como-instalar">Como instalar</h3>
+    <ol>
+      <li>Acesse o listing oficial: <a href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk</a>.</li>
+      <li>Clique em <strong>Usar no Chrome</strong> (ou <strong>Obter</strong> no Edge) e confirme a instalação.</li>
+      <li>Fixe o ícone na barra do navegador (ícone de quebra-cabeça → alfinete ao lado de <strong>pAIdegua</strong>).</li>
+      <li>Atualizações futuras são automáticas — o navegador atualiza a extensão silenciosamente quando o Inovajus publica uma nova versão.</li>
+    </ol>
+
+    <h3 id="migracao-dev-cws">Migração da versão de desenvolvedor para a Chrome Web Store</h3>
+    <p>Quem já vinha usando o pAIdegua em modo desenvolvedor (extensão carregada de uma pasta <code>dist</code>) deve migrar para a versão da Chrome Web Store sem perder as configurações:</p>
+    <ol>
+      <li>Abra o ícone da extensão atual → popup → <strong>Exportar configurações</strong>. É gerado um arquivo <code>paidegua-config-AAAA-MM-DDTHH-mm.txt</code>.</li>
+      <li>Em <code>chrome://extensions</code>, <strong>Remover</strong> a versão antiga.</li>
+      <li>Instale pela Chrome Web Store (passos da seção <em>Como instalar</em> acima).</li>
+      <li>Abra o ícone da nova extensão → popup → <strong>Importar configurações</strong> e selecione o arquivo <code>.txt</code> salvo no passo 1.</li>
+    </ol>
+    <blockquote>O backup atual está em <strong>versão 2</strong> e cobre: configurações gerais, peritos cadastrados, etiquetas sugestionáveis, toggles de UI e opt-in de telemetria de jornadas. Chaves de API <strong>não</strong> são exportadas e devem ser reinformadas após a importação.</blockquote>
+
+    <h2 id="parte-2-primeiro-acesso">PARTE 2 — Primeiro acesso</h2>
+
+    <h3 id="login-otp">Login com e-mail institucional</h3>
+    <p>A extensão exige autenticação institucional. Na primeira abertura ou após o token expirar (90 dias), o pAIdegua mostra a tela de boas-vindas:</p>
+    <ol>
+      <li>Informe seu e-mail institucional (<code>@jfce.jus.br</code>, <code>@trf5.jus.br</code> ou domínios autorizados).</li>
+      <li>Clique em <strong>Entrar</strong>. O Inovajus envia um código de 6 dígitos para a sua caixa institucional (válido por 10 minutos, uma única vez).</li>
+      <li>Digite o código na extensão para confirmar o acesso.</li>
+    </ol>
+    <p>Se o e-mail não estiver autorizado, a extensão informa <em>"não autorizado"</em>. Nesse caso, entre em contato com o Inovajus (link <strong>Suporte</strong> no rodapé do popup) para liberação.</p>
+
+    <h3 id="configuracao-inicial">Configuração inicial</h3>
+    <p>Clique no ícone do pAIdegua na barra do navegador. O popup é aberto. No topo há o cartão <strong>Extensão Ativada</strong> com um interruptor mestre:</p>
+    <ul>
+      <li><strong>Ligado (padrão):</strong> o pAIdegua funciona normalmente e aparece dentro do PJe.</li>
+      <li><strong>Desligado:</strong> desaparece de todo o PJe (nenhum painel, botão ou injeção). Use quando precisar do PJe sem qualquer interferência. Após alterar o estado, recarregue a aba do PJe.</li>
+    </ul>
+    <p>Em seguida, percorra as abas do popup e ajuste os pontos descritos na PARTE 3.</p>
+
+    <h2 id="parte-3-popup">PARTE 3 — O popup da extensão</h2>
+    <p>O popup tem <strong>sete abas</strong> navegáveis no topo. Cada aba controla um aspecto da operação.</p>
+
+    <h3 id="popup-geral">3.1 Aba Geral</h3>
+    <ul>
+      <li><strong>Aviso LGPD.</strong> Leia o aviso de privacidade e marque a caixa de ciência. A extensão envia o conteúdo dos documentos para a API do provedor de IA escolhido — confirme que está ciente.</li>
+      <li><strong>Perfil de trabalho.</strong> Defina o perfil padrão (<strong>Gabinete</strong>, <strong>Secretaria</strong> ou <strong>Gestão</strong>) que será carregado automaticamente ao abrir o PJe.</li>
+      <li><strong>Provedor e modelo.</strong> Selecione o provedor (<strong>Google Gemini</strong>, <strong>Anthropic Claude</strong> ou <strong>OpenAI</strong>) e o modelo desejado. Recomendação atual: <strong>Gemini 3 Flash</strong>.</li>
+      <li><strong>Chave de API.</strong> Cole a chave no campo indicado, clique em <strong>Salvar</strong> e em <strong>Testar</strong> para verificar a conexão. A chave fica armazenada apenas no seu navegador.</li>
+      <li><strong>OCR de digitalizados.</strong> Marque <strong>Rodar OCR automaticamente</strong> se quiser que documentos digitalizados (PDFs de imagem) sejam reconhecidos por OCR após a extração. O OCR roda <strong>localmente</strong> (sem enviar imagens à IA). Ajuste o <strong>máximo de páginas por documento</strong> conforme necessário.</li>
+      <li><strong>Sigcrim.</strong> Configurações básicas do módulo criminal (matrícula do servidor, vara responsável), usadas pelo Painel Criminal.</li>
+      <li><strong>Modelos de minuta.</strong> Botão <strong>Gerenciar modelos</strong> abre a página de opções, onde se aponta a pasta com os modelos. Veja a PARTE 6.</li>
+      <li><strong>Backup.</strong> Botões <strong>Exportar configurações</strong> e <strong>Importar configurações</strong> (formato <code>paidegua-config-*.txt</code>, versão 2).</li>
+      <li><strong>Termos de uso e Governança (Res. CNJ 615/2025).</strong> Enquadramento da ferramenta como de baixo risco (Anexo BR4/BR8), obrigação de supervisão humana (art. 19, IV e art. 34), política de privacidade/anonimização (art. 30), trilha de auditoria (art. 19, §6º e art. 27 — em desenvolvimento) e identificação de conteúdo gerado com apoio de IA (art. 21).</li>
+    </ul>
+
+    <h3 id="popup-triagem">3.2 Aba Triagem Inteligente</h3>
+    <p>Define os critérios de análise inicial usados pela funcionalidade de Triagem Inteligente nos processos previdenciários e assistenciais. A base é a <strong>Nota Técnica n. 1/2025 do CLI-JFCE</strong>, que uniformizou as exigências entre os 16 Juizados Especiais Federais do Ceará.</p>
+    <p>Para cada critério (emenda à inicial, gratuidade de justiça, representação processual, interesse de agir, competência, prevenção etc.) há duas opções:</p>
+    <ul>
+      <li>Manter a redação padrão da NT 1/2025 (chave <strong>Adoto a NT</strong> marcada); ou</li>
+      <li>Desmarcar a adoção e descrever, em campo livre, como sua unidade aplica aquele critério.</li>
+    </ul>
+    <p>O bloco <strong>Deseja incluir outros critérios customizados?</strong> permite ligar o toggle <strong>Sim</strong> e adicionar critérios próprios da unidade não previstos na NT 1/2025. Os critérios escolhidos são injetados nos prompts da Triagem Inteligente. As alterações são salvas automaticamente.</p>
+
+    <h3 id="popup-etiquetas">3.3 Aba Etiquetas Inteligentes</h3>
+    <p>Configura o catálogo de etiquetas do PJe usado pela ação <strong>Inserir etiquetas mágicas</strong> da Triagem Inteligente.</p>
+    <ol>
+      <li>Clique em <strong>Buscar catálogo do PJe</strong> — o pAIdegua traz a lista completa de etiquetas da sua unidade e guarda no navegador.</li>
+      <li>No painel <strong>Catálogo completo</strong>, use o filtro por nome, marque <strong>Apenas favoritas</strong> ou utilize os botões <strong>Marcar visíveis</strong>, <strong>Desmarcar visíveis</strong> e <strong>Marcar todas favoritas</strong>.</li>
+      <li>As etiquetas marcadas formam o painel superior <strong>Sugestionáveis (selecionadas)</strong> — são as únicas que a Triagem Inteligente considera.</li>
+      <li>O campo <strong>Orientações para a IA extrair marcadores do processo</strong> é texto livre, enviado junto com as instruções da IA; use para guiar o foco (matéria, benefício, fase processual).</li>
+      <li><strong>Salvar seleção</strong> confirma os ajustes. <strong>Reindexar agora</strong> atualiza a comparação com o processo. <strong>Remover catálogo</strong> apaga a lista guardada.</li>
+    </ol>
+
+    <h3 id="popup-pericias">3.4 Aba Perícias</h3>
+    <p>Cadastra os peritos cuja agenda será montada pelo painel <strong>Perícias pAIdegua</strong>. Para cada perito:</p>
+    <ul>
+      <li>Nome.</li>
+      <li>Gênero (para concordância nos textos gerados).</li>
+      <li>Profissão (autocomplete multisseleção — por exemplo, médico psiquiatra, médico ortopedista, assistente social).</li>
+      <li>Etiquetas PJe associadas a esse perito (sugeridas a partir do catálogo de etiquetas).</li>
+      <li>Assuntos preferenciais (chips reordenáveis, definem prioridade).</li>
+    </ul>
+    <p>Use <strong>Novo perito</strong> para abrir o formulário, <strong>Salvar</strong> para persistir. A lista é usada pelo painel de pauta de perícia e pela Central de Comunicação (cobrança automática).</p>
+
+    <h3 id="popup-comunicacao">3.5 Aba Central de Comunicação</h3>
+    <p>Configura os dados institucionais usados pelas cobranças automáticas geradas pelo módulo <strong>Central de Comunicação</strong>:</p>
+    <ul>
+      <li>Nome da vara.</li>
+      <li>E-mail e telefone do CEAB (Central de Apoio).</li>
+      <li>Etiquetas de cobrança para perito e para o CEAB (texto que o painel aplica nos processos cobrados).</li>
+    </ul>
+    <p>Salvo automaticamente.</p>
+
+    <h3 id="popup-mapas">3.6 Aba Mapas de Jornada</h3>
+    <p>Telemetria local <strong>opt-in</strong> dos fluxos do PJe (Painel Gerencial, Prazos na Fita, Triagem). Quando ligado, o pAIdegua passa a registrar — apenas no seu navegador — o caminho percorrido em cada varredura para fins de diagnóstico e melhoria da ferramenta. <strong>Nenhum dado de processo é enviado para fora da Justiça.</strong> Pode ser desligado a qualquer momento.</p>
+
+    <h3 id="popup-mais">3.7 Aba Mais opções</h3>
+    <p>Toggles de UI passiva que controlam quais funcionalidades <strong>automáticas</strong> o pAIdegua injeta no PJe sem você precisar pedir (todas vêm ligadas por padrão). São pequenos auxiliares que sentam dentro do próprio PJe — ao desligar um toggle aqui, a UI correspondente some sem afetar o painel lateral nem os módulos principais.</p>
+    <p>Use esta aba para personalizar o nível de interferência da extensão na interface do PJe.</p>
+
+    <h3 id="popup-rodape">Rodapé do popup</h3>
+    <ul>
+      <li><strong>Diagnóstico</strong> — abre a página com o histórico das últimas 30 varreduras (Painel Gerencial, Prazos na Fita, Triagem Inteligente). Para cada uma: quando foi feita, em qual unidade, processos lidos / com erro, tempo total, se a sessão do PJe precisou ser renovada, blocos <strong>Probe Keycloak</strong> e <strong>Histórico HTTP 403</strong>. Os dados ficam apenas no seu navegador.</li>
+      <li><strong>Suporte</strong> — abre formulário para registrar dúvidas, erros ou sugestões. Ao clicar em <strong>Preparar e-mail de suporte</strong>, o cliente de e-mail abre com a mensagem pronta para <code>inovajus@jfce.jus.br</code>. A opção <strong>Incluir informações técnicas</strong> (marcada por padrão) anexa versão, navegador, sistema e endereço do PJe — sem dados do processo.</li>
+      <li><strong>Versão</strong> e <strong>e-mail logado</strong> — versão atual e identificação do usuário autenticado, com opção de <strong>Sair</strong>.</li>
+    </ul>
+
+    <h2 id="parte-4-perfis">PARTE 4 — Perfis de trabalho</h2>
+    <p>O pAIdegua apresenta conjuntos diferentes de ferramentas conforme o perfil:</p>
+    <table>
+      <thead><tr><th>Perfil</th><th>Foco</th><th>Disponível em</th><th>Ferramentas principais</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Gabinete</strong> (padrão)</td><td>Análise dos autos e produção de minutas</td><td>Todos os graus</td><td>Resumir, Resumir em áudio, Anonimizar, Minutar (triagem automática), Minutas com modelo, Audiência pAIdegua</td></tr>
+        <tr><td><strong>Secretaria</strong></td><td>Triagem, pauta e organização</td><td>1º grau apenas</td><td>Analisar tarefas, Analisar o processo, Inserir etiquetas mágicas, Audiência pAIdegua, Perícias pAIdegua, Central de Comunicação, Sigcrim</td></tr>
+        <tr><td><strong>Gestão</strong></td><td>Visão da diretoria de secretaria</td><td>Todos os graus</td><td>Painel Gerencial, Prazos na Fita, Controle Metas CNJ</td></tr>
+      </tbody>
+    </table>
+    <p>O perfil padrão é definido em <strong>Geral → Perfil de trabalho</strong>; a troca na sessão corrente é feita pelo seletor no cabeçalho do painel lateral. Em instâncias de 2º grau e turma recursal, o perfil Secretaria não está disponível e o seletor oculta essa opção.</p>
+    <p>Há ainda a seção <strong>Conhecimento</strong>, sem perfil específico, que dá acesso ao <strong>Consultor de Fluxos</strong>.</p>
+
+    <h2 id="parte-5-painel">PARTE 5 — Painel lateral e ferramentas</h2>
+
+    <h3 id="acessar">5.1 Acessando o pAIdegua</h3>
+    <ol>
+      <li>Abra qualquer tela do PJe (painel do usuário, lista de tarefas, autos de um processo).</li>
+      <li>Clique no botão <strong>pAIdegua</strong> que a extensão injeta na barra superior do PJe — o painel lateral abre à direita.</li>
+      <li>As funcionalidades que dependem de autos abertos (Carregar Documentos, Resumir, Resumir em áudio, Anonimizar, Minutar, Minutas com modelo) ficam automaticamente ocultas enquanto você não está em uma tela de processo — reaparecem assim que os autos forem abertos.</li>
+    </ol>
+    <p>O painel exibe: nome da extensão, provedor e modelo em uso · número do processo detectado e grau (1G, 2G ou turma recursal) · seletor de perfil no canto superior · barra de ferramentas adaptada ao perfil, ao grau e ao tipo de tela · área de chat para interação livre com a IA.</p>
+    <p>A detecção de grau é feita pelo domínio do PJe (<code>pje1g.trf5.jus.br</code> = 1º grau; <code>pje2g.trf5.jus.br</code> = turma recursal/2º grau) e altera automaticamente o conjunto de botões.</p>
+
+    <h3 id="carregar-documentos">5.2 Carregar Documentos</h3>
+    <p><strong>Passo obrigatório antes de qualquer ação sobre os autos.</strong> Clique em <strong>Carregar Documentos</strong> para que a extensão detecte todos os documentos da árvore de anexos, exiba a lista com checkbox para seleção individual e permita marcar/desmarcar todos.</p>
+    <p>Depois clique em <strong>Extrair conteúdo selecionados</strong>. O progresso é exibido em tempo real (ex.: <em>"Extração concluída — 39 ok, 2 com erro"</em>). Arquivos de mídia (MP3, MP4 etc.) são marcados como conteúdo não-textual e não geram erro.</p>
+
+    <h3 id="ferramentas-gabinete">5.3 Ferramentas do perfil Gabinete</h3>
+
+    <h4 id="resumir">Resumir</h4>
+    <p>Gera uma análise completa do processo no formato <strong>FIRAC+</strong>: dados do processo (partes, tribunal, número), fatos em ordem cronológica, problema jurídico, direito aplicável, argumentos e provas do autor e do réu, conclusão.</p>
+
+    <h4 id="resumir-audio">Resumir em áudio</h4>
+    <p>Produz um resumo narrado em voz sintetizada. Útil para visão geral rápida em deslocamento.</p>
+
+    <h4 id="anonimizar">Anonimizar autos</h4>
+    <p>Substitui dados sensíveis nos documentos extraídos:</p>
+    <ul>
+      <li>CPF, CNPJ, CEP, telefones, e-mails, RG e dados bancários — substituição <strong>local</strong>, por regex, sem envio à IA.</li>
+      <li>Nomes de pessoas físicas — substituição via IA.</li>
+    </ul>
+    <p>Os dados viram marcadores genéricos (ex.: <code>PARTE_AUTORA</code>, <code>CPF_OCULTO</code>).</p>
+
+    <h4 id="ocr">Rodar OCR</h4>
+    <p>Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). Processa as páginas localmente com Tesseract.js (sem envio à IA). Documentos com muitas páginas podem demorar; ajuste o limite na aba <strong>Geral</strong>.</p>
+
+    <h4 id="minutar">Minutar (com triagem automática)</h4>
+    <p>Funciona como assistente de triagem:</p>
+    <ol>
+      <li>Monta um contexto priorizando a timeline e os atos recentes do processo.</li>
+      <li>Consulta a IA para recomendar qual ato é mais adequado ao momento processual (ex.: <em>julgar procedente</em>, <em>converter em diligência</em>, <em>decisão sobre tutela</em>, <em>despacho saneador</em>).</li>
+      <li>Exibe a recomendação no chat com justificativa breve e dois botões:
+        <ul>
+          <li><strong>Gerar esta minuta</strong> — produz a minuta recomendada diretamente.</li>
+          <li><strong>Escolher outro ato</strong> — abre menu com todos os atos disponíveis no grau detectado.</li>
+        </ul>
+      </li>
+      <li>Se a triagem falhar (sem chave de API, resposta inválida etc.), a escolha manual é aberta imediatamente.</li>
+    </ol>
+
+    <h4 id="minutas-modelo">Minutas com modelo</h4>
+    <p>Botões de geração assistida por modelos de referência. Funciona plenamente se você apontou uma pasta de modelos na aba <strong>Geral</strong>.</p>
+    <p><strong>1º grau:</strong> Julgar procedente · Julgar improcedente · Decidir · Converter em diligência · Despachar.</p>
+    <p><strong>2º grau / turma recursal:</strong> Voto (mantém sentença) · Voto (reforma sentença) · Decisão nega seguimento ao recurso · Decisão · Converte em diligência com baixa · Despacho.</p>
+    <p>Comportamento da busca de modelos:</p>
+    <ul>
+      <li>Pasta configurada <strong>com</strong> modelo compatível: seleciona o mais similar e informa caminho + percentual de similaridade.</li>
+      <li>Pasta configurada <strong>sem</strong> modelo compatível: pergunta se quer gerar do zero ou cancelar.</li>
+      <li>Sem pasta configurada: gera do zero, silenciosamente.</li>
+    </ul>
+    <blockquote>Decisões usam apenas modelos de <strong>decisão</strong>, e despachos apenas modelos de <strong>despacho</strong> — nunca caem em modelos de sentença.</blockquote>
+
+    <h4 id="audiencia">Audiência pAIdegua</h4>
+    <p>Disponível também em Gabinete (e em Secretaria). Funcionalidade nova na <strong>v1.6.1</strong>, com dois usos integrados:</p>
+    <ul>
+      <li><strong>Pauta de audiência:</strong> o painel lê as tarefas de <strong>Audiência — Designar</strong> do PJe, agrupa os processos por advogado e por data/hora, e abre uma aba dedicada com a pauta pronta para imprimir ou conferir antes da audiência.</li>
+      <li><strong>Resumo de audiência:</strong> durante a coleta, gera para cada processo um resumo curto (partes, pedido, fase atual, pontos controvertidos) — entregue ao magistrado antes do início da pauta.</li>
+    </ul>
+    <p>Fluxo: no Painel do usuário do PJe, clique em <strong>Audiência pAIdegua</strong>, defina o período (data/hora), marque as tarefas e clique em <strong>Iniciar coleta</strong>. A pauta + resumos abrem no dashboard ao final.</p>
+
+    <h3 id="ferramentas-secretaria">5.4 Ferramentas do perfil Secretaria</h3>
+
+    <h4 id="triagem-inteligente">Triagem Inteligente</h4>
+    <p>No perfil Secretaria, a seção <strong>Ações da secretaria</strong> exibe botões distribuídos em dois grupos:</p>
+    <p><strong>Grupo Painel</strong> (aparece na tela do Painel do usuário / lista de tarefas):</p>
+    <ul>
+      <li><strong>Analisar tarefas</strong> — lê a fila de tarefas exibida, classifica cada uma pelo tipo de providência necessária e abre o <strong>Painel de Triagem Inteligente pAIdegua</strong> com um quadro resumo para orientar a priorização do dia.</li>
+    </ul>
+    <p><strong>Grupo Processo</strong> (aparece quando há autos abertos):</p>
+    <ul>
+      <li><strong>Analisar o processo</strong> — executa uma análise guiada pelos critérios configurados na aba <strong>Triagem Inteligente</strong> do popup. Por padrão, adota os critérios da NT 1/2025 do CLI-JFCE; cada critério pode ser personalizado ou substituído por redação própria, e critérios customizados podem ser incluídos.</li>
+      <li><strong>Inserir etiquetas mágicas</strong> — usa o catálogo selecionado na aba <strong>Etiquetas Inteligentes</strong>. A IA lê os autos, extrai os principais assuntos e temas, compara com as etiquetas sugestionáveis e abre uma bolha mostrando: os marcadores encontrados, a lista das etiquetas mais parecidas com caixa de seleção e barra de similaridade, e o botão <strong>Copiar selecionadas</strong>.</li>
+    </ul>
+    <p><strong>Gerar ato de emenda à inicial:</strong> quando a análise indica necessidade de emenda, a extensão oferece a geração da minuta diretamente no chat. A bolha traz o botão <strong>Encaminhar e inserir no PJe</strong> (no lugar de <strong>Inserir no PJe</strong>), que encaminha a tarefa e insere o texto da minuta no editor da nova tarefa em uma única ação.</p>
+    <blockquote>Antes do primeiro uso da Triagem Inteligente, revise os critérios e o catálogo de etiquetas no popup. Esses ajustes alimentam tanto os prompts quanto a comparação das etiquetas com o processo, e definem o resultado.</blockquote>
+
+    <h4 id="pericias">Perícias pAIdegua</h4>
+    <p>Disponível apenas em 1º grau. Acelera a montagem da pauta de perícia agrupando os processos por perito cadastrado.</p>
+    <ol>
+      <li>Pré-requisito: cadastrar peritos na aba <strong>Perícias</strong> do popup (nome, gênero, profissão, etiquetas e assuntos preferenciais).</li>
+      <li>No Painel do usuário do PJe, clique em <strong>Perícias pAIdegua</strong>.</li>
+      <li>O painel filtra as tarefas de <strong>Perícia — Designar</strong> e <strong>Perícia — Agendar e administrar</strong>, lista os peritos ativos e abre a aba intermediária.</li>
+      <li>Marque as tarefas e os peritos desejados; clique em <strong>Iniciar coleta</strong>.</li>
+      <li>Ao final, abre o dashboard com a pauta organizada por perito.</li>
+    </ol>
+
+    <h4 id="comunicacao">Central de Comunicação</h4>
+    <p>Disponível apenas em 1º grau. Automatiza cobranças a peritos (mensagem) e ao CEAB (e-mail), com base nos processos de perícia em atraso.</p>
+    <ol>
+      <li>Pré-requisito: preencher a aba <strong>Central de Comunicação</strong> do popup (nome da vara, e-mail e telefone do CEAB, etiquetas de cobrança).</li>
+      <li>No Painel do usuário do PJe, clique em <strong>Central de Comunicação</strong>.</li>
+      <li>O painel carrega as configurações e a lista de peritos. Filtre por perito ou por dias de atraso; escolha o modo (mensagem para perito, e-mail para CEAB).</li>
+      <li>Veja o preview, selecione os processos e clique em <strong>Gerar cobrança</strong>.</li>
+      <li>Envie pela ação correspondente (clipboard, e-mail direto ou abertura do app de mensagens) e acompanhe os logs.</li>
+    </ol>
+
+    <h4 id="sigcrim">Sigcrim / Painel Criminal</h4>
+    <p>Disponível apenas em 1º grau. Acervo persistente de processos criminais com controle de <strong>prescrição</strong>, <strong>ANPP</strong> e <strong>SERP</strong>.</p>
+    <ol>
+      <li>Pré-requisito: preencher matrícula e vara na aba <strong>Geral → Sigcrim</strong> do popup.</li>
+      <li>No Painel do usuário do PJe, clique em <strong>Sigcrim</strong>.</li>
+      <li>Marque as tarefas a varrer e escolha o modo: <strong>Rápido</strong> (apenas prescrição) ou <strong>Completo</strong> (movimentos + ANPP).</li>
+      <li>Acompanhe o progresso. Os processos são salvos incrementalmente no acervo local (apenas seu navegador).</li>
+      <li>O dashboard abre com lista filtrável por status, alertas de prescrição e ações de etiqueta.</li>
+    </ol>
+
+    <h3 id="ferramentas-gestao">5.5 Ferramentas do perfil Gestão</h3>
+    <blockquote>Os botões do perfil Gestão aparecem somente quando você está no <strong>Painel do usuário</strong> do PJe. Em outras telas, é exibido um aviso orientando a abrir o Painel do usuário.</blockquote>
+
+    <h4 id="painel-gerencial">Painel Gerencial pAIdegua</h4>
+    <p>Disponível em todos os graus.</p>
+    <ol>
+      <li>Detecta as tarefas visíveis no painel do PJe e pergunta quais devem entrar no relatório.</li>
+      <li>Busca diretamente no PJe os processos de cada tarefa selecionada, com progresso em tempo real.</li>
+      <li>Abre uma aba com o dashboard, contendo indicadores determinísticos da unidade (total de processos, distribuição por tarefa, <em>10 mais antigos por tarefa</em>), lista por tarefa com tabelas ordenáveis e três ícones por processo (autos, copiar CNJ, abrir tarefa).</li>
+      <li>Botão <strong>Gerar insights</strong> — envia ao provedor de IA os dados <strong>com número do processo e nomes das partes ocultados</strong> (anonimização local antes do envio); a resposta traz alertas, relacionamentos entre tarefas e sugestões de ação.</li>
+    </ol>
+    <p>O propósito é dar à diretoria de secretaria uma visão consolidada da carga de trabalho sem precisar rodar relatórios no PJe.</p>
+
+    <h4 id="prazos-fita">Prazos na Fita pAIdegua</h4>
+    <p>Disponível em todos os graus. Foca nas tarefas cujo nome contém <strong>Controle de prazo</strong> — onde ficam os expedientes com prazo correndo.</p>
+    <ol>
+      <li>Liste as tarefas <strong>Controle de prazo</strong> visíveis e marque quais coletar.</li>
+      <li>O dashboard abre em poucos segundos, mesmo antes da coleta terminar, com cartões zerados (<em>0 de X processos</em>) e indicação de <strong>coleta em andamento</strong>. Enquanto a varredura avança, o dashboard preenche os dados em tempo real.</li>
+      <li>Ao final, fica completo com cartões de topo (total de processos, expedientes abertos, prazos correndo, vencimentos nos próximos 7 dias), uma tabela por tarefa, blocos colapsáveis para processos sem expedientes ou falhas, e a coluna <strong>Encerrar</strong> (ver abaixo).</li>
+    </ol>
+    <p><strong>Varredura interrompida e retomada:</strong> se a aba for fechada, o navegador cair ou a sessão expirar, o dashboard mostra um aviso <em>"Coleta interrompida — retome pelo painel"</em> com o resumo do que já foi coletado. O trabalho não é perdido. Ao voltar ao Painel do usuário e clicar de novo em <strong>Prazos na Fita</strong> com as mesmas tarefas, o pAIdegua avisa: <em>"Detectei uma varredura anterior interrompida"</em>. Escolha:</p>
+    <ul>
+      <li><strong>OK</strong> = continuar de onde parou.</li>
+      <li><strong>Cancelar</strong> = começar do zero.</li>
+    </ul>
+    <p>Se a interrupção for antiga (mais de 30 minutos), geralmente vale começar do zero para capturar movimentações novas.</p>
+    <p><strong>Encerrar expedientes em lote.</strong> Última coluna da tabela. Um clique no ícone de lixeira executa, em aba invisível, o mesmo fluxo que o PJe normalmente exige em três cliques + confirmação. Estados do botão: pronto · executando · sucesso · erro · nada a fazer. Múltiplos cliques entram em fila — um por vez, evitando que disputem a mesma aba/sessão.</p>
+
+    <h4 id="metas-cnj">Controle Metas CNJ</h4>
+    <p>Em homologação. Materializa acervo persistente de processos classificados pelas cinco metas mensuráveis do CNJ 2026 (Meta 2 — antiguidade &gt; 15 anos, Meta 4 — improbidade e crimes administrativos, Meta 6 — ambientais, Meta 7 — indígenas/quilombolas/racismo, Meta 10 — subtração internacional de crianças). Detecta status automático (julgado/baixado) via hierarquia de movimentos da TPU. Permite acompanhamento mensal/semanal do cumprimento sem re-varrer tudo. Configuração avançada feita atualmente pelo Inovajus — fale conosco pelo Suporte para ativar.</p>
+
+    <h3 id="consultor-fluxos">5.6 Seção Conhecimento — Consultor de Fluxos</h3>
+    <p>Disponível em qualquer perfil. Botão <strong>Consultor de fluxos</strong> na seção <strong>Conhecimento</strong> do painel lateral, com o subtítulo <em>Como o processo caminha no PJe</em>. Abre uma nova aba com chat dedicado sobre os 210 fluxos do PJe (JEF, EF, Comum, Shared).</p>
+    <p>Usos típicos: <em>"Como funciona o JEF previdenciário?"</em>, <em>"Explique o fluxo OPPER da Vara de Execução"</em>, <em>"O que acontece após a tarefa de conclusão para sentença?"</em>.</p>
+    <p>A interface tem três áreas: ações rápidas predefinidas + busca textual no catálogo · chat com a IA · diagrama Mermaid do fluxo conversado (renderizado sob demanda).</p>
+    <p>Há dois modos:</p>
+    <ul>
+      <li><strong>Para usuário</strong> — linguagem natural, sem códigos, foco no que o operador vê na tela.</li>
+      <li><strong>Para desenvolvedor</strong> — linguagem técnica, códigos jBPM, swimlanes coloridas.</li>
+    </ul>
+    <p>A troca de modo reinicia a conversa atual. Tudo opera dentro do navegador — não há envio de dados de processo concretos para fora.</p>
+
+    <h3 id="icones-linha">5.7 Painéis comuns — ícones por linha</h3>
+    <p>Em todas as listas de processo dos dashboards (Triagem Inteligente, Painel Gerencial, Prazos na Fita, Audiência, Perícias) há três ícones ao lado de cada número de processo:</p>
+    <ol>
+      <li><strong>Hiperlink para os autos</strong> — abre o processo em nova aba.</li>
+      <li><strong>Copiar CNJ</strong> — copia apenas o número CNJ, removendo prefixos como <code>PJEC</code>, <code>JEF</code>, <code>PROCAUT</code>.</li>
+      <li><strong>Abrir tarefa no PJe</strong> — vai direto para a tela de movimentação da tarefa corrente (mesmo destino do link <strong>Abrir tarefa</strong> do widget <em>Documentos pendentes</em> do PJe nativo).</li>
+    </ol>
+    <p>A janela popup do <strong>Abrir tarefa</strong> é nomeada por processo; cliques subsequentes na mesma linha reaproveitam a aba aberta. Se o popup for bloqueado, libere o endereço do PJe no ícone de popup bloqueado da barra de endereços. Quando a coleta daquela linha não conseguiu todos os identificadores necessários, o ícone simplesmente não aparece — é intencional, para evitar abrir tarefa errada.</p>
+
+    <h3 id="chat-livre">5.8 Chat livre</h3>
+    <p>A área de chat na parte inferior do painel permite perguntas livres sobre o processo carregado:</p>
+    <ul>
+      <li><em>Qual o pedido principal do autor?</em></li>
+      <li><em>Existe laudo pericial nos autos? O que conclui?</em></li>
+      <li><em>Resuma as provas documentais.</em></li>
+      <li><em>Há questões preliminares a resolver?</em></li>
+      <li><em>Liste todos os prazos mencionados.</em></li>
+    </ul>
+    <p>O chat também suporta entrada por voz pelo botão do microfone. Se o provedor selecionado tem API de transcrição (OpenAI Whisper, Gemini), o áudio é enviado para transcrição remota; caso contrário, a extensão cai para o <strong>Web Speech API local</strong> do navegador. Com Anthropic, a transcrição via API não está disponível — use o Web Speech ou selecione OpenAI / Gemini.</p>
+
+    <h3 id="acoes-minuta">5.9 Ações disponíveis em cada resposta / minuta</h3>
+    <p>Abaixo de cada resposta da IA (em especial minutas) aparecem botões de ação rápida:</p>
+    <ul>
+      <li><strong>Copiar</strong> — copia a resposta (markdown) para a área de transferência.</li>
+      <li><strong>Inserir no PJe</strong> — insere o texto diretamente no editor de minutas do PJe aberto em outra aba.</li>
+      <li><strong>Encaminhar e inserir no PJe</strong> — substitui <em>Inserir no PJe</em> no fluxo de emenda à inicial: encaminha a tarefa e insere a minuta no editor da nova tarefa em uma só ação.</li>
+      <li><strong>Baixar .doc</strong> — salva como arquivo do Word, com nome sugerido a partir do número do processo e do tipo de ato.</li>
+      <li><strong>Refinar minuta</strong> — reaproveita a última minuta com uma instrução adicional (<em>encurtar</em>, <em>mudar o tom</em>, <em>citar a Súmula 343 do STJ</em>, <em>reforçar o dispositivo</em>), preservando o template.</li>
+      <li><strong>Nova minuta</strong> — gera uma nova versão da mesma ação, do zero, sem modelo de referência.</li>
+    </ul>
+
+    <h2 id="parte-6-modelos">PARTE 6 — Organização da pasta de modelos</h2>
+    <p>Para melhor aproveitamento da busca automática de modelos pelo botão <strong>Minutas com modelo</strong>, organize os arquivos em subpastas:</p>
+<pre><code>Modelos/
+  procedente/
+    bpc-loas-procedente.docx
+    aposentadoria-procedente.docx
+    auxilio-doenca-procedente.docx
+  improcedente/
+    bpc-loas-improcedente.docx
+    aposentadoria-improcedente.docx
+  decisao/
+    tutela-urgencia.docx
+    liminar-bloqueio.docx
+  despacho/
+    saneador.docx
+    intimacao-pericia.docx
+    cite-se.docx
+  diligencia/
+    conversao-diligencia.docx</code></pre>
+    <p>Dicas:</p>
+    <ul>
+      <li>Use nomes descritivos (a busca considera o nome e o conteúdo).</li>
+      <li>Subpastas com nomes como <code>procedente</code>, <code>improcedente</code>, <code>decisao</code>, <code>despacho</code> recebem prioridade automática na busca do botão correspondente.</li>
+      <li>Formatos aceitos: <code>.docx</code>, <code>.doc</code>, <code>.odt</code>, <code>.rtf</code>, <code>.pdf</code>, <code>.txt</code>, <code>.md</code>.</li>
+      <li>Após adicionar ou alterar modelos, clique em <strong>Reindexar agora</strong> na página de opções.</li>
+    </ul>
+
+    <h2 id="parte-7-problemas">PARTE 7 — Solução de problemas</h2>
+
+    <p><strong>Extensão não aparece no PJe.</strong> Verifique primeiro se o interruptor <strong>Extensão Ativada</strong> no topo do popup está ligado — se estiver desligado, o pAIdegua fica invisível no PJe de propósito. Se estiver ligado, confirme se a extensão está ativa em <code>chrome://extensions</code> ou <code>edge://extensions</code>. Após qualquer mudança, recarregue a página do PJe.</p>
+
+    <p><strong>Não consigo fazer login (e-mail não autorizado).</strong> A liberação é feita pelo Inovajus para os membros do grupo piloto. Solicite via formulário <strong>Suporte</strong> (rodapé do popup) informando seu e-mail institucional, vara/unidade e papel.</p>
+
+    <p><strong>Não recebo o código de 6 dígitos.</strong> Verifique a caixa de spam / lixo eletrônico. O código vem do remetente <strong>pAIdegua / Inovajus</strong> (<code>noreply@paidegua.ia.br</code>) e é válido por 10 minutos. Se persistir, solicite reenvio pelo Suporte.</p>
+
+    <p><strong>Erro ao extrair documentos.</strong> Alguns documentos podem retornar vazio na primeira tentativa. A extensão faz até 3 tentativas automáticas com estratégias diferentes. Se persistir, recarregue a página do PJe e tente novamente.</p>
+
+    <p><strong>OCR lento.</strong> O OCR roda localmente no navegador. Documentos com muitas páginas podem demorar. Ajuste o limite de páginas nas configurações.</p>
+
+    <p><strong>Minuta usando modelo errado.</strong> A busca automática usa o conteúdo do processo para encontrar o modelo mais similar. Se o resultado não for adequado, reorganize seus modelos em subpastas mais específicas ou gere do zero.</p>
+
+    <p><strong>Chave de API inválida.</strong> Use o botão <strong>Testar</strong> nas configurações. Cada provedor tem seu formato de chave — certifique-se de que a chave corresponde ao provedor selecionado.</p>
+
+    <p><strong>Atualização da extensão.</strong> A atualização é automática — o navegador atualiza o pAIdegua silenciosamente quando o Inovajus publica uma nova versão na Chrome Web Store. Para forçar a verificação, acesse <code>chrome://extensions</code> ou <code>edge://extensions</code>, ligue o <strong>Modo do desenvolvedor</strong> e clique em <strong>Atualizar</strong> no topo da página.</p>
+
+    <p><strong>Painel Gerencial, Prazos na Fita ou Sigcrim abrem vazios ou com erro "Sem credenciais de acesso".</strong> Abra o Painel do usuário do PJe e clique em qualquer tarefa antes de acionar os botões — essa primeira interação captura a chave de sessão. Se a sessão do PJe tiver expirado, refaça o login. Em varreduras longas, o pAIdegua renova a sessão automaticamente em segundo plano. Se a coleta parar, abra a página de <strong>Diagnóstico</strong> para conferir bloqueios (HTTP 403) ou problema de sessão (Probe Keycloak).</p>
+
+    <p><strong>Varredura de Prazos na Fita parou no meio.</strong> O trabalho já feito fica salvo. Volte ao Painel do usuário, clique de novo em <strong>Prazos na Fita</strong>, selecione as mesmas tarefas, e quando aparecer o aviso <em>"Detectei uma varredura anterior interrompida"</em>, escolha <strong>OK</strong> para continuar. Se a interrupção for antiga (mais de 30 minutos), comece do zero.</p>
+
+    <p><strong>Ícone "Abrir tarefa" não aparece em alguma linha.</strong> A coleta não conseguiu todos os identificadores necessários. Recarregue o painel do PJe, abra uma tarefa para capturar as credenciais e rode a coleta de novo.</p>
+
+    <p><strong>Popup "Abrir tarefa" bloqueado.</strong> O navegador bloqueou a janela. Clique no ícone de popup bloqueado na barra de endereços e libere o endereço do PJe.</p>
+
+    <p><strong>"Encerrar expedientes" fica em erro.</strong> Verifique se a sessão do PJe está ativa (abra o PJe em outra aba). Se o PJe tiver mudado a estrutura da tela, reporte ao Inovajus pelo Suporte — enquanto isso, faça o encerramento manualmente pelo ícone <strong>Abrir tarefa</strong>.</p>
+
+    <p><strong>"Inserir etiquetas mágicas" não traz sugestões.</strong> Confirme na aba <strong>Etiquetas Inteligentes</strong> do popup que (a) o catálogo foi buscado (botão <strong>Buscar catálogo do PJe</strong>) e (b) há etiquetas marcadas no painel <strong>Sugestionáveis (selecionadas)</strong>. Sem etiquetas sugestionáveis, não há o que sugerir.</p>
+
+    <p><strong>Perícias pAIdegua não mostra peritos.</strong> Cadastre os peritos na aba <strong>Perícias</strong> do popup. Sem peritos cadastrados, o painel não tem por quem agrupar.</p>
+
+    <p><strong>Central de Comunicação não gera cobrança.</strong> Preencha a aba <strong>Central de Comunicação</strong> do popup (nome da vara, e-mail e telefone CEAB, etiquetas) e confirme que há peritos ativos cadastrados na aba <strong>Perícias</strong>.</p>
+
+    <p><strong>Sigcrim não inicia ou não classifica corretamente.</strong> Confirme na aba <strong>Geral → Sigcrim</strong> que a matrícula e a vara estão preenchidas. Para casos atípicos, abra o Suporte com o número do processo (sem dados pessoais).</p>
+
+    <hr>
+
+    <p style="text-align:center;color:var(--muted);font-size:14px"><strong>Dúvidas?</strong> Use o link <strong>Suporte</strong> no rodapé do popup ou envie e-mail para <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a>.</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <p><strong>Inovajus</strong> · Justiça Federal no Ceará</p>
+  <p><a href="https://paidegua.ia.br">paidegua.ia.br</a> · <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
+  <p>Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
+</footer>
+
+<script src="../assets/manual.js"></script>
+</body>
+</html>

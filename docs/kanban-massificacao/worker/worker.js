@@ -18,6 +18,8 @@
  *   ADMIN_EMAILS     string CSV     quem pode gerir equipe e configurações
  *   MAIL_FROM        string         "noreply@paidegua.ia.br"
  *   MAIL_FROM_NAME   string         "pAIdegua / Inovajus"
+ *   CWS_URL          string         URL pública do listing na Chrome Web Store
+ *                                   (default: https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk)
  *   GH_REPO_DEFAULT  string         "vsousaesilva/paidegua"  (issues nascem aqui)
  *   GH_REPO_KANBAN   string         "vsousaesilva/paidegua-kanban" (cards KAN-*)
  *   GH_AUTO_COLUMN   string         coluna que dispara criação de issue (default "dev")
@@ -122,6 +124,9 @@ export default {
       }
       if (url.pathname === '/api/team/members' && request.method === 'POST') {
         return await handleAddMember(request, env, auth);
+      }
+      if (url.pathname === '/api/team/welcome-extensao' && request.method === 'POST') {
+        return await handleWelcomeExtensaoBatch(request, env, auth);
       }
       const memberMatch = url.pathname.match(/^\/api\/team\/members\/([^/]+)$/);
       if (memberMatch && request.method === 'DELETE') {
@@ -496,6 +501,169 @@ async function sendOtpEmailResend(to, code, env, origem) {
   }
 }
 
+/**
+ * Envia e-mail de boas-vindas para um novo membro da equipe 'extensao'.
+ * Não usa OTP — é só um anúncio institucional com identidade gov.br/PJe,
+ * link da CWS e instruções de login (saudação fixa "Olá, piloto" — o
+ * parâmetro `nome` é ignorado hoje, mantido na assinatura para futura
+ * personalização sem mudar callers).
+ *
+ * Lança em caso de falha; o caller decide se segue em frente ou registra.
+ *
+ * Para preview visual: abra docs/kanban-massificacao/welcome-extensao-preview.html
+ * direto no navegador. O HTML aqui é a versão de produção.
+ */
+async function sendWelcomeExtensaoEmail(to, nome, env) {
+  if (!env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY não configurado no Worker');
+  }
+  const from = env.MAIL_FROM || 'noreply@paidegua.ia.br';
+  const fromName = env.MAIL_FROM_NAME || 'pAIdegua / Inovajus';
+  const cwsUrl = env.CWS_URL || 'https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk';
+  const subject = 'Bem-vindo(a) ao pAIdegua — seu acesso ao grupo piloto está liberado';
+
+  const text = [
+    'Bem-vindo(a) ao pAIdegua — Inovajus / JFCE',
+    '',
+    'Olá, piloto,',
+    '',
+    'Seu e-mail institucional foi autorizado a usar a extensão pAIdegua como',
+    'membro do grupo piloto. A pAIdegua é uma extensão para Chrome/Edge',
+    'desenvolvida pelo Inovajus/JFCE que integra inteligência artificial,',
+    'automações e telas de produtividade diretamente ao PJe — sem instalação',
+    'de software fora do navegador e sem envio de dados sensíveis para fora',
+    'da Justiça.',
+    '',
+    'COMO COMEÇAR EM 2 PASSOS',
+    '',
+    '  1) Instale a extensão na Chrome Web Store',
+    `     ${cwsUrl}`,
+    '     Funciona em Chrome e Edge. Não exige instalação de software no',
+    '     Windows. Após instalar, fixe o ícone na barra do navegador.',
+    '',
+    '  2) Entre com este e-mail',
+    '     Abra o ícone da extensão, informe este mesmo endereço e clique em',
+    '     "Entrar". Você receberá um código de 6 dígitos por e-mail (não há',
+    '     senha). Digite o código na extensão para confirmar o acesso.',
+    '',
+    'JÁ USA A VERSÃO DEV (pasta dist)?',
+    'Se você já vinha usando o pAIdegua em modo desenvolvedor (carregada da',
+    'pasta "dist"), faça este caminho ANTES de instalar pela Chrome Web Store,',
+    'para preservar suas configurações:',
+    '',
+    '  1) Exportar configurações da versão atual: abra o ícone da extensão',
+    '     → popup → "Exportar configurações" (gera paidegua-config-*.txt).',
+    '  2) Remover a versão antiga: chrome://extensions → localize o pAIdegua',
+    '     e clique em "Remover".',
+    '  3) Instalar pela Chrome Web Store (link acima).',
+    '  4) Importar configurações: abra o ícone da nova extensão → popup →',
+    '     "Importar configurações" e selecione o .txt salvo no passo 1.',
+    '',
+    'PRIVACIDADE E CONFORMIDADE',
+    'O pAIdegua opera dentro do navegador do usuário, sob a Resolução CNJ',
+    '615/2025 e a LGPD. Dados sensíveis dos autos (CPF, número de processo,',
+    'conteúdo) NÃO são enviados para fora da Justiça nem registrados em logs',
+    'do Inovajus.',
+    '',
+    'Dúvidas ou problemas no login? Responda a este e-mail — chega direto',
+    'na equipe Inovajus.',
+    '',
+    '— Inovajus / Justiça Federal no Ceará',
+    'paidegua.ia.br · kanban.paidegua.ia.br',
+  ].join('\n');
+
+  const html = `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bem-vindo(a) ao pAIdegua</title></head>
+<body style="margin:0;padding:0;background-color:#F6F8FC;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#16243A;line-height:1.55">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">Instale a extensão e entre com seu e-mail institucional. Acesso ao grupo piloto liberado pelo Inovajus/JFCE.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F8FC;padding:32px 16px">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(12,50,111,0.10)">
+<tr><td style="background-color:#FFCD07;height:6px;line-height:6px;font-size:0">&nbsp;</td></tr>
+<tr><td bgcolor="#0C326F" style="background-color:#0C326F;background-image:linear-gradient(135deg,#1351B4 0%,#0C326F 100%);padding:36px 40px 28px 40px;color:#ffffff">
+<div style="font-size:12px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#FFCD07;margin-bottom:10px">Inovajus &middot; Justiça Federal no Ceará</div>
+<h1 style="margin:0;font-size:28px;line-height:1.25;font-weight:700;color:#ffffff;font-family:'Segoe UI',Roboto,Arial,sans-serif">Bem-vindo(a) ao pAIdegua</h1>
+<p style="margin:12px 0 0 0;font-size:15px;color:#E6ECF5">Seu acesso ao grupo piloto da extensão está liberado.</p>
+</td></tr>
+<tr><td style="padding:32px 40px 8px 40px">
+<p style="margin:0 0 16px 0;font-size:16px">Olá, <strong>piloto</strong>,</p>
+<p style="margin:0;font-size:15px;color:#16243A">Seu e-mail institucional foi autorizado a usar a extensão <strong>pAIdegua</strong> como membro do <strong>grupo piloto</strong>. A pAIdegua é uma extensão para Chrome/Edge desenvolvida pelo <strong>Inovajus/JFCE</strong> que integra inteligência artificial, automações e telas de produtividade diretamente ao PJe — sem instalação de software fora do navegador e sem envio de dados sensíveis para fora da Justiça.</p>
+</td></tr>
+<tr><td style="padding:28px 40px 8px 40px">
+<h2 style="margin:0 0 18px 0;font-size:17px;color:#0C326F;font-weight:700;font-family:'Segoe UI',Roboto,Arial,sans-serif">Como começar em 2 passos</h2>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0"><tr>
+<td valign="top" width="50" style="padding-right:14px"><div style="width:36px;height:36px;line-height:36px;text-align:center;background-color:#0C326F;color:#FFCD07;border-radius:50%;font-weight:700;font-size:16px;font-family:'Segoe UI',Arial,sans-serif">1</div></td>
+<td valign="top"><p style="margin:0 0 4px 0;font-size:15px;font-weight:600;color:#0C326F">Instale a extensão na Chrome Web Store</p><p style="margin:0;font-size:14px;color:#5B6B82">Funciona em Chrome e Edge. Não exige instalação de software no Windows. Após instalar, fixe o ícone na barra do navegador.</p></td>
+</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="top" width="50" style="padding-right:14px"><div style="width:36px;height:36px;line-height:36px;text-align:center;background-color:#0C326F;color:#FFCD07;border-radius:50%;font-weight:700;font-size:16px;font-family:'Segoe UI',Arial,sans-serif">2</div></td>
+<td valign="top"><p style="margin:0 0 4px 0;font-size:15px;font-weight:600;color:#0C326F">Entre com este e-mail</p><p style="margin:0;font-size:14px;color:#5B6B82">Abra o ícone da extensão, informe este mesmo endereço e clique em <em>Entrar</em>. Você receberá um código de 6 dígitos por e-mail (não há senha). Digite o código na extensão para confirmar o acesso.</p></td>
+</tr></table>
+</td></tr>
+<tr><td style="padding:24px 40px 0 40px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFF8E1;border-left:4px solid #F57C00;border-radius:8px"><tr><td style="padding:16px 18px">
+<p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#8a5a00;text-transform:uppercase;letter-spacing:0.08em">Já usa a versão dev (pasta dist)?</p>
+<p style="margin:0 0 12px 0;font-size:13px;color:#16243A;line-height:1.6">Se você já vinha usando o pAIdegua em modo desenvolvedor (carregada da pasta <code style="background:rgba(245,124,0,0.12);padding:1px 6px;border-radius:4px;font-size:12px">dist</code>), faça este caminho <strong>antes</strong> de clicar em <em>Instalar</em>, para preservar suas configurações:</p>
+<ol style="margin:0;padding-left:20px;font-size:13px;color:#16243A;line-height:1.65">
+<li style="margin-bottom:6px"><strong>Exportar configurações</strong> da versão atual: abra o ícone da extensão &rarr; popup &rarr; botão <em>Exportar configurações</em>. Será gerado um arquivo <code style="background:rgba(245,124,0,0.12);padding:1px 5px;border-radius:4px;font-size:12px">paidegua-config-*.txt</code>.</li>
+<li style="margin-bottom:6px"><strong>Remover</strong> a versão antiga: abra <code style="background:rgba(245,124,0,0.12);padding:1px 5px;border-radius:4px;font-size:12px">chrome://extensions</code>, localize o pAIdegua e clique em <em>Remover</em>.</li>
+<li style="margin-bottom:6px"><strong>Instalar</strong> pela Chrome Web Store (botão abaixo).</li>
+<li><strong>Importar configurações</strong>: abra o ícone da nova extensão &rarr; popup &rarr; <em>Importar configurações</em> e selecione o arquivo <code style="background:rgba(245,124,0,0.12);padding:1px 5px;border-radius:4px;font-size:12px">.txt</code> salvo no passo 1.</li>
+</ol>
+</td></tr></table>
+</td></tr>
+<tr><td style="padding:28px 40px 8px 40px" align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="border-radius:8px"><a href="${cwsUrl}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;background-color:#1351B4;border-radius:8px;text-decoration:none;border:1px solid #0C326F;font-family:'Segoe UI',Arial,sans-serif">Instalar a extensão &rarr;</a></td>
+</tr></table>
+</td></tr>
+<tr><td style="padding:32px 40px 0 40px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F8FC;border-left:4px solid #1351B4;border-radius:8px"><tr><td style="padding:16px 18px">
+<p style="margin:0 0 6px 0;font-size:12px;font-weight:700;color:#0C326F;text-transform:uppercase;letter-spacing:0.08em">Privacidade e conformidade</p>
+<p style="margin:0;font-size:13px;color:#16243A;line-height:1.6">O pAIdegua opera dentro do navegador do usuário, sob a <strong>Resolução CNJ 615/2025</strong> e a <strong>LGPD</strong>. Dados sensíveis dos autos (CPF, número de processo, conteúdo) <strong>não</strong> são enviados para fora da Justiça nem registrados em logs do Inovajus. A whitelist de e-mails autorizados é gerida pelo time Inovajus no painel institucional <a href="https://kanban.paidegua.ia.br" style="color:#1351B4">kanban.paidegua.ia.br</a>.</p>
+</td></tr></table>
+</td></tr>
+<tr><td style="padding:24px 40px 8px 40px">
+<p style="margin:0;font-size:14px;color:#5B6B82">Dúvidas ou problemas no login? <strong style="color:#16243A">Responda a este e-mail</strong> — chega direto na equipe Inovajus.</p>
+</td></tr>
+<tr><td style="padding:24px 40px 32px 40px;border-top:1px solid rgba(19,81,180,0.14)">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="top" width="60%"><p style="margin:0;font-size:13px;font-weight:700;color:#0C326F">Inovajus &middot; Justiça Federal no Ceará</p>
+<p style="margin:4px 0 0 0;font-size:12px;color:#5B6B82"><a href="https://paidegua.ia.br" style="color:#5B6B82;text-decoration:none">paidegua.ia.br</a> &middot; <a href="https://kanban.paidegua.ia.br" style="color:#5B6B82;text-decoration:none">kanban.paidegua.ia.br</a></p></td>
+<td valign="top" align="right" width="40%"><p style="margin:0;font-size:11px;color:#8395B0;text-align:right;line-height:1.5">Você recebeu este e-mail porque seu endereço institucional foi adicionado ao grupo piloto da extensão pAIdegua.</p></td>
+</tr></table>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: `${fromName} <${from}>`,
+      to: [to],
+      subject,
+      text,
+      html,
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    console.error('Resend welcome falhou', resp.status, err);
+    throw new Error('Falha ao enviar e-mail de boas-vindas');
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 // ============== Team handlers ==============
 async function handleListMembers(env) {
   return json({ ok: true, members: await loadMembers(env) });
@@ -536,8 +704,88 @@ async function handleAddMember(request, env, auth) {
       adicionadoPor: auth.email,
     });
   }
+
+  // Welcome automático para piloto da extensão (idempotente via flag).
+  // Falha do envio não derruba o cadastro — apenas loga.
+  const m = list.find((x) => x.email === email);
+  if (m && m.ativo !== false && Array.isArray(m.equipes) && m.equipes.includes('extensao') && !m.welcomeExtensaoEnviadoEm) {
+    try {
+      await sendWelcomeExtensaoEmail(m.email, m.nome, env);
+      m.welcomeExtensaoEnviadoEm = new Date().toISOString();
+      m.welcomeExtensaoEnviadoPor = 'auto/handleAddMember';
+    } catch (err) {
+      console.error('welcome extensão falhou', m.email, err.message);
+    }
+  }
+
   await saveMembers(env, list);
   return json({ ok: true, members: list });
+}
+
+/**
+ * Dispara welcome em lote para membros recentes da equipe 'extensao' que
+ * ainda não receberam. Idempotente: ignora quem já tem welcomeExtensaoEnviadoEm.
+ *
+ * Body opcional:
+ *   { dias?: number = 3, force?: boolean = false, emails?: string[], dryRun?: boolean }
+ * - dias: janela em dias contada do adicionadoEm
+ * - force: ignora welcomeExtensaoEnviadoEm (reenvia)
+ * - emails: se preenchido, filtra exatamente esta lista (e ignora 'dias')
+ * - dryRun: lista alvos sem enviar
+ */
+async function handleWelcomeExtensaoBatch(request, env, auth) {
+  if (!(await isAdmin(auth.email, env))) return json({ error: 'Apenas admin' }, 403);
+  const body = await request.json().catch(() => ({}));
+  const dias = Number.isFinite(body.dias) && body.dias > 0 ? body.dias : 3;
+  const force = body.force === true;
+  const dryRun = body.dryRun === true;
+  const filtroEmails = Array.isArray(body.emails) && body.emails.length
+    ? new Set(body.emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean))
+    : null;
+
+  const list = await loadMembers(env);
+  const limite = Date.now() - dias * 24 * 60 * 60 * 1000;
+
+  const alvos = list.filter((m) => {
+    if (m.ativo === false) return false;
+    const equipes = Array.isArray(m.equipes) ? m.equipes : [];
+    if (!equipes.includes('extensao')) return false;
+    if (filtroEmails) return filtroEmails.has(m.email.toLowerCase());
+    if (!force && m.welcomeExtensaoEnviadoEm) return false;
+    const adicionadoMs = m.adicionadoEm ? Date.parse(m.adicionadoEm) : 0;
+    return adicionadoMs >= limite;
+  });
+
+  if (dryRun) {
+    return json({
+      ok: true,
+      dryRun: true,
+      dias,
+      force,
+      totalAlvos: alvos.length,
+      alvos: alvos.map((m) => ({
+        email: m.email,
+        nome: m.nome,
+        adicionadoEm: m.adicionadoEm,
+        welcomeExtensaoEnviadoEm: m.welcomeExtensaoEnviadoEm || null,
+      })),
+    });
+  }
+
+  const enviados = [];
+  const falhas = [];
+  for (const m of alvos) {
+    try {
+      await sendWelcomeExtensaoEmail(m.email, m.nome, env);
+      m.welcomeExtensaoEnviadoEm = new Date().toISOString();
+      m.welcomeExtensaoEnviadoPor = `batch/${auth.email}`;
+      enviados.push(m.email);
+    } catch (err) {
+      falhas.push({ email: m.email, erro: err.message });
+    }
+  }
+  if (enviados.length) await saveMembers(env, list);
+  return json({ ok: true, dias, force, totalAlvos: alvos.length, enviados, falhas });
 }
 
 async function handleRemoveMember(env, email, auth) {

@@ -1,0 +1,171 @@
+<!doctype html>
+<!--
+  Preview standalone do e-mail de boas-vindas (OPS-11).
+  Abra direto no Chrome/Edge para validar o visual antes do deploy.
+  Os tokens {{nome}}, {{cwsUrl}}, {{manualUrl}} estão substituídos por
+  valores de demonstração — o Worker faz a substituição em produção.
+
+  Caminho equivalente no Worker: sendWelcomeExtensaoEmail() em worker.js
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview · pAIdegua welcome (piloto)</title>
+<style>
+  body { margin: 0; background: #E5E9F0; }
+  .preview-bar {
+    background: #16243A; color: #fff; padding: 12px 16px;
+    font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .preview-bar code { background: rgba(255,255,255,0.12); padding: 2px 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <div class="preview-bar">
+    <strong>Preview · welcome extensão pAIdegua</strong>
+    <span>de <code>pAIdegua / Inovajus &lt;noreply@paidegua.ia.br&gt;</code></span>
+    <span>assunto: <code>Bem-vindo(a) ao pAIdegua — seu acesso ao grupo piloto está liberado</code></span>
+  </div>
+
+<!-- ================== INÍCIO DO HTML ENVIADO ================== -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F8FC;padding:32px 16px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#16243A;line-height:1.55">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(12,50,111,0.10)">
+
+        <!-- Faixa amarela gov.br -->
+        <tr><td style="background-color:#FFCD07;height:6px;line-height:6px;font-size:0">&nbsp;</td></tr>
+
+        <!-- Hero -->
+        <tr>
+          <td bgcolor="#0C326F" style="background-color:#0C326F;background-image:linear-gradient(135deg,#1351B4 0%,#0C326F 100%);padding:36px 40px 28px 40px;color:#ffffff">
+            <div style="font-size:12px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#FFCD07;margin-bottom:10px">Inovajus · Justiça Federal no Ceará</div>
+            <h1 style="margin:0;font-size:28px;line-height:1.25;font-weight:700;color:#ffffff;font-family:'Segoe UI',Roboto,Arial,sans-serif">Bem-vindo(a) ao pAIdegua</h1>
+            <p style="margin:12px 0 0 0;font-size:15px;color:#E6ECF5">Seu acesso ao grupo piloto da extensão está liberado.</p>
+          </td>
+        </tr>
+
+        <!-- Saudação + intro -->
+        <tr>
+          <td style="padding:32px 40px 8px 40px">
+            <p style="margin:0 0 16px 0;font-size:16px">Olá, <strong>piloto</strong>,</p>
+            <p style="margin:0;font-size:15px;color:#16243A">Seu e-mail institucional foi autorizado a usar a extensão <strong>pAIdegua</strong> como membro do <strong>grupo piloto</strong>. A pAIdegua é uma extensão para Chrome/Edge desenvolvida pelo <strong>Inovajus/JFCE</strong> que integra inteligência artificial, automações e telas de produtividade diretamente ao PJe — sem instalação de software fora do navegador e sem envio de dados sensíveis para fora da Justiça.</p>
+          </td>
+        </tr>
+
+        <!-- Passos -->
+        <tr>
+          <td style="padding:28px 40px 8px 40px">
+            <h2 style="margin:0 0 18px 0;font-size:17px;color:#0C326F;font-weight:700;font-family:'Segoe UI',Roboto,Arial,sans-serif">Como começar em 2 passos</h2>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0">
+              <tr>
+                <td valign="top" width="50" style="padding-right:14px">
+                  <div style="width:36px;height:36px;line-height:36px;text-align:center;background-color:#0C326F;color:#FFCD07;border-radius:50%;font-weight:700;font-size:16px;font-family:'Segoe UI',Arial,sans-serif">1</div>
+                </td>
+                <td valign="top">
+                  <p style="margin:0 0 4px 0;font-size:15px;font-weight:600;color:#0C326F">Instale a extensão na Chrome Web Store</p>
+                  <p style="margin:0;font-size:14px;color:#5B6B82">Funciona em Chrome e Edge. Não exige instalação de software no Windows. Após instalar, fixe o ícone na barra do navegador.</p>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="50" style="padding-right:14px">
+                  <div style="width:36px;height:36px;line-height:36px;text-align:center;background-color:#0C326F;color:#FFCD07;border-radius:50%;font-weight:700;font-size:16px;font-family:'Segoe UI',Arial,sans-serif">2</div>
+                </td>
+                <td valign="top">
+                  <p style="margin:0 0 4px 0;font-size:15px;font-weight:600;color:#0C326F">Entre com este e-mail</p>
+                  <p style="margin:0;font-size:14px;color:#5B6B82">Abra o ícone da extensão, informe este mesmo endereço e clique em <em>Entrar</em>. Você receberá um código de 6 dígitos por e-mail (não há senha). Digite o código na extensão para confirmar o acesso.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Caixa de migração (já usava versão dev / pasta dist) -->
+        <tr>
+          <td style="padding:24px 40px 0 40px">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFF8E1;border-left:4px solid #F57C00;border-radius:8px">
+              <tr>
+                <td style="padding:16px 18px">
+                  <p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#8a5a00;text-transform:uppercase;letter-spacing:0.08em">Já usa a versão dev (pasta dist)?</p>
+                  <p style="margin:0 0 12px 0;font-size:13px;color:#16243A;line-height:1.6">Se você já vinha usando o pAIdegua em modo desenvolvedor (carregada da pasta <code style="background:rgba(245,124,0,0.12);padding:1px 6px;border-radius:4px;font-size:12px">dist</code>), faça este caminho <strong>antes</strong> de clicar em <em>Instalar</em>, para preservar suas configurações:</p>
+                  <ol style="margin:0;padding-left:20px;font-size:13px;color:#16243A;line-height:1.65">
+                    <li style="margin-bottom:6px"><strong>Exportar configurações</strong> da versão atual: abra o ícone da extensão → popup → botão <em>Exportar configurações</em>. Será gerado um arquivo <code style="background:rgba(245,124,0,0.12);padding:1px 5px;border-radius:4px;font-size:12px">paidegua-config-*.txt</code>.</li>
+                    <li style="margin-bottom:6px"><strong>Remover</strong> a versão antiga: abra <code style="background:rgba(245,124,0,0.12);padding:1px 5px;border-radius:4px;font-size:12px">chrome://extensions</code>, localize o pAIdegua e clique em <em>Remover</em>.</li>
+                    <li style="margin-bottom:6px"><strong>Instalar</strong> pela Chrome Web Store (botão abaixo).</li>
+                    <li><strong>Importar configurações</strong>: abra o ícone da nova extensão → popup → <em>Importar configurações</em> e selecione o arquivo <code style="background:rgba(245,124,0,0.12);padding:1px 5px;border-radius:4px;font-size:12px">.txt</code> salvo no passo 1.</li>
+                  </ol>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Botão CTA -->
+        <tr>
+          <td style="padding:28px 40px 8px 40px" align="center">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-radius:8px">
+                  <a href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;background-color:#1351B4;border-radius:8px;text-decoration:none;border:1px solid #0C326F;font-family:'Segoe UI',Arial,sans-serif">Instalar a extensão &rarr;</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Caixa LGPD -->
+        <tr>
+          <td style="padding:32px 40px 0 40px">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F8FC;border-left:4px solid #1351B4;border-radius:8px">
+              <tr>
+                <td style="padding:16px 18px">
+                  <p style="margin:0 0 6px 0;font-size:12px;font-weight:700;color:#0C326F;text-transform:uppercase;letter-spacing:0.08em">Privacidade e conformidade</p>
+                  <p style="margin:0;font-size:13px;color:#16243A;line-height:1.6">O pAIdegua opera dentro do navegador do usuário, sob a <strong>Resolução CNJ 615/2025</strong> e a <strong>LGPD</strong>. Dados sensíveis dos autos (CPF, número de processo, conteúdo) <strong>não</strong> são enviados para fora da Justiça nem registrados em logs do Inovajus. A whitelist de e-mails autorizados é gerida pelo time Inovajus no painel institucional <a href="https://kanban.paidegua.ia.br" style="color:#1351B4">kanban.paidegua.ia.br</a>.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Suporte -->
+        <tr>
+          <td style="padding:24px 40px 8px 40px">
+            <p style="margin:0;font-size:14px;color:#5B6B82">Dúvidas ou problemas no login? <strong style="color:#16243A">Responda a este e-mail</strong> — chega direto na equipe Inovajus.</p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:24px 40px 32px 40px;border-top:1px solid rgba(19,81,180,0.14)">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="60%">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#0C326F">Inovajus · Justiça Federal no Ceará</p>
+                  <p style="margin:4px 0 0 0;font-size:12px;color:#5B6B82">
+                    <a href="https://paidegua.ia.br" style="color:#5B6B82;text-decoration:none">paidegua.ia.br</a>
+                    &nbsp;·&nbsp;
+                    <a href="https://kanban.paidegua.ia.br" style="color:#5B6B82;text-decoration:none">kanban.paidegua.ia.br</a>
+                  </p>
+                </td>
+                <td valign="top" align="right" width="40%">
+                  <p style="margin:0;font-size:11px;color:#8395B0;text-align:right;line-height:1.5">Você recebeu este e-mail porque seu endereço institucional foi adicionado ao grupo piloto da extensão pAIdegua.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+<!-- ================== FIM DO HTML ENVIADO ================== -->
+
+</body>
+</html>
