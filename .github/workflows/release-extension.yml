@@ -162,7 +162,7 @@ jobs:
   # ----------------------------------------------------------------------
   publish-cws:
     needs: release
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_cws == true
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_cws == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
