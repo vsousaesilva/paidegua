@@ -2979,6 +2979,59 @@
       ]
     },
     {
+      "id": "OPS-14",
+      "titulo": "Backfill de GitHub Releases v1.0.1..v1.6.3 + workflow publish-cws como opt-in",
+      "descricao": "Antes deste card, GitHub Releases do repo paidegua estava congelado em v1.3.1 (Latest), enquanto a extensão real em produção (Chrome Web Store) já estava em v1.6.3 — 11 versões publicadas sem rastro no GitHub. Causa histórica: depois do incidente da v1.3.1 (zip da CI divergiu do validado localmente), o fluxo de release virou build local + upload manual à CWS, sem criar tag git, e o workflow .github/workflows/release-extension.yml ficou amarrado a push de tag.\n\nObjetivo: reconciliar GitHub Releases com o que de fato está em produção, sem dar margem para o workflow re-publicar nada na CWS por engano.\n\nEntregas:\n- .github/workflows/release-extension.yml: job publish-cws tornado opt-in (if envelopado em ${{ }} + condição github.event_name == 'workflow_dispatch' && inputs.publish_cws == true). Em push de tag o job NUNCA dispara. Comentário do topo do yml atualizado para refletir que CWS é manual.\n- scripts/backfill-github-releases.mjs: utilitário Node que, dado um GITHUB_TOKEN local, cria tag + Release + uploaded asset via API GitHub para uma lista hardcoded de versões. Ficou não-usado porque a rede da JFCE bloqueia api.github.com:443 (curl e Node fetch ambos travam em CONNECT_TIMEOUT), mas está versionado para futura referência ou para rodar em outro ambiente.\n- 9 Releases retroativos criados via painel GitHub (caminho manual) com upload dos zips autoritativos de versoes/: v1.0.1, v1.2.0, v1.2.1, v1.3.2, v1.4.0, v1.5.0, v1.5.1, v1.6.1, v1.6.2. Cada um aponta para o commit de bump correspondente, com descrição explicando o caráter retroativo.\n- v1.6.3 criada via workflow normal (git tag + git push), com zip rebuilt pela CI, marcada como Latest.\n\nVersões pulam o backfill: v1.1.0, v1.1.1 e v1.6.0 — têm zip em versoes/ mas commit de bump não aparece com 'vX.Y.Z' explícito no git log. Ficam só como arquivo arquivado.\n\nIncidente menor: na primeira passagem do workflow em v1.6.3, o job publish-cws disparou indevidamente (rodou e falhou em 3s por falta dos secrets CWS) porque a condição estava sem ${{ }} explícito. Sem dano à CWS (faltava credencial). Fix aplicado e empurrado no mesmo dia.",
+      "categoria": "operacional",
+      "prioridade": "P2",
+      "coluna": "lancado",
+      "owner": "vsousaesilva@jfce.jus.br",
+      "origem": "owner notou que GitHub Releases estava em v1.3.1 enquanto a extensão em produção é v1.6.3, 2026-05-14",
+      "fase": "F3",
+      "tags": [
+        "release",
+        "github",
+        "ci",
+        "workflow",
+        "automacao",
+        "concluido"
+      ],
+      "esforco": "M",
+      "depende": [],
+      "dataCriacao": "2026-05-14T22:00:00.000Z",
+      "dataConclusao": "2026-05-14T22:30:00.000Z",
+      "aceitacao": [
+        "GitHub Releases mostra todas as versões publicadas em produção: v1.0.1, v1.2.0, v1.2.1, v1.3.0, v1.3.1, v1.3.2, v1.4.0, v1.5.0, v1.5.1, v1.6.1, v1.6.2, v1.6.3 (com v1.6.3 como Latest).",
+        "Cada Release retroativo tem como asset o zip exato que foi à Chrome Web Store (extraído de versoes/), não um rebuild da CI.",
+        "Workflow release-extension.yml dispara em push de tag, gera Release no GitHub, e NÃO publica na CWS (publish-cws fica opt-in).",
+        "Para futuras releases, o fluxo é: bumpar manifest.json + package.json → build local + upload manual na CWS → git tag vX.Y.Z + git push --tags → workflow cria Release no GitHub automaticamente."
+      ],
+      "checklist": [
+        { "id": "ops14-1", "texto": "Workflow release-extension.yml: publish-cws condicional opt-in (com ${{ }})", "feito": true },
+        { "id": "ops14-2", "texto": "scripts/backfill-github-releases.mjs criado (api.github.com bloqueada pelo firewall JFCE — não rodou, fica versionado)", "feito": true },
+        { "id": "ops14-3", "texto": "9 tags retroativas criadas e pushadas (v1.0.1..v1.6.2)", "feito": true },
+        { "id": "ops14-4", "texto": "9 Releases criados via painel GitHub com upload dos zips autoritativos de versoes/", "feito": true },
+        { "id": "ops14-5", "texto": "Tag v1.6.3 + workflow rodou + Release v1.6.3 marcado como Latest", "feito": true },
+        { "id": "ops14-6", "texto": "Fix do if do publish-cws (envelopar em ${{ }}) após bug do run #3", "feito": true }
+      ],
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T22:00:00.000Z",
+          "comando": "Owner notou em 2026-05-14 que GitHub Releases mostrava v1.3.1 como Latest, enquanto a extensão em produção já estava em v1.6.3. Investigação confirmou: 11 versões publicadas na CWS sem tag git correspondente desde o incidente v1.3.1. Backfill + desacoplamento do workflow foram decididos para reconciliar o histórico público sem risco de re-publicar na CWS."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-14T22:30:00.000Z",
+          "comando": "Backfill concluído: 12 Releases visíveis no GitHub (v1.0.1 .. v1.6.3) com v1.6.3 como Latest. publish-cws opt-in funcionando após fix do if. Daqui pra frente, toda tag vX.Y.Z pushada gera Release no GitHub automaticamente; CWS continua sendo upload manual via skill release-extensao."
+        }
+      ]
+    },
+    {
       "id": "ATD-01",
       "titulo": "Mini balcão virtual integrado",
       "descricao": "Botão 'Falar com a unidade' nos painéis do servidor abrindo agendamento do balcão virtual da unidade. Para servidor que precisa contatar outra vara.",
