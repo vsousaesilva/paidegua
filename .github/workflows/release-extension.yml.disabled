@@ -6,12 +6,16 @@ name: Release da extensão pAIdegua
 #  3. empacota dist/ em "dist vX.Y.Z.zip"
 #  4. cria/atualiza GitHub Release com o zip como asset
 #
+# A publicação na Chrome Web Store é MANUAL (build local + upload pelo
+# Developer Dashboard); o job publish-cws aqui é opt-in via workflow_dispatch
+# com publish_cws=true, nunca dispara em push de tag. Histórico em
+# docs/publicacao-marketplace.md (incidente v1.3.1).
+#
 # Para liberar uma versão:
 #   - bumpar manifest.json E package.json para a nova versão
+#   - build local e publicar na CWS manualmente (skill: release-extensao)
 #   - commit e push em main
-#   - git tag v1.X.Y && git push --tags
-#
-# O Actions detecta a tag e gera a release automaticamente.
+#   - git tag v1.X.Y && git push --tags  → gera GitHub Release com changelog
 
 on:
   push:
@@ -23,6 +27,11 @@ on:
         description: 'Tag para gerar release (ex.: v1.3.0)'
         required: true
         type: string
+      publish_cws:
+        description: 'Publicar na Chrome Web Store junto (use apenas se ainda NÃO subiu manualmente)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -132,25 +141,28 @@ jobs:
           retention-days: 7
 
   # ----------------------------------------------------------------------
-  # Publish na Chrome Web Store automático.
+  # Publish na Chrome Web Store — OPT-IN, NUNCA automático.
   #
-  # Disparado SOMENTE em push de tag (não em workflow_dispatch) pra evitar
-  # subir builds ad-hoc sem revisão. Submete pra revisão automaticamente
-  # se SUBMIT_FOR_REVIEW for "true" (default). Pra apenas dar upload sem
-  # submeter (modo "draft"), defina SUBMIT_FOR_REVIEW="false" como var
-  # do repo.
+  # Historicamente este job rodava em todo push de tag, mas o incidente
+  # da v1.3.1 mostrou que o zip da CI pode divergir do que foi validado
+  # localmente. Desde então a publicação na CWS é manual (build local +
+  # zip local + upload no Chrome Developer Dashboard), e o GitHub Release
+  # só serve como histórico/changelog versionado.
+  #
+  # Este job só roda agora em workflow_dispatch com publish_cws=true,
+  # explicitamente. Em push de tag NUNCA dispara — o que destrava criar
+  # tags retroativas (backfill de v1.3.2..v1.6.x) sem risco de duplicar
+  # publicações na CWS que já foram feitas manualmente.
   #
   # Secrets necessários (cadastrar 1x em Settings > Secrets and variables > Actions):
   #   CWS_EXTENSION_ID    : belangijcipajlpcofhljhgjeemkbofk
   #   CWS_CLIENT_ID       : OAuth client ID da Google Cloud Console
   #   CWS_CLIENT_SECRET   : OAuth client secret da Google Cloud Console
   #   CWS_REFRESH_TOKEN   : refresh token gerado uma vez via OAuth playground
-  #
-  # Setup detalhado em docs/publicacao-marketplace.md (será atualizado).
   # ----------------------------------------------------------------------
   publish-cws:
     needs: release
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_cws == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
