@@ -6058,7 +6058,7 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-14T18:00:00.000Z",
-      "atualizadoEm": "2026-05-14T18:00:00.000Z",
+      "atualizadoEm": "2026-05-14T20:00:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-05-14",
       "historico": [
         {
@@ -6066,6 +6066,46 @@
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T18:00:00.000Z",
           "comando": "Card aberto após a v1.6.2 entrar em produção e revelar que o caminho offscreen tinha 7 bugs latentes. Investigação cirúrgica via instrumentação confirmou que pdf.js v5 page.render trava em offscreen documents (não é Worker, não é canvas, não é createImageBitmap — provavelmente Image.decode interno). Solução: refatoração arquitetural — render volta para o content, offscreen fica só com Tesseract. Bump 1.6.2 → 1.6.3. Build local OK + testado popup (vitória) + testado audiência (funciona, lento mas aceitável)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "arquivado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-14T20:00:00.000Z",
+          "comando": "v1.6.3 REJEITADA pela Chrome Web Store (Blue Argon — remotely hosted code). Snippet flagado: 'https://cdnjs.cloudflare.com/ajax/libs/pdfobject/2.1.1/pdfobject.min.js' em dist/audiencia-resumo/resumo.js. Origem: html2pdf.js → jsPDF inclui feature opcional pdfobjectnewwindow com URL de CDN como string literal — dead code, nunca executado, mas string sobrevive ao minify e dispara o detector estático da CWS. Substituída por REL-1.6.4 que neutraliza essas URLs via postbuild script (scripts/strip-cdn-urls.mjs)."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.6.4",
+      "titulo": "Release v1.6.4 — neutralização de URLs de CDN dead-code no bundle (fix de Blue Argon da v1.6.3)",
+      "descricao": "Mesmo conteúdo funcional da REL-1.6.3 (rejeitada pela CWS por Blue Argon — remotely hosted code), com um único acréscimo: post-build script `scripts/strip-cdn-urls.mjs` chamado automaticamente via `npm postbuild` que substitui URLs de CDNs públicos (cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, etc.) no bundle compilado por uma string inerte 'blocked-mv3'.\n\nURLs neutralizadas (todas dead-code que nunca executam — fallbacks internos de libs):\n- `dist/audiencia-resumo/resumo.js`: pdfobject.min.js (jsPDF feature pdfobjectnewwindow)\n- `dist/content.js`, `dist/criminal-dashboard/dashboard.js`, `dist/offscreen/ocr.js`: tesseract.js worker fallback (não usado porque setamos workerPath local)\n- `dist/libs/tesseract/worker.min.js`: tesseract.js-core + @tesseract.js-data fallbacks\n\nBump 1.6.3 → 1.6.4. Sem mudanças no código TS — só infra de build.",
+      "categoria": "infra",
+      "prioridade": "P0",
+      "coluna": "dev",
+      "origem": "rejeição CWS v1.6.3 — 14/05/2026",
+      "tags": ["release", "extensao", "cws", "mv3", "blue-argon", "infra"],
+      "esforco": "XS",
+      "depende": ["REL-1.6.3"],
+      "aceitacao": [
+        "package.json em 1.6.4 com script postbuild apontando para strip-cdn-urls.mjs",
+        "manifest.json em 1.6.4; dist/manifest.json em 1.6.4",
+        "dist/audiencia-resumo/resumo.js NÃO contém 'cdnjs.cloudflare.com'",
+        "dist/*.js NÃO contém URLs de CDNs públicos (validado por grep manual)",
+        "zip versoes/dist v1.6.4.zip enviado à CWS",
+        "Aprovação CWS + smoke test + comunicação aos pilotos"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-14T20:00:00.000Z",
+      "atualizadoEm": "2026-05-14T20:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-14",
+          "data": "2026-05-14T20:00:00.000Z",
+          "comando": "Card aberto após rejeição da v1.6.3 pela CWS. Diagnóstico: URL de CDN em string literal de dead code de jsPDF (feature pdfobjectnewwindow nunca chamada). Script de pós-build neutraliza essas e outras URLs equivalentes em todos os bundles. Aplicado preventivamente para tesseract.js worker URLs também (mesmo problema, ainda não flagado pela CWS mas tendência)."
         }
       ]
     },
