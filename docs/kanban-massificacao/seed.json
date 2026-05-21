@@ -6131,7 +6131,7 @@
       "descricao": "Reformulação completa do tratamento de documentos digitalizados, fechando o ciclo aberto pelo BUG-21 / REL-1.6.1..1.6.4.\n\n## O diagnóstico\n\nApós a v1.6.4 o OCR funcionava, mas seguia lento — ler ~10 documentos digitalizados levava ~5 min (contra ~12s na v1.3). A investigação a fundo pedida pelo owner revelou que o gargalo NÃO era a tecnologia de OCR: (1) o PJe não fornece texto OCR de digitalizados; (2) documentos escaneados estavam sendo 'lidos' apenas pelo rodapé carimbado de ~250 chars que o PJe põe em toda página, enganando a heurística de 'tem texto?'; (3) transcrever um processo grande (120+ páginas) é gerar ~150 mil tokens — lento em QUALQUER tecnologia (Tesseract ou IA).\n\n## A solução: OCR imagem-direto\n\nNão transcrever. Documentos digitalizados são renderizados como imagem JPEG (~108 DPI) e enviados DIRETO à IA multimodal (Gemini/Claude/GPT-4o), que os lê como entrada ao resumir/analisar/minutar. O custo da imagem é input (rápido); elimina-se a etapa cara de gerar a transcrição. Resultado medido: preparar 120 páginas passou de ~230s para ~10,7s; a IA leu corretamente 5 CTPS digitalizadas extraindo ~30 vínculos.\n\nCobertura: todos os fluxos que leem documentos — Resumir, Minutar, Resumir em áudio, Analisar processo (triagem), Inserir etiquetas mágicas e Resumo da pauta de audiência.\n\n## Limpeza de código morto\n\nCom o imagem-direto, as tentativas anteriores viraram peso morto e foram removidas: runOcrOnDocuments (batch Tesseract legado), o offscreen document inteiro (src/offscreen/ + entry webpack + permissão 'offscreen' do manifest), a transcrição-via-IA intermediária (canal OCR_VIA_IA, handleOcrViaIa, provider.ocrImages), os canais OCR_OFFSCREEN_*/OCR_FOCUS_TAB, a porta keepalive e a opção skipTabFocus. Tesseract.js permanece SÓ no painel do sistema criminal (criminal-dashboard), que tem fluxo de OCR local próprio.\n\n## Documentação\n\ndocs/extracao-conteudo-pje.md ganhou a Seção 8 narrando a jornada completa (Tesseract → BUG-21/offscreen → diagnóstico → imagem-direto), sem apagar o registro histórico. Manuais (md + 2 HTML) corrigidos: afirmavam que o OCR rodava local 'sem enviar imagens à IA' — agora descrevem corretamente que as páginas digitalizadas são enviadas à IA.\n\nBump 1.6.4 → 1.6.5. Build local OK (typecheck + webpack). strip-cdn-urls neutralizou 5 URLs de CDN dead-code (Tesseract/pdfobject) — Blue Argon coberto.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "dev",
+      "coluna": "lancado",
       "origem": "sessão de investigação a fundo do OCR — pedido do owner após a v1.6.4 (OCR funcional mas lento)",
       "tags": ["release", "extensao", "cws", "ocr", "imagem-direto", "refatoracao", "limpeza"],
       "esforco": "L",
@@ -6148,14 +6148,53 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-20T00:00:00.000Z",
-      "atualizadoEm": "2026-05-20T00:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-20",
+      "atualizadoEm": "2026-05-21T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-21",
       "historico": [
         {
           "tipo": "criado",
           "autor": "claude-code/sessao-2026-05-20",
           "data": "2026-05-20T00:00:00.000Z",
           "comando": "Card aberto ao fechar a investigação a fundo do OCR pedida pelo owner após a v1.6.4. Conclusão: o gargalo era estrutural (transcrever = gerar ~150k tokens), não a tecnologia de OCR. Solução imagem-direto: renderizar páginas digitalizadas como imagem e mandar direto à IA multimodal, eliminando a transcrição. Estendido a todos os 6 fluxos que leem documentos. Removido todo o código morto das tentativas anteriores (Tesseract no fluxo de extração, offscreen document, OCR_VIA_IA). Bump 1.6.4 → 1.6.5. Build local validado (typecheck + webpack)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-21T00:00:00.000Z",
+          "comando": "v1.6.5 aprovada pela Chrome Web Store em 21/05/2026 e em produção. Smoke test do owner confirmou versão 1.6.5 ativa, login OK e leitura de documento digitalizado via imagem-direto funcionando (preparação em segundos, IA lê o conteúdo escaneado). Commit fbb502c em origin/main. Observação do owner: a completude da leitura de digitalizados ainda pode melhorar — acompanhada no novo card OCR-23. Pilotos comunicados em seguida."
+        }
+      ]
+    },
+    {
+      "id": "OCR-23",
+      "titulo": "Aperfeiçoar a leitura de documentos digitalizados (imagem-direto) — completude da extração",
+      "descricao": "Observação do owner no smoke test da v1.6.5 (21/05/2026): com o OCR imagem-direto funcionando, a leitura de documentos digitalizados pela IA ainda parece INCOMPLETA em alguns casos — nem todo o conteúdo da página escaneada é aproveitado.\n\nEste card substitui a dimensão 'qualidade' do antigo OCR-22 (arquivado): aquele card tratava de qualidade do Tesseract, motor que saiu do fluxo de extração na v1.6.5. Agora a qualidade depende da visão do modelo multimodal e dos parâmetros de render/contexto.\n\nFrentes a investigar:\n- Resolução do render: RENDER_SCALE hoje 1.5 (~108 DPI em A4). Letra miúda, carimbos e manuscrito podem exigir 2.0-3.0. Medir ganho de leitura x aumento do payload de imagens.\n- Qualidade JPEG: 0.82 hoje. Subir para ~0.9 em scans de baixo contraste.\n- Caps de página/imagem: MAX_OCR_PAGES (30/doc), MAX_IMAGENS_CONTEXTO (150 no buildDocumentContext) e os caps do fluxo de audiência (8 docs x 5 páginas). Confirmar se documentos longos não estão sendo truncados antes de chegar à IA.\n- Prompt/marcador: o texto-marcador em buildDocumentContext instrui a IA a ler as imagens. Avaliar se o prompt extrai com profundidade suficiente (tabelas, vínculos, datas, valores) ou se precisa de instrução estruturada.\n- Modelo: a qualidade de visão varia entre Gemini Flash/Pro, Claude e GPT-4o. Medir num conjunto fixo de processos-teste.\n- Pré-processamento da imagem (deskew, contraste) antes do envio, para scans tortos/desbotados.\n\nNão é bloqueante: a v1.6.5 já é uma melhora enorme sobre o estado anterior. Este card cobre o refinamento.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "triagem",
+      "origem": "observação do owner no smoke test da v1.6.5 — 21/05/2026",
+      "tags": ["ocr", "imagem-direto", "qualidade", "digitalizados", "tech-debt"],
+      "esforco": "M",
+      "depende": ["REL-1.6.5"],
+      "aceitacao": [
+        "Conjunto de 3-5 processos-teste com documentos digitalizados variados (laudos, CTPS, RGs, scans desbotados) montado como suite de medição",
+        "Medição da completude da leitura no estado atual (v1.6.5) como linha de base",
+        "Investigação documentada das frentes (resolução, JPEG, caps, prompt, modelo, pré-processamento) com prós/contras e POC mínima",
+        "Decisão go/no-go por frente com base em medição (completude x custo de payload/tempo)",
+        "Implementação das frentes aprovadas em release dedicada, com regressão zero de performance"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-21T00:00:00.000Z",
+      "atualizadoEm": "2026-05-21T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-21",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-21",
+          "data": "2026-05-21T00:00:00.000Z",
+          "comando": "Card aberto a pedido do owner ao finalizar o release da v1.6.5. O smoke test confirmou o imagem-direto funcionando, mas o owner observou que a leitura dos digitalizados ainda pode estar incompleta. Reformula a dimensão de qualidade do OCR-22 (arquivado, era sobre Tesseract) para o mundo imagem-direto: a completude agora depende da resolução do render, dos caps de página/contexto, do prompt e do modelo multimodal."
         }
       ]
     },
