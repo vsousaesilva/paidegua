@@ -61,11 +61,7 @@ module.exports = (_env, argv) => {
       'fluxos-consultor/consultor': './src/fluxos-consultor/consultor.ts',
       // Mapas de Jornada (FLUX-09) — visualização estruturada
       // complementar ao Consultor. Lane por query string (?lane=jef).
-      'fluxos-jornadas/jornadas': './src/fluxos-jornadas/jornadas.ts',
-      // Offscreen document para OCR — necessário porque tabs em background
-      // são throttled pelo Chrome (≥88), o que faz Tesseract pendurar.
-      // Offscreen NÃO é throttled. Criado on-demand pelo background.
-      'offscreen/ocr': './src/offscreen/ocr.ts'
+      'fluxos-jornadas/jornadas': './src/fluxos-jornadas/jornadas.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -149,8 +145,6 @@ module.exports = (_env, argv) => {
           { from: 'src/audiencia-painel/painel.css', to: 'audiencia-painel/painel.css' },
           { from: 'src/audiencia-resumo/resumo.html', to: 'audiencia-resumo/resumo.html' },
           { from: 'src/audiencia-resumo/resumo.css', to: 'audiencia-resumo/resumo.css' },
-          // HTML do offscreen document de OCR (par do entry 'offscreen/ocr').
-          { from: 'src/offscreen/ocr.html', to: 'offscreen/ocr.html' },
           // Consultor de fluxos — página estática + catálogo embarcado.
           // O catálogo é gerado offline pelo parser jPDL em
           // `../fluxos-pje/scripts/parser-jpdl.mjs`.

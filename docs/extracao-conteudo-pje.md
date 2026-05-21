@@ -1,8 +1,17 @@
 # Extração de Conteúdo da Árvore de Documentos do PJe
 
 **Projeto:** pAIdegua — Assistente IA para o PJe  
-**Data:** Abril/2026  
+**Data:** Abril/2026 · **Atualizado:** Maio/2026 (v1.6.5)  
 **Contexto:** Extensão Chrome MV3 para extração automatizada de documentos processuais no PJe Legacy (TRF5/JFCE)
+
+> **Nota de atualização (Maio/2026 — v1.6.5):** o OCR de documentos
+> digitalizados foi totalmente reformulado. Saiu o Tesseract.js local e o
+> offscreen document; entrou o **"OCR imagem-direto"** — as páginas
+> escaneadas vão como imagem para a IA multimodal, que as lê como entrada,
+> sem etapa de transcrição. A história completa — do Tesseract da v1.3,
+> passando pela regressão do Resumo da Pauta e pelo BUG-21, até a solução
+> imagem-direto — está na **Seção 8**. As menções ao Tesseract nas Seções 1,
+> 5.7 e 6 foram anotadas; o registro do que foi feito antes está preservado.
 
 ---
 
@@ -39,7 +48,7 @@ Este é o endpoint principal para download de binários no PJe Legacy do TRF5. E
 │  ├── Adapter (pje-legacy.ts) — detecta docs no DOM  │
 │  ├── Extractor (extractor.ts) — baixa e parseia     │
 │  ├── PDF Parser (pdf-parser.ts) — pdf.js            │
-│  └── OCR (ocr.ts) — Tesseract.js para scans        │
+│  └── OCR (ocr.ts) — render de scans p/ IA (§8)      │
 └──────────────┬──────────────────────────────────────┘
                │ CustomEvent bridge (quando necessário)
 ┌──────────────▼──────────────────────────────────────┐
@@ -210,12 +219,18 @@ Em vez de concorrência fixa (3), monitorar a taxa de sucesso e latência das re
 
 O PJe 2.0 (baseado em Angular/React, com API REST moderna) tem uma arquitetura completamente diferente. Um adapter dedicado poderia usar a API REST oficial, eliminando a necessidade de scraping DOM e ativação por clique. Isso seria significativamente mais robusto e rápido.
 
-### 5.7 Suporte a OCR inteligente
+### 5.7 Suporte a OCR inteligente — ✅ realizado (v1.6.5)
 
-O sistema atual faz OCR com Tesseract.js para PDFs digitalizados (< 50 caracteres/página em média). Oportunidades de melhoria:
-- Detectar páginas mistas (texto + scan) e aplicar OCR apenas às páginas sem texto
-- Usar APIs de IA com visão (Gemini, GPT-4o) como alternativa ao Tesseract para melhor qualidade
-- Cachear resultados de OCR (processo caro, resultado determinístico por documento)
+> Esta oportunidade foi realizada. A solução adotada **não foi "melhorar o
+> OCR"** — foi *eliminar a transcrição*: documentos digitalizados são
+> renderizados como imagem e enviados direto à IA multimodal, que os lê como
+> entrada. A jornada completa até essa decisão está na **Seção 8**.
+>
+> Registro histórico da oportunidade, como descrita em Abril/2026:
+> *"O sistema atual faz OCR com Tesseract.js para PDFs digitalizados (< 50
+> caracteres/página em média). Oportunidades de melhoria: detectar páginas
+> mistas; usar APIs de IA com visão (Gemini, GPT-4o) como alternativa ao
+> Tesseract; cachear resultados de OCR."*
 
 ### 5.8 Extração paralela entre iframes
 
@@ -245,9 +260,10 @@ O PJe Legacy carrega a árvore de documentos em um iframe. Identificar e acessar
       ├─ Audio/Video/Image → marca como não-textual (sem erro)
       └─ Vazio → erro
 
-3. OCR (opcional, para PDFs digitalizados)
-   Tesseract.js → worker local → modelo português bundle-ado
-   Limite de páginas por documento para controlar tempo
+3. PREPARO DE DIGITALIZADOS (para PDFs escaneados — ver §8)
+   pdf.js render → cada página vira imagem JPEG → doc.paginasImagem[]
+   As imagens vão anexadas à mensagem para a IA multimodal LER;
+   não há transcrição. Limite de páginas por documento.
 ```
 
 ---
@@ -261,3 +277,164 @@ O PJe Legacy carrega a árvore de documentos em um iframe. Identificar e acessar
 5. **pdf.js em extensões MV3 precisa de workerSrc real.** String vazia não desabilita o worker — causa erro no getter interno.
 6. **Timeouts diferenciados são essenciais.** Um timeout de 30s na ponte MAIN world multiplica o tempo de falha por cada documento problemático.
 7. **Verificação ativa de bridges > esperar timeout.** Detectar que a ponte MAIN world não inicializou (via atributo DOM) é instantâneo vs. esperar 6 segundos por documento.
+8. **OCR de scans: a pergunta certa não era "qual OCR".** Transcrever um processo digitalizado grande gera ~150 mil tokens de saída — lento em qualquer tecnologia. A virada veio de parar de transcrever e mandar a *imagem* para a IA multimodal. Ver Seção 8.
+
+---
+
+## 8. A Jornada do OCR de Documentos Digitalizados — do Tesseract ao Imagem-Direto
+
+> Esta seção registra, em ordem cronológica, como o tratamento de documentos
+> **digitalizados** (escaneados, sem camada de texto) evoluiu até a solução
+> atual. É um registro de engenharia: inclui o que funcionou, o que não
+> funcionou e por quê. Nada do que foi feito antes foi apagado — foi
+> substituído com justificativa.
+
+### 8.1 Ponto de partida: Tesseract.js local (até a v1.5)
+
+Documentos digitalizados são detectados pela heurística de "scanned" (Seção
+2.5 e `pdf-parser.ts`): se a média de caracteres extraíveis por página é
+muito baixa, o PDF é um bitmap sem texto real.
+
+Até a v1.5, esses documentos passavam por **OCR com Tesseract.js** — um
+motor OCR em WebAssembly, com o modelo de língua portuguesa (`por.traineddata`)
+embarcado na extensão (`libs/tesseract/`). O OCR rodava no content script.
+
+Naquela época o recurso funcionava bem: **por volta da v1.3, ler ~10
+documentos em OCR levava cerca de 12 segundos.** Rápido o suficiente para o
+uso na barra lateral, com a aba do PJe em primeiro plano.
+
+### 8.2 A regressão: o recurso "Resumo da pauta de audiência"
+
+O recurso de Resumo da Pauta (AUD-10) introduziu um padrão de uso novo: o
+magistrado fica numa **aba própria** (`audiencia-resumo/resumo.html`) e a
+coleta de documentos roda na aba do PJe **em segundo plano**.
+
+Aí entrou um comportamento do Chrome que não aparecia antes: desde o Chrome
+88, **abas em background sofrem throttling** de timers e de `postMessage`. O
+Tesseract.js depende intensamente de troca de mensagens `main ↔ worker`;
+sob throttling, ele **pendura**. O que levava 12 segundos passou a levar
+minutos — ou a não terminar.
+
+### 8.3 BUG-21: "Failed to construct 'Worker'" e o offscreen document
+
+A primeira frente de correção foi o erro de console
+`Failed to construct 'Worker'`: em MV3, a CSP bloqueia a criação de Web
+Workers de extensão a partir de URLs `blob:` (o Tesseract.js v5 embrulha o
+worker num blob por padrão). Corrigido forçando `workerBlobURL: false`.
+
+Resolvido o erro, sobrava o throttling. A estratégia escolhida foi mover o
+OCR para um **offscreen document** — uma página invisível da extensão que
+**não sofre throttling de aba background**.
+
+- **v1.6.2** — roteou o OCR do popup principal para o caminho offscreen.
+  Smoke test mostrou que o fix era insuficiente: o caminho offscreen tinha
+  bugs latentes.
+- **v1.6.3** — refatoração arquitetural do OCR. Descoberta importante:
+  **`page.render()` do pdf.js v5 trava silenciosamente dentro de um
+  offscreen document** (o render para após o primeiro tick e nunca retorna).
+  A arquitetura teve que ser dividida: *render do PDF sempre no content
+  script*; o offscreen recebia apenas os JPEGs já prontos e rodava só o
+  Tesseract.
+
+Mesmo com a arquitetura dividida, o desempenho seguia ruim: ler ~10
+documentos digitalizados levava **cerca de 5 minutos** — contra os ~12
+segundos da v1.3.
+
+### 8.4 A investigação a fundo
+
+Diante da diferença gritante entre v1.3 e v1.6, foi pedido um diagnóstico
+real — sem paliativos, revisando o código e a documentação técnica do PJe.
+Três descobertas mudaram o rumo:
+
+1. **O PJe não fornece o texto OCR de documentos digitalizados.** Não há
+   endpoint nem camada de texto pronta. O binário servido é o bitmap puro —
+   quem quiser texto precisa produzi-lo.
+
+2. **Os documentos digitalizados estavam sendo "lidos" apenas pelo rodapé.**
+   O PJe carimba em **toda página** um rodapé de ~250 caracteres (`Num. NNN -
+   Pág. N`, `Assinado eletronicamente por…`, uma URL de validação e o
+   `Número do documento…`). Esse rodapé **é texto real e extraível**. Numa
+   página escaneada de conteúdo, a única coisa que o `pdf-parser` extraía era
+   esse rodapé — o suficiente para a heurística de "scanned" *não* disparar
+   de forma confiável, e para a IA receber só carimbos, sem o conteúdo.
+
+3. **A matemática do gargalo.** Transcrever um processo grande (120+ páginas)
+   significa **gerar ~150 mil tokens de texto**. Isso é inerentemente lento —
+   seja com Tesseract, seja com uma API de IA. O gargalo nunca foi a
+   *tecnologia* de OCR; foi a **geração da transcrição** em si. Otimizar o
+   Tesseract, ou trocá-lo por uma API de visão para "transcrever", continuaria
+   esbarrando no mesmo muro.
+
+### 8.5 A solução: OCR imagem-direto
+
+A conclusão inverteu o problema: **não transcrever.**
+
+Documentos digitalizados não viram mais texto. Em vez disso:
+
+1. O content script renderiza cada página do PDF escaneado como uma **imagem
+   JPEG** (~108 DPI, qualidade ~0,82) e guarda as data URLs em
+   `doc.paginasImagem[]` (`renderPdfToImages` em `ocr.ts`, orquestrado por
+   `runOcrViaIA` em `extractor.ts`).
+2. Essas imagens são **anexadas diretamente à mensagem** enviada à IA
+   multimodal (Gemini, Claude ou GPT-4o — qualquer provedor configurado).
+3. A IA **lê a imagem como entrada** ao resumir / analisar / minutar. O custo
+   da imagem é custo de *input* (rápido); não há a etapa cara de a extensão
+   gerar uma transcrição de 150 mil tokens para depois a IA relê-la.
+
+A única etapa local é o render — que custa cerca de **2 segundos por
+documento**.
+
+**Resultado medido:** preparar um processo de 120 páginas digitalizadas
+passou de ~230 segundos para **~10,7 segundos**. No teste de validação, a IA
+leu corretamente 5 CTPS digitalizadas, extraindo ~30 vínculos
+empregatícios — conteúdo que, no caminho antigo, chegava como rodapé vazio.
+
+### 8.6 Cobertura: todos os fluxos que leem documentos
+
+O imagem-direto não vale só para o chat. Todo fluxo que consome documentos do
+processo recebe as páginas digitalizadas como imagem:
+
+| Fluxo | Caminho |
+|---|---|
+| Resumir / Minutar / Resumir em áudio | `ChatStartPayload.documents` → `handleChatStart` → `buildDocumentContext` |
+| Analisar o processo (triagem) | `executarAnalisarProcesso({ imagens })` → `handleAnalisarProcesso` |
+| Inserir etiquetas mágicas | `executarSugerirEtiquetas({ imagens })` → `handleEtiquetasSugerir` |
+| Resumo da pauta de audiência | `coletarDocumentosDoProcesso` → `resumo-modal` → `handleChatStart` |
+
+O ponto comum é `buildDocumentContext` (`shared/prompts.ts`): para documentos
+com `paginasImagem`, o corpo textual é apenas um marcador instruindo a IA a
+ler o conteúdo nas imagens anexadas — e a **não** afirmar que o documento
+"precisa de OCR".
+
+### 8.7 O que foi removido na v1.6.5
+
+Com o imagem-direto consolidado, o código das tentativas anteriores virou
+peso morto e foi removido:
+
+- **Tesseract.js no fluxo de extração do PJe** — `runOcrOnDocuments` (o batch
+  legado). O Tesseract permanece **apenas** no painel do sistema criminal
+  (`criminal-dashboard`), que tem um fluxo de OCR local próprio e
+  independente.
+- **O offscreen document inteiro** — `src/offscreen/`, a entrada de webpack
+  correspondente e a permissão `offscreen` do `manifest.json`.
+- **A transcrição-via-IA intermediária** — o canal `OCR_VIA_IA`, o
+  `handleOcrViaIa` no background e o método `ocrImages` dos provedores. Foi
+  um passo intermediário (usar a IA para *transcrever*) que o imagem-direto
+  tornou desnecessário: a IA agora lê a imagem ao responder, não antes.
+- **Andaimes do caminho offscreen** — os canais `OCR_OFFSCREEN_*` e
+  `OCR_FOCUS_TAB`, a porta keepalive `paidegua/ocr-keepalive` e a
+  opção `skipTabFocus`.
+
+### 8.8 Lições da jornada
+
+- **Throttling de aba background é real** e atinge qualquer trabalho intensivo
+  em CPU ou em `postMessage`. Um recurso que funciona com a aba em primeiro
+  plano pode regredir drasticamente quando passa a rodar em background.
+- **Offscreen documents resolvem o throttling, mas têm armadilhas próprias.**
+  `page.render()` do pdf.js v5 trava neles — render tem de ficar no content.
+- **O rodapé carimbado pelo PJe engana heurísticas de "tem texto?".** É
+  preciso medir o conteúdo *útil*, descontando os marcadores de página e o
+  rodapé de assinatura, antes de decidir se um documento é digitalizado.
+- **A pergunta certa não era "qual OCR é mais rápido", e sim "preciso
+  transcrever?".** A resposta foi não. Modelos multimodais leem a imagem
+  diretamente; a transcrição era uma etapa intermediária cara e dispensável.

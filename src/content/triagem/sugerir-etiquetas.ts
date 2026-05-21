@@ -19,6 +19,7 @@
 import { LOG_PREFIX, MESSAGE_CHANNELS } from '../../shared/constants';
 import type {
   EtiquetaSugerida,
+  ImagemIA,
   SugerirEtiquetasResponse
 } from '../../shared/types';
 
@@ -32,24 +33,27 @@ export interface SugerirEtiquetasOrchResult {
 export interface SugerirEtiquetasOptions {
   /** Trecho consolidado dos autos (já pronto, truncado pelo chamador). */
   caseContext: string;
+  /** Páginas de documentos digitalizados, como imagem (OCR imagem-direto). */
+  imagens?: ImagemIA[];
 }
 
 export async function executarSugerirEtiquetas(
   options: SugerirEtiquetasOptions
 ): Promise<SugerirEtiquetasOrchResult> {
   const caseContext = (options.caseContext ?? '').trim();
-  if (!caseContext) {
+  const temImagens = !!options.imagens && options.imagens.length > 0;
+  if (!caseContext && !temImagens) {
     return {
       ok: false,
       error:
-        'Sem conteúdo textual dos documentos — carregue e extraia os autos antes.'
+        'Sem conteúdo dos documentos — carregue e extraia os autos antes.'
     };
   }
 
   try {
     const response = (await chrome.runtime.sendMessage({
       channel: MESSAGE_CHANNELS.ETIQUETAS_SUGERIR,
-      payload: { caseContext }
+      payload: { caseContext, imagens: options.imagens }
     })) as SugerirEtiquetasResponse;
 
     if (!response?.ok) {

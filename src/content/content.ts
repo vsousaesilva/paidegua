@@ -35,6 +35,7 @@ import {
   buildMinutaPrompt,
   buildEmendaInicialPrompt,
   resolveTriagemCriterios,
+  coletarImagensDocumentos,
   type TemplateAction,
   type TriagemResult
 } from '../shared/prompts';
@@ -159,7 +160,7 @@ import {
   activateDocumentInPje,
   extractContents,
   getOcrPendingDocuments,
-  runOcrOnDocumentsViaOffscreen
+  runOcrViaIA
 } from './extractor';
 import { startRecording, blobToBase64, type RecorderHandle } from './audio-recorder';
 import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
@@ -454,7 +455,7 @@ async function handleRunOcr(): Promise<void> {
 
   try {
     const maxPages = memory.settings?.ocrMaxPages;
-    const merged = await runOcrOnDocumentsViaOffscreen(
+    const merged = await runOcrViaIA(
       pendentes,
       (event) => {
       // Rótulo identificador do documento — sempre presente nos eventos
@@ -2911,16 +2912,17 @@ async function handleAnalisarProcesso(
   const caseContext = buildAnaliseProcessoContextText(
     memory.detection?.numeroProcesso ?? null
   );
-  if (!caseContext) {
+  const imagens = coletarImagensDocumentos(getExtraidosArray());
+  if (!caseContext && imagens.length === 0) {
     notice(
-      'Nenhum conteúdo textual disponível nos documentos extraídos.',
+      'Nenhum conteúdo disponível nos documentos extraídos.',
       'error'
     );
     return;
   }
 
   notice('Analisando o processo pelos critérios configurados…', 'info');
-  const resp = await executarAnalisarProcesso({ caseContext, criterios });
+  const resp = await executarAnalisarProcesso({ caseContext, criterios, imagens });
   if (!resp.ok || !resp.result) {
     notice(resp.error ?? 'Falha ao analisar o processo.', 'error');
     return;
@@ -2995,16 +2997,17 @@ async function handleInserirEtiquetas(
   const caseContext = buildAnaliseProcessoContextText(
     memory.detection?.numeroProcesso ?? null
   );
-  if (!caseContext) {
+  const imagens = coletarImagensDocumentos(getExtraidosArray());
+  if (!caseContext && imagens.length === 0) {
     notice(
-      'Nenhum conteúdo textual disponível nos documentos extraídos.',
+      'Nenhum conteúdo disponível nos documentos extraídos.',
       'error'
     );
     return;
   }
 
   notice('Sugerindo etiquetas para este processo…', 'info');
-  const resp = await executarSugerirEtiquetas({ caseContext });
+  const resp = await executarSugerirEtiquetas({ caseContext, imagens });
   if (!resp.ok) {
     notice(resp.error ?? 'Falha ao sugerir etiquetas.', 'error');
     return;

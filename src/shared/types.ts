@@ -93,6 +93,14 @@ export interface PJeDetection {
   isPainelUsuario: boolean;
 }
 
+/** Uma imagem (página) para enviar a um modelo de IA multimodal. */
+export interface ImagemIA {
+  /** MIME — tipicamente 'image/jpeg'. */
+  mimeType: string;
+  /** Conteúdo em base64 puro (sem o prefixo `data:`). */
+  dataBase64: string;
+}
+
 /** Documento processual extraído dos autos digitais. */
 export interface ProcessoDocumento {
   id: string;
@@ -104,6 +112,13 @@ export interface ProcessoDocumento {
   tamanho?: number;
   isScanned?: boolean;
   textoExtraido?: string;
+  /**
+   * Documento digitalizado (imagem) — páginas renderizadas como data URLs
+   * JPEG. Quando presente, o conteúdo deste documento vai para a IA como
+   * IMAGEM (a IA multimodal lê direto), em vez de ser transcrito por OCR.
+   * Evita o gargalo de gerar ~150k tokens de transcrição.
+   */
+  paginasImagem?: string[];
 }
 
 /** Mensagens no chat com a IA. */
@@ -111,6 +126,12 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  /**
+   * Imagens anexadas a esta mensagem (OCR imagem-direto). Os provedores
+   * multimodais (Gemini / Claude / GPT-4o) recebem estas imagens junto
+   * com o `content` textual.
+   */
+  images?: ImagemIA[];
 }
 
 /** Configurações persistidas do usuário. */
@@ -961,6 +982,8 @@ export interface EtiquetaSugerida {
 export interface SugerirEtiquetasRequest {
   /** Trecho consolidado dos autos (já truncado pelo chamador). */
   caseContext: string;
+  /** Páginas de documentos digitalizados, como imagem (OCR imagem-direto). */
+  imagens?: ImagemIA[];
 }
 
 /** Resposta consolidada da ação "sugerir etiquetas". */

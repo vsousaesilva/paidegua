@@ -5964,7 +5964,7 @@
       "descricao": "Usuária relatou em 13/05/2026 frustração ao tentar OCR em processo com 11 documentos. Console anexado mostra erro do Chrome MV3:\n\n  Failed to construct 'Worker': Script at 'chrome-extension://belangijcipajlpcofhljhgjeemkbofk/libs/tesseract/worker.min.js' cannot be accessed from origin 'https://pje1g.trf5.jus.br'.\n\nCausa raiz: content script roda na ORIGEM da página (pje1g.trf5.jus.br); ao tentar `new Worker(chrome-extension://...)`, o Chrome aplica same-origin e bloqueia — mesmo com libs/* declarado em web_accessible_resources. Sem worker, Tesseract não inicializa, OCR retorna 0/N documentos processados.\n\nA v1.6.1 já havia introduzido o caminho offscreen (runOcrOnDocumentsViaOffscreen) justamente para resolver isso — o offscreen document roda em origem chrome-extension://, então o Worker é same-origin. Funciona no fluxo de Resumo de Audiência (src/content/audiencia/audiencia-resumo-docs.ts:321). Porém o BOTÃO 'Rodar OCR' do popup principal (src/content/content.ts:450) ficou esquecido no caminho legado runOcrOnDocuments, que dispara o erro acima em todo Chrome moderno.\n\nFix v1.6.2: troca de import + call site em src/content/content.ts (162 e 450) para usar runOcrOnDocumentsViaOffscreen. Mesma assinatura de retorno e handler de progresso. Único side-effect: offscreen processa em batch e não emite o evento ocr-page (progresso por página dentro do mesmo documento); a barra de status passa a atualizar por documento, não por página. Aceitável dado que o estado anterior era OCR não-funcional.",
       "categoria": "ergonomia",
       "prioridade": "P0",
-      "coluna": "dev",
+      "coluna": "lancado",
       "origem": "relato de usuária 13/05/2026 (console anexado) — sessão 14/05/2026 (diagnóstico + fix)",
       "tags": ["ocr", "tesseract", "offscreen", "mv3", "worker", "bug", "extensao"],
       "esforco": "XS",
@@ -5992,6 +5992,14 @@
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T18:00:00.000Z",
           "comando": "Investigação aprofundada após 1ª release: o fix do popup (trocar para runOcrOnDocumentsViaOffscreen) expôs cadeia de 8 bugs latentes na v1.6.1 que ninguém havia disparado porque audiência aparentemente não rodava OCR para PDFs imagem em produção. Desenrolar: (1) pdfjs workerSrc faltando no offscreen → fix em src/offscreen/ocr.ts. (2) Rodapé do docList congelado em 'Extração concluída' durante OCR → fix com setGlobalStatus dinâmico em content.ts. (3) Progresso 'N/N' desde o início → implementado streaming OCR_OFFSCREEN_PROGRESS via background.tabs.sendMessage. (4) PDF.js page.render TRAVA no offscreen document (hang silencioso após operadores extraídos — descobrimos via instrumentação cirúrgica: createImageBitmap funciona, OffscreenCanvas→<canvas> não resolve, fake worker não resolve, é hang interno do pdf.js v5 em offscreen documents). Solução: REFATORAÇÃO ARQUITETURAL — render fica no content script (onde sempre funcionou), offscreen recebe imagens JPEG já renderizadas (dataURLs porque Blob não atravessa runtime.sendMessage) e roda só Tesseract. (5) Mitigação de tab background via OCR_FOCUS_TAB (foca aba PJe se hidden, restaura no fim). (6) Service worker dormindo durante render → keepalive port chrome.runtime.connect('paidegua/ocr-keepalive'). (7) Mitigação OCR_FOCUS_TAB roubava foco em audiência (aba oculta auxiliar) → flag skipTabFocus:true em OcrOptions. (8) Mensagens UX confusas: 'falhou' para docs que apenas não têm texto extraível (carimbos, assinaturas, imagens sem texto) → ajustada para 'docs reconhecidos / sem texto extraível' com IDs visíveis. Estado: build OK, testado popup (vitória), testado audiência (funciona, ~3-5min por doc em background — aceitável vs OCR não-funcional; performance é OCR-22). Pronto para 2º upload à CWS substituindo v1.6.2 em revisão."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-14T22:00:00.000Z",
+          "comando": "BUG-21 resolvido e em produção. A correção definitiva (refatoração arquitetural do OCR + 7 fixes) saiu na v1.6.4 — a v1.6.3 que carregava os fixes foi rejeitada pela CWS (Blue Argon), reenviada como v1.6.4 com o strip-cdn-urls.mjs. v1.6.4 aprovada pela Chrome Web Store em 14/05/2026; smoke do owner confirmou versão 1.6.4 ativa + OCR funcional no popup. Tech-debt de performance segue em OCR-22."
         }
       ]
     },
@@ -6083,7 +6091,7 @@
       "descricao": "Mesmo conteúdo funcional da REL-1.6.3 (rejeitada pela CWS por Blue Argon — remotely hosted code), com um único acréscimo: post-build script `scripts/strip-cdn-urls.mjs` chamado automaticamente via `npm postbuild` que substitui URLs de CDNs públicos (cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, etc.) no bundle compilado por uma string inerte 'blocked-mv3'.\n\nURLs neutralizadas (todas dead-code que nunca executam — fallbacks internos de libs):\n- `dist/audiencia-resumo/resumo.js`: pdfobject.min.js (jsPDF feature pdfobjectnewwindow)\n- `dist/content.js`, `dist/criminal-dashboard/dashboard.js`, `dist/offscreen/ocr.js`: tesseract.js worker fallback (não usado porque setamos workerPath local)\n- `dist/libs/tesseract/worker.min.js`: tesseract.js-core + @tesseract.js-data fallbacks\n\nBump 1.6.3 → 1.6.4. Sem mudanças no código TS — só infra de build.",
       "categoria": "infra",
       "prioridade": "P0",
-      "coluna": "dev",
+      "coluna": "lancado",
       "origem": "rejeição CWS v1.6.3 — 14/05/2026",
       "tags": ["release", "extensao", "cws", "mv3", "blue-argon", "infra"],
       "esforco": "XS",
@@ -6098,7 +6106,7 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-14T20:00:00.000Z",
-      "atualizadoEm": "2026-05-14T20:00:00.000Z",
+      "atualizadoEm": "2026-05-14T22:00:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-05-14",
       "historico": [
         {
@@ -6106,6 +6114,48 @@
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T20:00:00.000Z",
           "comando": "Card aberto após rejeição da v1.6.3 pela CWS. Diagnóstico: URL de CDN em string literal de dead code de jsPDF (feature pdfobjectnewwindow nunca chamada). Script de pós-build neutraliza essas e outras URLs equivalentes em todos os bundles. Aplicado preventivamente para tesseract.js worker URLs também (mesmo problema, ainda não flagado pela CWS mas tendência)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "vsousaesilva@jfce.jus.br",
+          "data": "2026-05-14T22:00:00.000Z",
+          "comando": "v1.6.4 aprovada pela Chrome Web Store em 14/05/2026 e em produção. Smoke do owner confirmou versão 1.6.4 ativa + OCR funcional no popup. Commit 7fd74d6 em origin/main. Carrega toda a refatoração do OCR (BUG-21 / REL-1.6.3) + o strip-cdn-urls.mjs. Pilotos comunicados em seguida."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.6.5",
+      "titulo": "Release v1.6.5 — OCR imagem-direto em todos os fluxos + remoção do Tesseract/offscreen do caminho de extração",
+      "descricao": "Reformulação completa do tratamento de documentos digitalizados, fechando o ciclo aberto pelo BUG-21 / REL-1.6.1..1.6.4.\n\n## O diagnóstico\n\nApós a v1.6.4 o OCR funcionava, mas seguia lento — ler ~10 documentos digitalizados levava ~5 min (contra ~12s na v1.3). A investigação a fundo pedida pelo owner revelou que o gargalo NÃO era a tecnologia de OCR: (1) o PJe não fornece texto OCR de digitalizados; (2) documentos escaneados estavam sendo 'lidos' apenas pelo rodapé carimbado de ~250 chars que o PJe põe em toda página, enganando a heurística de 'tem texto?'; (3) transcrever um processo grande (120+ páginas) é gerar ~150 mil tokens — lento em QUALQUER tecnologia (Tesseract ou IA).\n\n## A solução: OCR imagem-direto\n\nNão transcrever. Documentos digitalizados são renderizados como imagem JPEG (~108 DPI) e enviados DIRETO à IA multimodal (Gemini/Claude/GPT-4o), que os lê como entrada ao resumir/analisar/minutar. O custo da imagem é input (rápido); elimina-se a etapa cara de gerar a transcrição. Resultado medido: preparar 120 páginas passou de ~230s para ~10,7s; a IA leu corretamente 5 CTPS digitalizadas extraindo ~30 vínculos.\n\nCobertura: todos os fluxos que leem documentos — Resumir, Minutar, Resumir em áudio, Analisar processo (triagem), Inserir etiquetas mágicas e Resumo da pauta de audiência.\n\n## Limpeza de código morto\n\nCom o imagem-direto, as tentativas anteriores viraram peso morto e foram removidas: runOcrOnDocuments (batch Tesseract legado), o offscreen document inteiro (src/offscreen/ + entry webpack + permissão 'offscreen' do manifest), a transcrição-via-IA intermediária (canal OCR_VIA_IA, handleOcrViaIa, provider.ocrImages), os canais OCR_OFFSCREEN_*/OCR_FOCUS_TAB, a porta keepalive e a opção skipTabFocus. Tesseract.js permanece SÓ no painel do sistema criminal (criminal-dashboard), que tem fluxo de OCR local próprio.\n\n## Documentação\n\ndocs/extracao-conteudo-pje.md ganhou a Seção 8 narrando a jornada completa (Tesseract → BUG-21/offscreen → diagnóstico → imagem-direto), sem apagar o registro histórico. Manuais (md + 2 HTML) corrigidos: afirmavam que o OCR rodava local 'sem enviar imagens à IA' — agora descrevem corretamente que as páginas digitalizadas são enviadas à IA.\n\nBump 1.6.4 → 1.6.5. Build local OK (typecheck + webpack). strip-cdn-urls neutralizou 5 URLs de CDN dead-code (Tesseract/pdfobject) — Blue Argon coberto.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "dev",
+      "origem": "sessão de investigação a fundo do OCR — pedido do owner após a v1.6.4 (OCR funcional mas lento)",
+      "tags": ["release", "extensao", "cws", "ocr", "imagem-direto", "refatoracao", "limpeza"],
+      "esforco": "L",
+      "depende": ["REL-1.6.4", "BUG-21"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.6.5; dist/manifest.json em 1.6.5",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/ NÃO contém pasta offscreen/ (offscreen document removido)",
+        "OCR imagem-direto funciona nos 6 fluxos (Resumir, Minutar, áudio, Analisar, Etiquetas, Resumo da pauta)",
+        "zip versoes/dist v1.6.5.zip com manifest.json na raiz, enviado à CWS",
+        "docs/extracao-conteudo-pje.md com Seção 8 (jornada do OCR); manuais com claim de privacidade corrigido",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-20T00:00:00.000Z",
+      "atualizadoEm": "2026-05-20T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-20",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-20",
+          "data": "2026-05-20T00:00:00.000Z",
+          "comando": "Card aberto ao fechar a investigação a fundo do OCR pedida pelo owner após a v1.6.4. Conclusão: o gargalo era estrutural (transcrever = gerar ~150k tokens), não a tecnologia de OCR. Solução imagem-direto: renderizar páginas digitalizadas como imagem e mandar direto à IA multimodal, eliminando a transcrição. Estendido a todos os 6 fluxos que leem documentos. Removido todo o código morto das tentativas anteriores (Tesseract no fluxo de extração, offscreen document, OCR_VIA_IA). Bump 1.6.4 → 1.6.5. Build local validado (typecheck + webpack)."
         }
       ]
     },
@@ -6115,7 +6165,7 @@
       "descricao": "Tech-debt aberto durante o desenrolar do BUG-21 (sessão 14/05/2026). Duas dimensões a investigar:\n\n## (1) Tempo — render lento em aba background (audiência)\n\nNa nova arquitetura (REL-1.6.2), render do PDF roda no content script da aba oculta de audiência. Chrome 116+ throttla tabs em background: setTimeout(0) pode virar setTimeout(1000+ms), e o fake worker do pdf.js (que roda no main thread) é especialmente afetado. Resultado prático: 1 doc imagem leva 3-5 minutos para OCRar (esperado seria <1min em aba ativa).\n\nNão é regressão da v1.6.0 (que provavelmente tinha o mesmo throttle), só ficou mais visível agora que a arquitetura está clara.\n\nCaminhos a investigar:\n- (a) Render dentro de Web Worker no content (Workers não são throttled como main thread)\n- (b) Render em aba popup off-screen (visualmente 'ativa' mas fora do campo de visão — chrome.windows.create com left/top fora da tela)\n- (c) Voltar render ao offscreen com fix para o hang do page.render (precisa investigar Image.decode() que não foi testado isoladamente — pode ser ele que pendura)\n- (d) Forçar a aba oculta de audiência a ser type:'popup' com janela própria não-minimizada\n\n## (2) Qualidade — docs OCR retornam texto vazio\n\nEm processos previdenciários típicos (laudos, RGs, CPFs digitalizados), 10-20% dos docs imagem voltam com texto vazio mesmo com OCR rodando. Causa: Tesseract emite warnings 'Image too small to scale!!' (fragmentos com 1-2 pixels de largura) e 'Line cannot be recognized!!' (qualidade de digitalização insuficiente). A UI hoje mostra esses docs como 'sem texto extraível' com IDs (não como falha técnica).\n\nCaminhos a investigar:\n- (a) Pré-processamento da imagem antes do OCR (deskew, threshold, contraste) — melhoraria taxa de reconhecimento em scans tortos/desbotados\n- (b) RENDER_SCALE adaptativo (atualmente 2.0 fixo) — aumentar para 3.0/4.0 em scans pequenos pode quebrar o limiar de tamanho mínimo do Tesseract\n- (c) Tessdata 'best' em vez de 'fast' (LSTM melhor treinado, ~3x maior, mais lento mas mais preciso)\n- (d) Fallback para Gemini Vision quando Tesseract devolve vazio — IA multimodal pode extrair texto de carimbos/assinaturas que Tesseract pula\n\n## Decisão para a release v1.6.2\n\nMantemos a arquitetura atual. OCR no popup ficou rápido e funcional (caso comum). Audiência ficou lenta mas funcional. Esse card cobre evoluções futuras quando houver banda.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "triagem",
+      "coluna": "arquivado",
       "origem": "sessão 14/05/2026 — desenrolar do BUG-21 expôs limitações de performance + qualidade do pipeline OCR",
       "tags": ["ocr", "tesseract", "performance", "audiencia", "tech-debt", "ux"],
       "esforco": "M",
@@ -6128,14 +6178,22 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-14T18:00:00.000Z",
-      "atualizadoEm": "2026-05-14T18:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-14",
+      "atualizadoEm": "2026-05-20T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-20",
       "historico": [
         {
           "tipo": "criado",
           "autor": "claude-code/sessao-2026-05-14",
           "data": "2026-05-14T18:00:00.000Z",
           "comando": "Card aberto a pedido do owner ao final do desenrolar do BUG-21. Cobre as duas frentes que ficaram suboptimal após a refatoração arquitetural: tempo de OCR em audiência (lento por throttling de tab background) e qualidade de reconhecimento (docs com texto vazio que Tesseract não consegue ler). Não é regressão — comportamento similar à v1.6.0, mas agora ficou explícito e mensurável."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "arquivado",
+          "autor": "claude-code/sessao-2026-05-20",
+          "data": "2026-05-20T00:00:00.000Z",
+          "comando": "Card arquivado: a v1.6.5 (REL-1.6.5, OCR imagem-direto) torna sem objeto as duas frentes deste tech-debt. (1) Tempo: não há mais transcrição — só render local (~2s/doc); o throttling de aba background deixou de ser relevante. (2) Qualidade: o reconhecimento passou a ser feito pela IA multimodal lendo a imagem, não mais pelo Tesseract — 'texto vazio do Tesseract' deixou de existir no fluxo de extração. Melhorias de leitura passam a ser questão de prompt/modelo, não de pipeline OCR."
         }
       ]
     },

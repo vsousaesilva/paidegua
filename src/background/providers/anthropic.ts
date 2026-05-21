@@ -12,7 +12,11 @@
 
 import { PROVIDER_ENDPOINTS } from '../../shared/constants';
 import type { TestConnectionResult } from '../../shared/types';
-import type { LLMProvider, SendMessageParams, StreamChunk } from './base';
+import {
+  type LLMProvider,
+  type SendMessageParams,
+  type StreamChunk
+} from './base';
 import { fetchWithRetry } from './retry';
 import { parseSseStream } from './sse';
 
@@ -50,7 +54,25 @@ export const anthropicProvider: LLMProvider = {
       stream: true,
       messages: params.messages
         .filter((m) => m.role !== 'system')
-        .map((m) => ({ role: m.role, content: m.content }))
+        .map((m) => {
+          // Sem imagens: content é string simples. Com imagens: vira o
+          // array multimodal da API Messages (imagens antes do texto).
+          if (!m.images || m.images.length === 0) {
+            return { role: m.role, content: m.content };
+          }
+          const content: Array<Record<string, unknown>> = m.images.map(
+            (img) => ({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: img.mimeType,
+                data: img.dataBase64
+              }
+            })
+          );
+          if (m.content) content.push({ type: 'text', text: m.content });
+          return { role: m.role, content };
+        })
     };
 
     const response = await fetchWithRetry(

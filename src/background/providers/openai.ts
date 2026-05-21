@@ -5,7 +5,11 @@
 
 import { PROVIDER_ENDPOINTS } from '../../shared/constants';
 import type { TestConnectionResult } from '../../shared/types';
-import type { LLMProvider, SendMessageParams, StreamChunk } from './base';
+import {
+  type LLMProvider,
+  type SendMessageParams,
+  type StreamChunk
+} from './base';
 import { fetchWithRetry } from './retry';
 import { parseSseStream } from './sse';
 
@@ -35,14 +39,27 @@ export const openaiProvider: LLMProvider = {
   id: 'openai',
 
   async *sendMessage(params: SendMessageParams): AsyncGenerator<StreamChunk, void, void> {
-    const messages: Array<{ role: string; content: string }> = [
+    const messages: Array<{ role: string; content: unknown }> = [
       { role: 'system', content: params.systemPrompt }
     ];
     for (const m of params.messages) {
       if (m.role === 'system') {
         continue;
       }
-      messages.push({ role: m.role, content: m.content });
+      if (!m.images || m.images.length === 0) {
+        messages.push({ role: m.role, content: m.content });
+        continue;
+      }
+      // Com imagens: content vira o array multimodal da chat/completions.
+      const content: Array<Record<string, unknown>> = [];
+      if (m.content) content.push({ type: 'text', text: m.content });
+      for (const img of m.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.mimeType};base64,${img.dataBase64}` }
+        });
+      }
+      messages.push({ role: m.role, content });
     }
 
     const response = await fetchWithRetry(

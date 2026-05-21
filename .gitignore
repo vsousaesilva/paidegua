@@ -15,6 +15,7 @@ Thumbs.db
 
 # Kanban: arquivos gerados localmente (sync/backup do KV)
 docs/kanban-massificacao/scripts/board-after-sync.json
+docs/kanban-massificacao/scripts/board-verify-*.json
 docs/kanban-massificacao/scripts/import-docs-state.json
 docs/kanban-massificacao/scripts/backups/
 docs/kanban-massificacao/board-backup-*.json

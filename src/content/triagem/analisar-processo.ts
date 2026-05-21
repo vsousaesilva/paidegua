@@ -19,7 +19,7 @@
 
 import { LOG_PREFIX, MESSAGE_CHANNELS } from '../../shared/constants';
 import type { CriterioResolvido } from '../../shared/prompts';
-import type { AnaliseProcessoResult } from '../../shared/types';
+import type { AnaliseProcessoResult, ImagemIA } from '../../shared/types';
 
 export interface AnalisarProcessoResult {
   ok: boolean;
@@ -32,16 +32,19 @@ export interface AnalisarProcessoOptions {
   caseContext: string;
   /** Lista de critérios efetivamente adotados pelo magistrado. */
   criterios: readonly CriterioResolvido[];
+  /** Páginas de documentos digitalizados, como imagem (OCR imagem-direto). */
+  imagens?: ImagemIA[];
 }
 
 export async function executarAnalisarProcesso(
   options: AnalisarProcessoOptions
 ): Promise<AnalisarProcessoResult> {
   const caseContext = (options.caseContext ?? '').trim();
-  if (!caseContext) {
+  const temImagens = !!options.imagens && options.imagens.length > 0;
+  if (!caseContext && !temImagens) {
     return {
       ok: false,
-      error: 'Sem conteúdo textual dos documentos — carregue e extraia os autos antes.'
+      error: 'Sem conteúdo dos documentos — carregue e extraia os autos antes.'
     };
   }
   if (!options.criterios || options.criterios.length === 0) {
@@ -58,7 +61,8 @@ export async function executarAnalisarProcesso(
       channel: MESSAGE_CHANNELS.ANALISAR_PROCESSO,
       payload: {
         caseContext,
-        criterios: options.criterios
+        criterios: options.criterios,
+        imagens: options.imagens
       }
     })) as {
       ok: boolean;

@@ -16,17 +16,13 @@
  *  - Ativação PJe sob demanda (último recurso, ~2 docs por processo)
  */
 
-import { LOG_PREFIX, MESSAGE_CHANNELS } from '../shared/constants';
+import { LOG_PREFIX } from '../shared/constants';
 import type { ProcessoDocumento } from '../shared/types';
 import { parsePdf } from './pdf-parser';
 import {
-  createOcrWorker,
-  MAX_OCR_PAGES,
-  ocrPdf,
   renderPdfToImages,
   type OcrOptions,
-  type OcrProgress,
-  type TesseractWorker
+  type OcrProgress
 } from './ocr';
 
 /** Entrada no log de diagnóstico de extração de um documento. */
@@ -591,6 +587,7 @@ export async function extractContents(
 ): Promise<ProcessoDocumento[]> {
   onProgress?.({ type: 'start', total: documentos.length });
 
+  const tInicio = performance.now();
   const silent = options?.silent === true;
   const extracted: ProcessoDocumento[] = [];
   let nextIndex = 0;
@@ -639,6 +636,12 @@ export async function extractContents(
   const concurrency = Math.min(DOWNLOAD_CONCURRENCY, documentos.length);
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
+  const segundos = ((performance.now() - tInicio) / 1000).toFixed(1);
+  console.log(
+    `${LOG_PREFIX} [tempo] extração: ${segundos}s para ${documentos.length} doc(s) ` +
+      `(${extracted.length} ok, ${documentos.length - extracted.length} com erro)`
+  );
+
   onProgress?.({ type: 'done', extracted });
   return extracted;
 }
@@ -684,6 +687,9 @@ export function getOcrPendingDocuments(
 ): ProcessoDocumento[] {
   return docs.filter((doc) => {
     if (!doc.isScanned) return false;
+    // Já preparado: páginas renderizadas como imagem (OCR imagem-direto)
+    // ou texto já extraído.
+    if (doc.paginasImagem && doc.paginasImagem.length > 0) return false;
     return conteudoUtilLength(doc.textoExtraido) < 50;
   });
 }
@@ -691,158 +697,27 @@ export function getOcrPendingDocuments(
 /** Re-exporta utilitário para fluxos que normalizam por conteúdo útil. */
 export { conteudoUtilLength };
 
-export async function runOcrOnDocuments(
-  docs: ProcessoDocumento[],
-  onProgress?: OcrProgressHandler,
-  options?: OcrOptions
-): Promise<ProcessoDocumento[]> {
-  const targets = getOcrPendingDocuments(docs);
-  onProgress?.({ type: 'ocr-start', total: targets.length });
-
-  const updatedMap = new Map<string, ProcessoDocumento>();
-
-  // Cria UM worker Tesseract reutilizado em todo o batch. O custo de
-  // criação é ~3-5s (carregamento de por.traineddata ~25MB), e antes
-  // pagávamos esse custo a cada documento. Para um batch de 8 docs,
-  // economiza ~25-40s no total — é o ganho que aproxima o tempo
-  // por-documento dos ~2s observados quando o worker já está quente.
-  // Estado mutável compartilhado entre logger do Tesseract (que roda
-  // dentro do wasm) e o loop. SEM logger, o wasm chama `undefined(...)`
-  // → "TypeError: v is not a function" centenas de vezes (uma por
-  // callback de progresso por página). Tem que passar logger SEMPRE,
-  // mesmo que no-op.
-  let sharedLastStatus = 'initializing';
-  let sharedLastProgress = 0;
-  const sharedLogger = (m: { status?: string; progress?: number }): void => {
-    sharedLastStatus = m.status ?? sharedLastStatus;
-    sharedLastProgress =
-      typeof m.progress === 'number' ? m.progress : sharedLastProgress;
-  };
-
-  let sharedWorker: TesseractWorker | null = null;
-  if (targets.length > 0) {
-    try {
-      sharedWorker = await createOcrWorker(sharedLogger);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `${LOG_PREFIX} falha ao inicializar worker Tesseract compartilhado ` +
-          `(seguindo com worker por documento):`,
-        message
-      );
-    }
-  }
-  // Suprime "unused" — `sharedLastStatus`/`sharedLastProgress` existem
-  // só pra dar destino ao callback (o wasm exige a função existir).
-  void sharedLastStatus;
-  void sharedLastProgress;
-
-  try {
-    for (let index = 0; index < targets.length; index++) {
-      const doc = targets[index]!;
-      onProgress?.({ type: 'ocr-document-start', index, documento: doc });
-      try {
-        const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        let buffer = await response.arrayBuffer();
-
-        // Se o fetch isolado retorna 0 bytes para OCR, tenta MAIN world
-        if (buffer.byteLength === 0) {
-          try {
-            const mw = await fetchViaMainWorld(doc.url);
-            buffer = mw.buffer;
-          } catch { /* usa o buffer vazio, ocrPdf dará erro */ }
-        }
-
-        const result = await ocrPdf(
-          buffer,
-          (progress) => {
-            onProgress?.({ type: 'ocr-page', index, documento: doc, progress });
-          },
-          { ...options, worker: sharedWorker ?? undefined }
-        );
-
-        const updated: ProcessoDocumento = {
-          ...doc,
-          textoExtraido: result.text,
-          isScanned: true
-        };
-        updatedMap.set(doc.id, updated);
-
-        onProgress?.({
-          type: 'ocr-document-done',
-          index,
-          documento: updated,
-          pagesProcessed: result.pagesProcessed,
-          pagesSkipped: result.pagesSkipped
-        });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`${LOG_PREFIX} falha no OCR de ${doc.id}:`, message);
-        onProgress?.({
-          type: 'ocr-document-error',
-          index,
-          documento: doc,
-          error: message
-        });
-      }
-    }
-  } finally {
-    if (sharedWorker) {
-      try {
-        await sharedWorker.terminate();
-      } catch (err: unknown) {
-        console.warn(
-          `${LOG_PREFIX} falha ao terminar worker Tesseract compartilhado:`,
-          err
-        );
-      }
-    }
-  }
-
-  const merged = docs.map((d) => updatedMap.get(d.id) ?? d);
-  const updatedList = Array.from(updatedMap.values());
-  onProgress?.({ type: 'ocr-done', updated: updatedList });
-
-  if (targets.length > 0) {
-    console.log(
-      `${LOG_PREFIX} OCR concluído. ${updatedList.length}/${targets.length} documentos processados (limite: ${MAX_OCR_PAGES} páginas/doc).`
-    );
-  }
-
-  return merged;
-}
-
 // ============================================================================
-// OCR via offscreen document — fix do throttling de tab background
+// Preparação de documentos digitalizados para IA multimodal (OCR imagem-direto)
 // ============================================================================
 
 /**
- * Pipeline OCR híbrido: render no content + Tesseract no offscreen.
+ * Renderiza os documentos digitalizados (escaneados) em imagens e as guarda
+ * em `doc.paginasImagem`. NÃO transcreve para texto.
  *
- * Por que dividir:
- *  - pdf.js v5 trava em `page.render()` quando rodado dentro de um
- *    offscreen document (BUG-21, diagnóstico em 2026-05-14). Render
- *    fica no content script onde sempre funcionou.
- *  - Tesseract.js usa postMessage intenso main↔worker. Em tab background
- *    isso é throttled e pendura — por isso o OCR roda no offscreen
- *    (não throttled).
+ * Por quê (decisão de 2026-05-14, após o diagnóstico BUG-21):
+ *  - O PJe NÃO fornece o texto OCR de documentos escaneados.
+ *  - Transcrever um processo grande (120+ páginas) — via Tesseract OU via
+ *    IA — gera ~150 mil tokens e leva minutos. É o gargalo.
+ *  - Solução: não transcrever. As páginas digitalizadas vão para a IA
+ *    como IMAGEM. A IA multimodal (Gemini / Claude / GPT-4o) lê a imagem
+ *    ao analisar/resumir. O custo da imagem é INPUT (rápido), não a
+ *    geração de uma transcrição (lento). A única etapa local é o render.
  *
- * Arquitetura:
- *   content ─► background (ENSURE offscreen + obter tabId próprio)
- *   content: para cada doc → fetch + renderPdfToImages → Blob[] JPEG
- *   content ─► offscreen (BATCH com docs: [{id, pageImages: Blob[]}])
- *   offscreen: createImageBitmap + worker.recognize por página
- *   offscreen ─► content (resposta map id→texto + eventos de progresso
- *     via background.tabs.sendMessage durante o processo)
- *
- * Mitigação de tab background: se este content rodar com
- * visibilityState === 'hidden' (caso típico de audiência),
- * pede ao background para ATIVAR esta aba antes de renderizar, e
- * RESTAURA a aba previamente ativa ao terminar. Garante render rápido
- * sem o usuário precisar trocar de aba manualmente.
+ * Mantém o nome e a assinatura por compatibilidade com os callers
+ * (handleRunOcr no popup, resumo da pauta de audiência).
  */
-export async function runOcrOnDocumentsViaOffscreen(
+export async function runOcrViaIA(
   docs: ProcessoDocumento[],
   onProgress?: OcrProgressHandler,
   options?: OcrOptions
@@ -855,212 +730,55 @@ export async function runOcrOnDocumentsViaOffscreen(
     return docs;
   }
 
-  // 1. Garante offscreen + obtém tabId próprio (para o background
-  //    rotear OCR_OFFSCREEN_PROGRESS de volta a este content).
-  let tabId: number | undefined;
-  try {
-    const ack = await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.OCR_OFFSCREEN_ENSURE
-    });
-    if (!ack?.ok) {
-      throw new Error(ack?.error || 'background não confirmou ensure offscreen');
-    }
-    tabId = typeof ack.tabId === 'number' ? ack.tabId : undefined;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `${LOG_PREFIX} falha ao garantir offscreen de OCR (segue sem OCR):`,
-      message
-    );
-    onProgress?.({ type: 'ocr-done', updated: [] });
-    return docs;
-  }
+  const t0 = performance.now();
+  const updatedMap = new Map<string, ProcessoDocumento>();
+  let totalPaginas = 0;
+  let falhas = 0;
 
-  // 2. Mitigação de throttling: se a aba está oculta E o chamador não
-  //    pediu para pular focus, ativa-a antes de renderizar. Audiência
-  //    passa skipTabFocus=true porque opera dentro de aba oculta
-  //    auxiliar — roubar foco da aba do usuário (que está na aba do
-  //    Resumo) é pior que tolerar throttling de timer.
-  const tabaOriginalmenteOculta = document.visibilityState === 'hidden';
-  const skipTabFocus = options?.skipTabFocus === true;
-  let previousActiveTabId: number | undefined;
-  if (tabaOriginalmenteOculta && !skipTabFocus) {
+  for (let index = 0; index < targets.length; index++) {
+    const doc = targets[index]!;
+    onProgress?.({ type: 'ocr-document-start', index, documento: doc });
     try {
-      const focusAck = await chrome.runtime.sendMessage({
-        channel: MESSAGE_CHANNELS.OCR_FOCUS_TAB,
-        request: 'activate'
-      });
-      if (focusAck?.ok) {
-        previousActiveTabId = focusAck.previousActiveTabId;
-      } else {
-        console.info(
-          `${LOG_PREFIX} OCR: não conseguiu ativar a aba (segue mesmo assim):`,
-          focusAck?.error
-        );
+      const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
-    } catch (err: unknown) {
-      console.info(`${LOG_PREFIX} OCR: focus-tab falhou (segue mesmo assim):`, err);
-    }
-  }
-
-  // 3. Listener temporário de progresso. O offscreen emite por doc;
-  //    o background repassa via chrome.tabs.sendMessage.
-  const batchId = `ocr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const targetsById = new Map(targets.map((d, i) => [d.id, { doc: d, index: i }]));
-  const progressListener = (msg: {
-    channel?: string;
-    batchId?: string;
-    event?: {
-      type: 'ocr-document-start' | 'ocr-document-done' | 'ocr-document-error';
-      index: number;
-      documento: { id: string };
-      pagesProcessed?: number;
-      pagesSkipped?: number;
-      error?: string;
-    };
-  }): void => {
-    if (msg?.channel !== MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS) return;
-    if (msg.batchId !== batchId || !msg.event) return;
-    const entry = targetsById.get(msg.event.documento.id);
-    if (!entry) return;
-    if (msg.event.type === 'ocr-document-start') {
-      onProgress?.({
-        type: 'ocr-document-start',
-        index: entry.index,
-        documento: entry.doc
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength === 0) {
+        throw new Error('PDF veio com 0 bytes');
+      }
+      const rendered = await renderPdfToImages(buffer, {
+        maxPages: options?.maxPages
       });
-    } else if (msg.event.type === 'ocr-document-done') {
+      if (rendered.images.length === 0) {
+        throw new Error('render não produziu imagens');
+      }
+      totalPaginas += rendered.images.length;
+      const updated: ProcessoDocumento = {
+        ...doc,
+        isScanned: true,
+        paginasImagem: rendered.images.map((img) => img.dataUrl)
+      };
+      updatedMap.set(doc.id, updated);
       onProgress?.({
         type: 'ocr-document-done',
-        index: entry.index,
-        documento: entry.doc,
-        pagesProcessed: msg.event.pagesProcessed ?? 0,
-        pagesSkipped: msg.event.pagesSkipped ?? 0
+        index,
+        documento: updated,
+        pagesProcessed: rendered.images.length,
+        pagesSkipped: rendered.pagesSkipped
       });
-    } else if (msg.event.type === 'ocr-document-error') {
+    } catch (err: unknown) {
+      falhas++;
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `${LOG_PREFIX} falha ao renderizar doc ${doc.id} para OCR imagem-direto:`,
+        message
+      );
       onProgress?.({
         type: 'ocr-document-error',
-        index: entry.index,
-        documento: entry.doc,
-        error: msg.event.error ?? 'erro desconhecido'
-      });
-    }
-  };
-  chrome.runtime.onMessage.addListener(progressListener);
-
-  type OcrDocResult = {
-    text: string;
-    ok: boolean;
-    error?: string;
-    pagesProcessed?: number;
-    pagesSkipped?: number;
-  };
-  let resultados: Record<string, OcrDocResult> = {};
-  const renderErrors = new Map<string, string>();
-
-  // Keepalive port: mantém o service worker do background vivo durante
-  // o render no content. Sem isso, o SW dorme em ~30s de inatividade,
-  // e canais long-lived como o sendMessage do `handleAudienciaResumoColetarDocs`
-  // → aba oculta fecham antes da resposta voltar (BUG-21, sessão 2026-05-14).
-  // Port mantém SW vivo até 5min (limite do Chrome 116+).
-  let keepAlivePort: chrome.runtime.Port | null = null;
-  try {
-    keepAlivePort = chrome.runtime.connect({ name: 'paidegua/ocr-keepalive' });
-  } catch (err: unknown) {
-    console.info(`${LOG_PREFIX} keepalive port não pôde ser aberta:`, err);
-  }
-
-  try {
-    // 4. Para cada doc: fetch + render no content. Construímos o batch
-    //    com dataURLs JPEG por página (Blob não atravessa
-    //    chrome.runtime.sendMessage — vira `{}` na serialização JSON).
-    //    Fetch tem timeout duro; se um doc falhar, registramos o erro
-    //    e continuamos com os demais.
-    const docsParaOcr: Array<{ id: string; pageImages: string[] }> = [];
-    for (let index = 0; index < targets.length; index++) {
-      const doc = targets[index]!;
-      try {
-        const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const buffer = await response.arrayBuffer();
-        if (buffer.byteLength === 0) {
-          throw new Error('PDF veio com 0 bytes');
-        }
-        const rendered = await renderPdfToImages(buffer, {
-          maxPages: options?.maxPages
-        });
-        if (rendered.images.length === 0) {
-          throw new Error('render não produziu imagens');
-        }
-        docsParaOcr.push({
-          id: doc.id,
-          pageImages: rendered.images.map((img) => img.dataUrl)
-        });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        renderErrors.set(doc.id, message);
-        onProgress?.({
-          type: 'ocr-document-error',
-          index,
-          documento: doc,
-          error: `render: ${message}`
-        });
-      }
-    }
-
-    // 5. Envia o batch ao offscreen e aguarda. Progresso por documento
-    //    chega via progressListener acima durante este await.
-    if (docsParaOcr.length > 0) {
-      try {
-        resultados = (await chrome.runtime.sendMessage({
-          type: MESSAGE_CHANNELS.OCR_OFFSCREEN_BATCH,
-          docs: docsParaOcr,
-          batchId,
-          tabId
-        })) as Record<string, OcrDocResult>;
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(`${LOG_PREFIX} OCR offscreen batch falhou:`, message);
-      }
-    }
-  } finally {
-    chrome.runtime.onMessage.removeListener(progressListener);
-
-    // 6. Restaura a aba originalmente ativa, se a trocamos.
-    if (previousActiveTabId != null) {
-      try {
-        await chrome.runtime.sendMessage({
-          channel: MESSAGE_CHANNELS.OCR_FOCUS_TAB,
-          request: 'restore',
-          previousActiveTabId
-        });
-      } catch (err: unknown) {
-        console.info(`${LOG_PREFIX} OCR: restore-tab falhou:`, err);
-      }
-    }
-
-    // 7. Fecha keepalive port — libera o service worker para dormir.
-    if (keepAlivePort) {
-      try {
-        keepAlivePort.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  // 7. Aplica resultados nos docs. Eventos de progresso já saíram via
-  //    streaming — não duplicar aqui.
-  const updatedMap = new Map<string, ProcessoDocumento>();
-  for (const doc of targets) {
-    const r = resultados[doc.id];
-    if (r?.ok && r.text.trim().length > 0) {
-      updatedMap.set(doc.id, {
-        ...doc,
-        textoExtraido: r.text,
-        isScanned: true
+        index,
+        documento: doc,
+        error: message
       });
     }
   }
@@ -1069,10 +787,11 @@ export async function runOcrOnDocumentsViaOffscreen(
   const updatedList = Array.from(updatedMap.values());
   onProgress?.({ type: 'ocr-done', updated: updatedList });
 
+  const segundos = ((performance.now() - t0) / 1000).toFixed(1);
   console.log(
-    `${LOG_PREFIX} OCR offscreen concluído: ${updatedList.length}/${targets.length} ` +
-      `documentos processados${renderErrors.size > 0 ? ` (${renderErrors.size} falharam no render)` : ''}.`
+    `${LOG_PREFIX} [tempo] documentos digitalizados preparados (imagem-direto): ` +
+      `${updatedList.length}/${targets.length} em ${segundos}s ` +
+      `(${totalPaginas} página(s)${falhas > 0 ? `, ${falhas} falha(s)` : ''}).`
   );
-
   return merged;
 }

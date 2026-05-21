@@ -5,6 +5,7 @@
 
 import type {
   AnaliseProcessoResult,
+  ImagemIA,
   PAIdeguaSettings,
   ProcessoDocumento
 } from './types';
@@ -537,38 +538,105 @@ export function parseTriagemResponse(
   }
 }
 
+/** Teto de imagens (páginas digitalizadas) anexadas a um contexto. */
+const MAX_IMAGENS_CONTEXTO = 150;
+
+/** Resultado de `buildDocumentContext`: texto + imagens para a IA multimodal. */
+export interface DocumentContextResult {
+  /** Bloco textual de contexto (documentos com texto nativo). */
+  texto: string;
+  /**
+   * Páginas de documentos DIGITALIZADOS, como imagens — a IA multimodal
+   * lê direto (OCR imagem-direto), sem transcrição prévia.
+   */
+  imagens: ImagemIA[];
+}
+
+/** Converte uma data URL `data:image/...;base64,...` em ImagemIA. */
+export function dataUrlParaImagemIA(dataUrl: string): ImagemIA | null {
+  const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(dataUrl);
+  if (!m || !m[3]) return null;
+  return { mimeType: m[1] || 'image/jpeg', dataBase64: m[3] };
+}
+
 /**
- * Monta o bloco de contexto com os documentos extraídos. Aplica truncamento
- * conservador para não estourar o context window do modelo. Documentos
- * digitalizados sem texto extraído são incluídos apenas como metadata.
+ * Coleta as páginas de documentos digitalizados como imagens (OCR
+ * imagem-direto), respeitando o teto global. Usado pelos fluxos que
+ * montam contexto e precisam anexar as imagens ao envio para a IA
+ * (análise, triagem, minuta, resumo).
+ */
+export function coletarImagensDocumentos(
+  documentos: ProcessoDocumento[]
+): ImagemIA[] {
+  const imagens: ImagemIA[] = [];
+  for (const doc of documentos) {
+    if (!doc.paginasImagem) continue;
+    for (const dataUrl of doc.paginasImagem) {
+      if (imagens.length >= MAX_IMAGENS_CONTEXTO) return imagens;
+      const img = dataUrlParaImagemIA(dataUrl);
+      if (img) imagens.push(img);
+    }
+  }
+  return imagens;
+}
+
+/**
+ * Monta o contexto com os documentos extraídos.
+ *  - Documentos com texto nativo entram como texto (truncado ao limite).
+ *  - Documentos DIGITALIZADOS entram como IMAGEM: as páginas vão em
+ *    `imagens` e o bloco textual só registra a referência. A IA multimodal
+ *    lê as imagens — sem transcrição prévia (que seria o gargalo lento).
  */
 export function buildDocumentContext(
   documentos: ProcessoDocumento[],
   numeroProcesso: string | null
-): string {
+): DocumentContextResult {
   const header = numeroProcesso
     ? `Processo: ${numeroProcesso}\n\n=== Documentos disponíveis nos autos ===\n`
     : '=== Documentos disponíveis nos autos ===\n';
 
   const blocks: string[] = [];
+  const imagens: ImagemIA[] = [];
   let totalChars = header.length;
   let truncados = 0;
 
   for (const doc of documentos) {
-    const ocrTag = doc.isScanned && doc.textoExtraido ? ' | texto via OCR' : '';
+    const temImagens = !!doc.paginasImagem && doc.paginasImagem.length > 0;
+    const ocrTag = temImagens
+      ? ' | documento digitalizado (imagens anexadas)'
+      : doc.isScanned && doc.textoExtraido
+        ? ' | texto via OCR'
+        : '';
     const head = `\n--- Documento id ${doc.id} | ${doc.tipo} | ${doc.descricao} ${
       doc.dataMovimentacao ? `(${doc.dataMovimentacao})` : ''
     }${ocrTag} ---\n`;
 
     let body: string;
-    if (doc.isScanned && !doc.textoExtraido) {
-      body = '[documento digitalizado — OCR ainda não disponível, conteúdo não extraído]\n';
+    if (temImagens) {
+      // Anexa as páginas como imagem (respeitando o teto global).
+      let anexadas = 0;
+      for (const dataUrl of doc.paginasImagem!) {
+        if (imagens.length >= MAX_IMAGENS_CONTEXTO) break;
+        const img = dataUrlParaImagemIA(dataUrl);
+        if (img) {
+          imagens.push(img);
+          anexadas++;
+        }
+      }
+      body =
+        `[Documento digitalizado — o conteúdo INTEGRAL deste documento ` +
+        `está nas ${anexadas} imagem(ns) anexada(s) a esta mensagem. ` +
+        `Leia as imagens diretamente como leria o documento; elas são a ` +
+        `fonte completa. NÃO afirme que o documento "precisa de OCR" nem ` +
+        `que falta transcrição — você já tem o documento, em imagem.]\n`;
     } else if (doc.textoExtraido) {
       body = doc.textoExtraido;
       if (body.length > CONTEXT_LIMITS.PER_DOCUMENT_HARD_CAP) {
         body = body.slice(0, CONTEXT_LIMITS.PER_DOCUMENT_HARD_CAP) +
           '\n[…trecho truncado para caber no contexto…]';
       }
+    } else if (doc.isScanned) {
+      body = '[documento digitalizado — não foi possível preparar o conteúdo]\n';
     } else {
       body = '[conteúdo não extraído]\n';
     }
@@ -586,8 +654,13 @@ export function buildDocumentContext(
   if (truncados > 0) {
     footer = `\n\n[Aviso: ${truncados} documento(s) foram omitidos do contexto por excederem o limite de tamanho. Solicite análises focadas para incluí-los.]`;
   }
+  if (imagens.length > 0) {
+    footer +=
+      `\n\n[${imagens.length} página(s) de documentos digitalizados seguem ` +
+      `anexadas como imagem.]`;
+  }
 
-  return header + blocks.join('') + footer;
+  return { texto: header + blocks.join('') + footer, imagens };
 }
 
 /**

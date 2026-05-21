@@ -12,7 +12,8 @@
  * Heurística de "scanned":
  *   - Se a média de caracteres extraídos por página for menor que 50,
  *     presumimos que o PDF é uma digitalização (bitmap sem texto real).
- *     Nesse caso a Fase 5 aplicará OCR com Tesseract.js.
+ *     Nesse caso o documento é renderizado como imagem e enviado direto
+ *     à IA multimodal (OCR imagem-direto, ver `runOcrViaIA`).
  */
 
 import * as pdfjsLib from 'pdfjs-dist';

@@ -88,6 +88,7 @@ import type {
   GestaoInsightsLLM,
   GestaoSugestao,
   GestaoTarefaInfo,
+  ImagemIA,
   PAIdeguaSettings,
   AudienciaTarefaInfo,
   ComunicacaoSettings,
@@ -1115,80 +1116,6 @@ function dispatchMessage(
         );
         return true;
 
-      case MESSAGE_CHANNELS.OCR_OFFSCREEN_ENSURE:
-        void ensureOcrOffscreenDocument()
-          .then(() => sendResponse({ ok: true, tabId: sender.tab?.id }))
-          .catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            sendResponse({ ok: false, error: message });
-          });
-        return true;
-
-      case MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS: {
-        // Repasse de progresso do offscreen ao tab que originou o batch.
-        // O offscreen não tem acesso a chrome.tabs; o background sim.
-        const payload = message as {
-          tabId?: number;
-          batchId?: string;
-          event?: unknown;
-        };
-        if (typeof payload.tabId === 'number' && payload.batchId && payload.event) {
-          void chrome.tabs
-            .sendMessage(payload.tabId, {
-              channel: MESSAGE_CHANNELS.OCR_OFFSCREEN_PROGRESS,
-              batchId: payload.batchId,
-              event: payload.event
-            })
-            .catch(() => {
-              /* tab fechou — ignore */
-            });
-        }
-        sendResponse({ ok: true });
-        return false;
-      }
-
-      case MESSAGE_CHANNELS.OCR_FOCUS_TAB: {
-        // Mitigação de throttling em audiência: content da aba PJe (em
-        // background) pede para a aba virar ativa antes de rodar pdf.js
-        // render, e depois restaurar a aba anterior.
-        const payload = message as {
-          request?: 'activate' | 'restore';
-          previousActiveTabId?: number;
-        };
-        const senderTabId = sender.tab?.id;
-        const windowId = sender.tab?.windowId;
-        if (payload.request === 'activate' && senderTabId != null && windowId != null) {
-          void (async (): Promise<void> => {
-            try {
-              const tabs = await chrome.tabs.query({ active: true, windowId });
-              const previousActiveTabId = tabs[0]?.id;
-              await chrome.tabs.update(senderTabId, { active: true });
-              sendResponse({ ok: true, previousActiveTabId });
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err);
-              sendResponse({ ok: false, error: msg });
-            }
-          })();
-          return true;
-        }
-        if (payload.request === 'restore' && payload.previousActiveTabId != null) {
-          void (async (): Promise<void> => {
-            try {
-              await chrome.tabs.update(payload.previousActiveTabId!, {
-                active: true
-              });
-              sendResponse({ ok: true });
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err);
-              sendResponse({ ok: false, error: msg });
-            }
-          })();
-          return true;
-        }
-        sendResponse({ ok: false, error: 'request inválido ou tab sem id' });
-        return false;
-      }
-
       case MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR:
         void handleOpenFluxosConsultor(sendResponse);
         return true;
@@ -1853,6 +1780,8 @@ interface AnalisarProcessoRequest {
   criterios: CriterioResolvido[];
   /** Trecho consolidado dos autos (já truncado pelo content). */
   caseContext: string;
+  /** Páginas de documentos digitalizados, como imagem (OCR imagem-direto). */
+  imagens?: ImagemIA[];
 }
 
 interface AnalisarProcessoResponse {
@@ -1866,7 +1795,11 @@ async function handleAnalisarProcesso(
   sendResponse: (response: AnalisarProcessoResponse) => void
 ): Promise<void> {
   try {
-    if (!payload?.caseContext || !payload.caseContext.trim()) {
+    const temImagensAnalise = !!payload?.imagens && payload.imagens.length > 0;
+    if (
+      (!payload?.caseContext || !payload.caseContext.trim()) &&
+      !temImagensAnalise
+    ) {
       sendResponse({
         ok: false,
         error: 'Sem contexto dos autos — carregue e extraia os documentos antes.'
@@ -1904,7 +1837,17 @@ async function handleAnalisarProcesso(
       systemPrompt:
         'Você é um assistente que auxilia a Secretaria de uma Vara Federal a verificar se uma petição inicial atende aos critérios de admissibilidade adotados pelo magistrado. ' +
         'Responda SEMPRE em JSON puro, sem texto adicional, sem markdown.',
-      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+          timestamp: Date.now(),
+          images:
+            payload.imagens && payload.imagens.length > 0
+              ? payload.imagens
+              : undefined
+        }
+      ],
       temperature: 0,
       // Resposta carrega justificativa para cada critério da NT (até 11) +
       // critérios livres. 4096 cobre com folga sem desperdício.
@@ -3007,19 +2950,6 @@ interface ActiveChat {
 const activeChats = new WeakMap<chrome.runtime.Port, ActiveChat>();
 
 chrome.runtime.onConnect.addListener((port) => {
-  // Keepalive port do OCR — content abre durante o batch para manter
-  // o service worker vivo enquanto o render acontece no main thread
-  // do PJe. Sem isso, o SW pode adormecer e canais long-lived
-  // (ex.: sendMessage do background → aba oculta em audiência)
-  // fecham antes da resposta voltar.
-  if (port.name === 'paidegua/ocr-keepalive') {
-    console.log(`${LOG_PREFIX} OCR keepalive port conectada`);
-    port.onDisconnect.addListener(() => {
-      console.log(`${LOG_PREFIX} OCR keepalive port desconectada`);
-    });
-    return;
-  }
-
   if (port.name !== PORT_NAMES.CHAT_STREAM) {
     return;
   }
@@ -3079,7 +3009,9 @@ async function handleChatStart(
 
     // Monta mensagens: contexto dos documentos vai como primeira user message
     // do histórico (não como system, para não inflar o system em provedores
-    // que cobram caro pelo system prompt).
+    // que cobram caro pelo system prompt). Documentos digitalizados entram
+    // como IMAGEM anexada à mensagem (OCR imagem-direto) — a IA multimodal
+    // lê direto, sem transcrição prévia.
     const docContext = buildDocumentContext(
       payload.documents,
       payload.numeroProcesso
@@ -3089,8 +3021,9 @@ async function handleChatStart(
     if (payload.documents.length > 0) {
       augmented.push({
         role: 'user',
-        content: docContext,
-        timestamp: Date.now()
+        content: docContext.texto,
+        timestamp: Date.now(),
+        images: docContext.imagens.length > 0 ? docContext.imagens : undefined
       });
       augmented.push({
         role: 'assistant',
@@ -5600,37 +5533,6 @@ async function handleOpenAudienciaResumoPainel(
   }
 }
 
-/**
- * Garante que o offscreen document de OCR esteja criado e ativo.
- * Idempotente: se já existe, no-op. Se não existe, cria via
- * `chrome.offscreen.createDocument` com reason `WORKERS` (Tesseract usa
- * Web Worker + WASM internamente).
- *
- * Por que offscreen: tabs em background são throttled pelo Chrome
- * (≥88), o que faz o Tesseract pendurar quando a aba PJe não é a
- * ativa (caso típico do fluxo de Resumo da Pauta, em que o usuário
- * fica na aba `audiencia-resumo/resumo.html`). Offscreen documents
- * NÃO sofrem throttling — OCR roda lá com velocidade normal.
- */
-const OFFSCREEN_OCR_URL = 'offscreen/ocr.html';
-async function ensureOcrOffscreenDocument(): Promise<void> {
-  // chrome.runtime.getContexts é a forma oficial em MV3 de checar se
-  // um offscreen já existe. Filtra por contextTypes + documentUrls.
-  const fullUrl = chrome.runtime.getURL(OFFSCREEN_OCR_URL);
-  const existing = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT' as chrome.runtime.ContextType],
-    documentUrls: [fullUrl]
-  });
-  if (existing.length > 0) return;
-  await chrome.offscreen.createDocument({
-    url: OFFSCREEN_OCR_URL,
-    reasons: ['WORKERS' as chrome.offscreen.Reason],
-    justification:
-      'OCR via Tesseract.js sem throttling de tab background (Chrome ≥88).'
-  });
-  console.info(`${LOG_PREFIX} offscreen document de OCR criado.`);
-}
-
 async function handleAudienciaResumoColetarDocs(
   payload: {
     requestId: string;
@@ -6564,7 +6466,8 @@ async function handleEtiquetasSugerir(
 ): Promise<void> {
   try {
     const caseContext = (payload?.caseContext ?? '').trim();
-    if (!caseContext) {
+    const temImagensEtiq = !!payload?.imagens && payload.imagens.length > 0;
+    if (!caseContext && !temImagensEtiq) {
       sendResponse({
         ok: false,
         error: 'Sem contexto dos autos — carregue e extraia os documentos antes.'
@@ -6596,7 +6499,14 @@ async function handleEtiquetasSugerir(
         'Você é um classificador que lê um processo judicial e produz uma lista curta de ' +
         'MARCADORES semânticos (2 a 6 palavras cada). Responda SEMPRE em JSON puro, sem ' +
         'markdown, sem comentários.',
-      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+          timestamp: Date.now(),
+          images: temImagensEtiq ? payload.imagens : undefined
+        }
+      ],
       temperature: 0.1,
       // Marcadores são curtos; 1024 cobre com folga 15 marcadores de 6 palavras.
       maxTokens: 1024,

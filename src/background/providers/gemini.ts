@@ -9,7 +9,11 @@
 
 import { LOG_PREFIX, PROVIDER_ENDPOINTS } from '../../shared/constants';
 import type { TestConnectionResult } from '../../shared/types';
-import type { LLMProvider, SendMessageParams, StreamChunk } from './base';
+import {
+  type LLMProvider,
+  type SendMessageParams,
+  type StreamChunk
+} from './base';
 import { fetchWithRetry } from './retry';
 import { parseSseStream } from './sse';
 
@@ -71,9 +75,14 @@ export const geminiProvider: LLMProvider = {
       if (m.role === 'system') {
         continue;
       }
+      const parts: GeminiContent['parts'] = [];
+      if (m.content) parts.push({ text: m.content });
+      for (const img of m.images ?? []) {
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.dataBase64 } });
+      }
       contents.push({
         role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
+        parts: parts.length > 0 ? parts : [{ text: '' }]
       });
     }
 

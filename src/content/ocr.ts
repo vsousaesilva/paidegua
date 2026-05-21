@@ -1,23 +1,19 @@
 /**
- * OCR de PDFs digitalizados usando Tesseract.js + pdf.js.
+ * Render de PDFs e OCR local via Tesseract.js + pdf.js.
  *
- * Arquitetura (após investigação BUG-21):
- *  - pdf.js render: SEMPRE no content script. No offscreen document
- *    `page.render` trava silenciosamente após o tick 1 (algo no canal
- *    de decodificação de imagem JPEG embutida não retorna). No content
- *    script o pdf.js cai no fake worker e funciona via import() ESM.
- *  - Tesseract.recognize: no offscreen quando chamado via offscreen
- *    document (popup principal e audiência), no content quando chamado
- *    pelo `ocrPdf` direto. O offscreen evita throttling de tab background
- *    e contorna o bloqueio cross-origin de Worker do Tesseract no content.
+ * O fluxo principal da extensão (extração de documentos do PJe) NÃO
+ * transcreve mais documentos digitalizados: ele renderiza as páginas
+ * como imagem e as envia direto à IA multimodal (ver `runOcrViaIA` em
+ * `extractor.ts`). Render é sempre no content script — pdf.js `page.render`
+ * trava silenciosamente em offscreen documents (descoberta da
+ * investigação BUG-21).
  *
  * Funções principais:
- *  - `renderPdfToImages(buffer)` — só render do PDF para Blob[] JPEG.
- *    Pensado para ser chamado no content e os Blobs serem mandados ao
- *    offscreen para OCR.
- *  - `ocrPdf(buffer)` — pipeline completo render+OCR no MESMO contexto.
- *    Mantido para compatibilidade do caminho legado (`runOcrOnDocuments`
- *    no extractor) — não é mais usado pelo caminho via offscreen.
+ *  - `renderPdfToImages(buffer)` — renderiza o PDF para data URLs JPEG,
+ *    uma por página. É a base do OCR imagem-direto.
+ *  - `ocrPdf(buffer)` — pipeline completo render + transcrição Tesseract.
+ *    Usado apenas pelo painel do sistema criminal (`criminal-dashboard`),
+ *    que tem seu próprio fluxo de OCR local.
  *  - `createOcrWorker` — fábrica do worker Tesseract reutilizável.
  */
 
@@ -41,18 +37,15 @@ export interface OcrOptions {
    * para 10 docs economiza ~30-50s.
    */
   worker?: TesseractWorker;
-  /**
-   * Quando true, desabilita a "mitigação de aba ativa" do
-   * runOcrOnDocumentsViaOffscreen — o content não pede para o background
-   * focar a aba. Útil quando o chamador SABE que está rodando numa aba
-   * auxiliar (ex.: aba oculta de audiência) e roubar foco do usuário
-   * seria pior que esperar render mais lento sob throttling de tab background.
-   */
-  skipTabFocus?: boolean;
 }
 
-/** Fator de escala aplicado ao render do PDF antes do OCR. */
-const RENDER_SCALE = 2.0;
+/**
+ * Fator de escala aplicado ao render do PDF antes do OCR.
+ * 1.5 (~108 DPI numa folha A4) é suficiente para o modelo de visão ler
+ * texto impresso e manuscrito; acima disso a imagem só fica mais pesada
+ * (upload mais lento, mais tiles de visão) sem ganho de acurácia.
+ */
+const RENDER_SCALE = 1.5;
 
 export interface OcrProgress {
   /** Página atual (1-indexed) sendo processada. */
@@ -156,7 +149,7 @@ export async function ocrPdf(
     }
   } finally {
     // Só terminamos o worker se NÓS o criamos. Worker externo é
-    // responsabilidade do chamador (típico em batches via runOcrOnDocuments).
+    // responsabilidade do chamador.
     if (worker && !externalWorker) {
       try {
         await worker.terminate();
@@ -206,16 +199,16 @@ export interface RenderPdfResult {
 }
 
 /**
- * Renderiza um PDF para uma lista de imagens JPEG (uma por página).
+ * Renderiza um PDF para uma lista de imagens JPEG (uma por página),
+ * cada uma como data URL.
  *
- * Usado para separar render (que precisa ser no content script porque
- * pdf.js v5 trava no offscreen document — ver doc do módulo) do OCR
- * em si (que roda no offscreen via Tesseract). Os Blobs gerados são
- * mandados ao offscreen via `chrome.runtime.sendMessage`.
+ * É a base do OCR imagem-direto: o content renderiza as páginas e o
+ * background as anexa à mensagem para a IA multimodal ler. Render é
+ * sempre no content script — pdf.js v5 trava em offscreen documents.
  *
- * JPEG (qualidade 0.92) reduz drasticamente o tamanho da mensagem
- * em comparação com PNG ou ImageData cru, mantendo qualidade suficiente
- * para OCR (Tesseract LSTM é robusto a artefatos JPEG moderados).
+ * JPEG (qualidade ~0.82) reduz drasticamente o tamanho do data URL
+ * em comparação com PNG, mantendo qualidade suficiente para os modelos
+ * de visão lerem texto impresso e manuscrito.
  */
 export async function renderPdfToImages(
   buffer: ArrayBuffer,
@@ -233,7 +226,7 @@ export async function renderPdfToImages(
   const effectiveCap =
     options?.maxPages && options.maxPages > 0 ? options.maxPages : MAX_OCR_PAGES;
   const pagesToProcess = Math.min(totalPages, effectiveCap);
-  const jpegQuality = options?.jpegQuality ?? 0.92;
+  const jpegQuality = options?.jpegQuality ?? 0.82;
 
   const images: RenderedPdfImage[] = [];
 

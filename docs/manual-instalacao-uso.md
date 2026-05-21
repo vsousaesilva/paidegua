@@ -84,7 +84,7 @@ O popup tem **sete abas** navegáveis no topo. Cada aba controla um aspecto da o
 - **Perfil de trabalho.** Defina o perfil padrão (**Gabinete**, **Secretaria** ou **Gestão**) que será carregado automaticamente ao abrir o PJe. A troca pode ser feita na sessão pelo seletor no cabeçalho do painel lateral; ao reabrir o navegador, volta a vigorar o padrão definido aqui.
 - **Provedor e modelo.** Selecione o provedor (**Google Gemini**, **Anthropic Claude** ou **OpenAI**) e o modelo desejado. A recomendação atual para uso diário é **Gemini 3 Flash** pela combinação de qualidade/custo.
 - **Chave de API.** Cole a chave no campo indicado, clique em **Salvar** e em **Testar** para verificar a conexão. A chave fica armazenada apenas no seu navegador.
-- **OCR de digitalizados.** Marque **Rodar OCR automaticamente** se quiser que documentos digitalizados (PDFs de imagem) sejam reconhecidos por OCR após a extração. O OCR roda **localmente** no navegador (sem enviar imagens à IA). Ajuste o **máximo de páginas por documento** conforme necessário.
+- **OCR de digitalizados.** Marque **Rodar OCR automaticamente** se quiser que documentos digitalizados (PDFs de imagem) sejam preparados automaticamente após a extração. As páginas digitalizadas são renderizadas como imagem e **enviadas à IA do provedor configurado**, que as lê diretamente — não há transcrição local. Ajuste o **máximo de páginas por documento** conforme necessário.
 - **Sigcrim.** Configurações básicas do módulo criminal (matrícula do servidor, vara responsável), usadas pelo Painel Criminal.
 - **Modelos de minuta.** Botão **Gerenciar modelos** abre a página de opções, onde se aponta a pasta do computador com os modelos (sentenças, decisões, despachos). Formatos aceitos: `.docx`, `.doc`, `.odt`, `.rtf`, `.pdf`, `.txt`, `.md`. Veja a PARTE 6.
 - **Backup.** Botões **Exportar configurações** e **Importar configurações** (formato `paidegua-config-*.txt`, versão 2).
@@ -216,7 +216,7 @@ Os dados viram marcadores genéricos (ex.: `PARTE_AUTORA`, `CPF_OCULTO`).
 
 #### Rodar OCR
 
-Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). Processa as páginas localmente com Tesseract.js (sem envio à IA). Documentos com muitas páginas podem demorar; ajuste o limite na aba **Geral**.
+Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). As páginas são renderizadas como imagem e **enviadas à IA do provedor configurado**, que as lê diretamente — não há transcrição local. Documentos com muitas páginas podem demorar mais para preparar; ajuste o limite na aba **Geral**.
 
 #### Minutar (com triagem automática)
 
@@ -459,7 +459,7 @@ Dicas:
 
 **Erro ao extrair documentos.** Alguns documentos podem retornar vazio na primeira tentativa. A extensão faz até 3 tentativas automáticas com estratégias diferentes. Se persistir, recarregue a página do PJe e tente novamente.
 
-**OCR lento.** O OCR roda localmente no navegador. Documentos com muitas páginas podem demorar. Ajuste o limite de páginas nas configurações.
+**Preparo de digitalizados lento.** Renderizar muitas páginas de documentos escaneados leva tempo. Ajuste o limite de páginas por documento nas configurações (aba **Geral**).
 
 **Minuta usando modelo errado.** A busca automática usa o conteúdo do processo para encontrar o modelo mais similar. Se o resultado não for adequado, reorganize seus modelos em subpastas mais específicas ou gere do zero.
 

@@ -26,23 +26,21 @@ import {
   conteudoUtilLength,
   extractContents,
   getOcrPendingDocuments,
-  runOcrOnDocumentsViaOffscreen
+  runOcrViaIA
 } from '../extractor';
 
 /**
- * Caps do OCR para o fluxo de Resumo (AUD-10).
+ * Caps do preparo de documentos digitalizados para o fluxo de Resumo
+ * (AUD-10).
  *
- * Tesseract.js custa ~5s/doc (medido na sidebar: 22 docs em 120s). Com
- * cap de 8 docs × 5 páginas, OCR completo gasta ~40-60s adicionais
- * sobre o tempo de download. Aceitável para o usuário esperar uma vez.
+ * Os documentos escaneados não são transcritos: são renderizados como
+ * imagem e enviados direto à IA multimodal (OCR imagem-direto, ver
+ * `runOcrViaIA`). O render custa ~2s/doc. O cap de 8 docs × 5 páginas
+ * limita o tamanho do payload de imagens mandado à IA.
  *
  * Respeitamos a setting `ocrMaxPages` do usuário se for menor que o
  * teto rígido — quem prefere processar menos páginas (ex.: 2-3) não
  * é forçado a esperar mais.
- *
- * O OCR roda no offscreen document (não throttled), via
- * `runOcrOnDocumentsViaOffscreen`. O timeout total deste fluxo é
- * calculado dinamicamente (90s/doc + 30s de folga) na chamada.
  */
 const OCR_MAX_PAGES_POR_DOC_HARD = 5;
 const OCR_MAX_DOCS = 8;
@@ -287,17 +285,13 @@ export async function coletarDocumentosDoProcesso(
     };
   }
 
-  // 5. OCR para documentos digitalizados — best-effort, COM CAP. Tesseract
-  // é caro (segundos por página); cap em OCR_MAX_DOCS docs e
-  // OCR_MAX_PAGES_POR_DOC páginas evita esperas de 10+ minutos em
-  // dossiês gigantes. Sem OCR esses docs chegariam à IA como
-  // "[documento digitalizado — OCR ainda não disponível]" — tags
-  // técnicas que poluem o prompt e podem vazar para a sentença gerada.
-  // A normalização abaixo garante que NENHUMA referência ao OCR (tag
-  // "via OCR", flag isScanned, doc sem texto) chegue ao prompt final.
-  // OCR via offscreen document — não sofre throttling de tab background
-  // (Chrome ≥88), problema crítico do fluxo de Resumo da Pauta porque o
-  // usuário fica na aba do resumo, deixando PJe em background.
+  // 5. Preparo dos documentos digitalizados para a IA — best-effort, COM
+  // CAP. As páginas escaneadas são renderizadas como imagem (OCR
+  // imagem-direto) e seguem para a IA multimodal anexadas à mensagem;
+  // não há transcrição. O cap em OCR_MAX_DOCS docs e OCR_MAX_PAGES_POR_DOC
+  // páginas limita o tamanho do payload de imagens. Se o render falhar, o
+  // documento entra sem o conteúdo escaneado — a normalização abaixo
+  // descarta docs que ficaram sem texto e sem imagem.
   try {
     const pendentesTodos = getOcrPendingDocuments(extraidos);
     if (pendentesTodos.length > 0) {
@@ -314,11 +308,11 @@ export async function coletarDocumentosDoProcesso(
           `(pode levar alguns minutos, mantenha esta aba aberta)...`
       );
 
-      // Timeout total: 90s/doc é o orçamento (offscreen tem timeout
-      // próprio de 90s/doc). Soma + 30s de folga para handshake.
+      // Timeout total: 90s/doc é folga larga — o render local roda em
+      // ~2s/doc. Soma + 30s de margem.
       const timeoutMs = totalOcr * 90_000 + 30_000;
       const ocred = await comTimeout(
-        runOcrOnDocumentsViaOffscreen(
+        runOcrViaIA(
           pendentes,
           (ev) => {
             if (ev.type === 'ocr-document-done' || ev.type === 'ocr-document-error') {
@@ -328,15 +322,10 @@ export async function coletarDocumentosDoProcesso(
               );
             }
           },
-          // skipTabFocus: estamos rodando em aba oculta auxiliar criada
-          // pelo background. NÃO podemos pedir para ativar essa aba — isso
-          // roubaria o foco do usuário (que está na aba do Resumo da Pauta).
-          // O custo de tolerar throttling de timer é menor que o custo de
-          // UX de a aba PJe pular para o primeiro plano sem pedido.
-          { maxPages, skipTabFocus: true }
+          { maxPages }
         ),
         timeoutMs,
-        'OCR offscreen global'
+        'Preparo de documentos digitalizados'
       );
       const mapaOcr = new Map<string, ProcessoDocumento>(
         ocred.map((d) => [d.id, d])
@@ -364,6 +353,12 @@ export async function coletarDocumentosDoProcesso(
   const documentosLimpos: ProcessoDocumento[] = [];
   const dropadosPorTextoCurto: Array<{ id: string; tipo?: string; isScanned?: boolean; chars: number }> = [];
   for (const doc of extraidos) {
+    // Documento digitalizado preparado como imagem (OCR imagem-direto):
+    // mantém — o conteúdo vai para a IA pelas imagens, não pelo texto.
+    if (doc.paginasImagem && doc.paginasImagem.length > 0) {
+      documentosLimpos.push({ ...doc, isScanned: true });
+      continue;
+    }
     const texto = (doc.textoExtraido ?? '').trim();
     const conteudoChars = conteudoUtilLength(texto);
     if (conteudoChars < 50) {
@@ -421,8 +416,8 @@ export async function coletarDocumentosDoProcesso(
     const scannedSemTexto = dropadosPorTextoCurto.filter((d) => d.isScanned);
     if (scannedSemTexto.length > 0) {
       console.info(
-        `${LOG} ${scannedSemTexto.length} doc(s) digitalizado(s) ainda sem texto após OCR — ` +
-          `OCR offscreen pode ter falhado para estes. Amostra:`,
+        `${LOG} ${scannedSemTexto.length} doc(s) digitalizado(s) sem texto e sem imagem — ` +
+          `o render para imagem pode ter falhado para estes. Amostra:`,
         scannedSemTexto.slice(0, 5)
       );
     }
@@ -702,7 +697,7 @@ async function lerOcrMaxPagesUsuario(): Promise<number | null> {
 /**
  * Envolve um Promise com timeout — se exceder, rejeita. Importante:
  * o Promise original continua executando em background até naturalmente
- * resolver/rejeitar (não há como abortar Tesseract.js no meio); essa
+ * resolver/rejeitar (não há como abortar o render no meio); essa
  * função apenas libera o caller pra seguir adiante.
  */
 async function comTimeout<T>(

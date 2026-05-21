@@ -135,7 +135,7 @@
       <li><strong>Perfil de trabalho.</strong> Defina o perfil padrão (<strong>Gabinete</strong>, <strong>Secretaria</strong> ou <strong>Gestão</strong>) que será carregado automaticamente ao abrir o PJe.</li>
       <li><strong>Provedor e modelo.</strong> Selecione o provedor (<strong>Google Gemini</strong>, <strong>Anthropic Claude</strong> ou <strong>OpenAI</strong>) e o modelo desejado. Recomendação atual: <strong>Gemini 3 Flash</strong>.</li>
       <li><strong>Chave de API.</strong> Cole a chave no campo indicado, clique em <strong>Salvar</strong> e em <strong>Testar</strong> para verificar a conexão. A chave fica armazenada apenas no seu navegador.</li>
-      <li><strong>OCR de digitalizados.</strong> Marque <strong>Rodar OCR automaticamente</strong> se quiser que documentos digitalizados (PDFs de imagem) sejam reconhecidos por OCR após a extração. O OCR roda <strong>localmente</strong> (sem enviar imagens à IA). Ajuste o <strong>máximo de páginas por documento</strong> conforme necessário.</li>
+      <li><strong>OCR de digitalizados.</strong> Marque <strong>Rodar OCR automaticamente</strong> se quiser que documentos digitalizados (PDFs de imagem) sejam preparados automaticamente após a extração. As páginas digitalizadas são renderizadas como imagem e <strong>enviadas à IA do provedor configurado</strong>, que as lê diretamente — não há transcrição local. Ajuste o <strong>máximo de páginas por documento</strong> conforme necessário.</li>
       <li><strong>Sigcrim.</strong> Configurações básicas do módulo criminal (matrícula do servidor, vara responsável), usadas pelo Painel Criminal.</li>
       <li><strong>Modelos de minuta.</strong> Botão <strong>Gerenciar modelos</strong> abre a página de opções, onde se aponta a pasta com os modelos. Veja a PARTE 6.</li>
       <li><strong>Backup.</strong> Botões <strong>Exportar configurações</strong> e <strong>Importar configurações</strong> (formato <code>paidegua-config-*.txt</code>, versão 2).</li>
@@ -240,7 +240,7 @@
     <p>Os dados viram marcadores genéricos (ex.: <code>PARTE_AUTORA</code>, <code>CPF_OCULTO</code>).</p>
 
     <h4 id="ocr">Rodar OCR</h4>
-    <p>Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). Processa as páginas localmente com Tesseract.js (sem envio à IA). Documentos com muitas páginas podem demorar; ajuste o limite na aba <strong>Geral</strong>.</p>
+    <p>Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). As páginas são renderizadas como imagem e <strong>enviadas à IA do provedor configurado</strong>, que as lê diretamente — não há transcrição local. Documentos com muitas páginas podem demorar mais para preparar; ajuste o limite na aba <strong>Geral</strong>.</p>
 
     <h4 id="minutar">Minutar (com triagem automática)</h4>
     <p>Funciona como assistente de triagem:</p>
@@ -432,7 +432,7 @@
 
     <p><strong>Erro ao extrair documentos.</strong> Alguns documentos podem retornar vazio na primeira tentativa. A extensão faz até 3 tentativas automáticas com estratégias diferentes. Se persistir, recarregue a página do PJe e tente novamente.</p>
 
-    <p><strong>OCR lento.</strong> O OCR roda localmente no navegador. Documentos com muitas páginas podem demorar. Ajuste o limite de páginas nas configurações.</p>
+    <p><strong>Preparo de digitalizados lento.</strong> Renderizar muitas páginas de documentos escaneados leva tempo. Ajuste o limite de páginas por documento nas configurações (aba <strong>Geral</strong>).</p>
 
     <p><strong>Minuta usando modelo errado.</strong> A busca automática usa o conteúdo do processo para encontrar o modelo mais similar. Se o resultado não for adequado, reorganize seus modelos em subpastas mais específicas ou gere do zero.</p>
 
