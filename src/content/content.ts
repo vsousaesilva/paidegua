@@ -61,6 +61,10 @@ import { mountShell } from './ui/shell';
 import { mountNavbarButton, type NavbarButtonController } from './ui/navbar-button';
 import { mountSidebar, type SidebarController } from './ui/sidebar';
 import {
+  mountCollapsedFab,
+  type CollapsedFabController
+} from './ui/collapsed-fab';
+import {
   mountDocumentList,
   type DocumentListController
 } from './ui/document-list';
@@ -77,7 +81,8 @@ import { executarAnalisarProcesso } from './triagem/analisar-processo';
 import { executarSugerirEtiquetas } from './triagem/sugerir-etiquetas';
 import {
   coletarTarefasSelecionadas,
-  instalarListenerGestaoNoIframe
+  instalarListenerGestaoNoIframe,
+  listarTarefasDoPainel
 } from './gestao/gestao-bridge';
 import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
@@ -98,6 +103,15 @@ import { abrirAudienciaPainel } from './audiencia/audiencia-coordinator';
 import { abrirAudienciaResumoPainel } from './audiencia/audiencia-resumo-coordinator';
 import { pedirConfiguracaoResumoPauta } from './ui/audiencia-resumo-config-modal';
 import { coletarAudienciaPorAdvogado } from './audiencia/audiencia-coletor';
+import { coletarRankingAdvogados } from './ranking/ranking-coletor';
+
+/**
+ * AbortController da coleta de ranking em andamento. Vive enquanto o
+ * content script existir; recurso de teste discreto (RANK-01), apenas
+ * uma coleta por vez. Setado em RANKING_RUN_COLETA, abortado em
+ * RANKING_CANCELAR ou ao terminar/falhar.
+ */
+let rankingAbortAtual: AbortController | null = null;
 import {
   coletarPautaPorPeriodo,
   type AudienciaSituacaoCodigo
@@ -184,6 +198,90 @@ interface MountedUI {
   sidebar: SidebarController;
   docList: DocumentListController | null;
   chat: ChatController | null;
+  collapsedFab: CollapsedFabController;
+  detachOutsideClick: () => void;
+}
+
+/**
+ * Detecta cliques fora do sidebar do pAIdegua. Funciona em três camadas
+ * complementares porque o PJe espalha conteúdo em múltiplos contextos:
+ *
+ *  1. `mousedown` em capture-phase no document principal — cobre cliques
+ *     na árvore de documentos, toolbar e demais áreas do top-level.
+ *  2. `mousedown` em cada iframe same-origin existente, com re-scan a
+ *     cada 2s porque o PJe injeta iframes tardiamente ao abrir um doc.
+ *  3. `blur` na window principal — pega o caso do visualizador de PDF
+ *     do Chrome, que é iframe cross-origin: `contentDocument` lança e o
+ *     mousedown nunca chega. Quando o usuário clica no PDF, a window pai
+ *     perde foco e o `activeElement` passa a ser o `<iframe>/<embed>/
+ *     <object>` que hospeda o viewer. Esse é o sinal confiável.
+ *
+ * Devolve uma função de cleanup única que desmonta todas as camadas.
+ */
+function attachOutsideMouseDownListener(
+  onClickOutside: (event: MouseEvent) => void,
+  onFocusOutToFrame: () => void
+): () => void {
+  const attachedDocs = new Set<Document>();
+
+  const attach = (doc: Document): void => {
+    if (attachedDocs.has(doc)) return;
+    attachedDocs.add(doc);
+    doc.addEventListener('mousedown', onClickOutside as EventListener, true);
+  };
+
+  attach(document);
+
+  const scanIframes = (): void => {
+    const frames = document.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+      'iframe, frame'
+    );
+    for (const frame of Array.from(frames)) {
+      try {
+        const childDoc = frame.contentDocument;
+        if (childDoc?.body) attach(childDoc);
+      } catch {
+        /* cross-origin — ignorado, coberto pelo blur listener */
+      }
+    }
+  };
+
+  scanIframes();
+  const interval = window.setInterval(scanIframes, 2000);
+
+  const onBlur = (): void => {
+    // Pequeno delay para o `activeElement` estabilizar após o blur.
+    window.setTimeout(() => {
+      // Se o usuário mudou de aba do navegador (não é o caso de uso),
+      // visibilityState passa a 'hidden' — não recolhemos.
+      if (document.visibilityState !== 'visible') return;
+      const active = document.activeElement;
+      if (!active) return;
+      const tag = active.tagName;
+      if (
+        tag === 'IFRAME' ||
+        tag === 'FRAME' ||
+        tag === 'EMBED' ||
+        tag === 'OBJECT'
+      ) {
+        onFocusOutToFrame();
+      }
+    }, 0);
+  };
+  window.addEventListener('blur', onBlur);
+
+  return () => {
+    window.clearInterval(interval);
+    window.removeEventListener('blur', onBlur);
+    for (const doc of attachedDocs) {
+      try {
+        doc.removeEventListener('mousedown', onClickOutside as EventListener, true);
+      } catch {
+        /* doc pode ter sido descartado */
+      }
+    }
+    attachedDocs.clear();
+  };
 }
 
 let mounted: MountedUI | null = null;
@@ -3899,10 +3997,41 @@ function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
       void handleLoadDocuments();
     },
     onClose: () => {
-      /* nada a fazer — sem FAB, o botão do header continua sempre visível */
+      mounted?.collapsedFab.show();
     }
   });
-  mounted = { sidebar, docList: null, chat: null };
+  const collapsedFab = mountCollapsedFab(shell.shadow, () => {
+    sidebar.open();
+    collapsedFab.hide();
+  });
+  // Recolhe o sidebar quando o usuário clica fora do shell (ex.: no
+  // documento do PJe para lê-lo). Com shadow `closed`, eventos disparados
+  // dentro do shadow têm `event.target` retargetado para o host externo —
+  // basta checar o id. Cliques no botão da navbar do PJe (que faz toggle)
+  // também são ignorados, senão o sidebar fecharia e reabriria em sequência.
+  // Phase `capture` para detectar antes que a página do PJe consuma o evento.
+  const recolherSidebar = (): void => {
+    if (!mounted?.sidebar.isOpen()) return;
+    mounted.sidebar.close();
+    mounted.collapsedFab.show();
+  };
+  const outsideClickHandler = (event: MouseEvent): void => {
+    if (!mounted?.sidebar.isOpen()) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    // Hosts do pAIdegua (shell, toast contextual) usam id prefixado com
+    // `paidegua-`; cliques dentro de qualquer um deles preservam o sidebar.
+    if (target.id?.startsWith('paidegua-')) return;
+    // O botão do navbar do PJe é o atalho oficial de toggle; deixar o
+    // outside-click fechá-lo geraria flicker (fecha → toggle reabre).
+    if (target.closest('.paidegua-navbtn-host')) return;
+    recolherSidebar();
+  };
+  const detachOutsideClick = attachOutsideMouseDownListener(
+    outsideClickHandler,
+    recolherSidebar
+  );
+  mounted = { sidebar, docList: null, chat: null, collapsedFab, detachOutsideClick };
   wireSidebarEvents(sidebar);
   void loadSettings();
   console.log(
@@ -3967,6 +4096,8 @@ function unmountUI(): void {
     memory.currentSpeak.stop();
     memory.currentSpeak = null;
   }
+  mounted.detachOutsideClick();
+  mounted.collapsedFab.destroy();
   mounted.docList?.destroy();
   mounted.chat?.destroy();
   mounted.sidebar.destroy();
@@ -4346,6 +4477,105 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     })();
     return true;
+  }
+
+  // Ranking de advogados (RANK-01 — recurso de teste discreto):
+  // listagem das tarefas do painel atual, para a página standalone
+  // montar os checkboxes. Stateless — não usa rota.
+  if (message.channel === MESSAGE_CHANNELS.RANKING_LISTAR_TAREFAS) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    void (async () => {
+      try {
+        const r = await listarTarefasDoPainel();
+        sendResponse({
+          ok: r.ok,
+          tarefas: r.tarefas,
+          hostnamePJe: window.location.hostname,
+          legacyOrigin: window.location.origin,
+          error: r.error
+        });
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          tarefas: [],
+          hostnamePJe: window.location.hostname,
+          legacyOrigin: window.location.origin,
+          error: errorMessage(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  // Ranking de advogados: coleta + agrupamento sob demanda. Suporta
+  // cancelamento (via canal RANKING_CANCELAR) e ranking parcial em
+  // tempo real (broadcast via runtime de RANKING_PROGRESSO).
+  if (message.channel === MESSAGE_CHANNELS.RANKING_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      nomesTarefas: string[];
+      capEnriquecimento?: number;
+    };
+    if (!payload || !Array.isArray(payload.nomesTarefas)) {
+      sendResponse({ ok: false, error: 'Payload de ranking inválido.' });
+      return false;
+    }
+    void (async () => {
+      // Aborta coleta anterior se houver (defensivo — owner pode ter
+      // disparado duas seguidas sem aguardar).
+      if (rankingAbortAtual) rankingAbortAtual.abort();
+      const controller = new AbortController();
+      rankingAbortAtual = controller;
+      try {
+        const r = await coletarRankingAdvogados({
+          legacyOrigin: window.location.origin,
+          nomesTarefas: payload.nomesTarefas,
+          capEnriquecimento: payload.capEnriquecimento,
+          signal: controller.signal,
+          onPartial: (parcial) => {
+            void chrome.runtime
+              .sendMessage({
+                channel: MESSAGE_CHANNELS.RANKING_PROGRESSO,
+                payload: parcial
+              })
+              .catch(() => {
+                // Page do ranking pode ter fechado — não é erro.
+              });
+          }
+        });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          totalVarridos: 0,
+          semAdvogado: 0,
+          cancelado: false,
+          truncadoPorCap: false,
+          truncadosCount: 0,
+          tarefasComFalha: [],
+          ranking: [],
+          error: errorMessage(err)
+        });
+      } finally {
+        if (rankingAbortAtual === controller) rankingAbortAtual = null;
+      }
+    })();
+    return true;
+  }
+
+  // Cancelamento de coleta de ranking em andamento.
+  if (message.channel === MESSAGE_CHANNELS.RANKING_CANCELAR) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    if (rankingAbortAtual) {
+      rankingAbortAtual.abort();
+      sendResponse({ ok: true, abortado: true });
+    } else {
+      sendResponse({ ok: true, abortado: false });
+    }
+    return false;
   }
 
   // Audiência pAIdegua: aplicação de etiqueta em lote — reusa o aplicador
@@ -5069,6 +5299,11 @@ function mountGlobalNavbarButton(): void {
       }
       const wasOpen = mounted.sidebar.isOpen();
       mounted.sidebar.toggle();
+      if (mounted.sidebar.isOpen()) {
+        mounted.collapsedFab.hide();
+      } else {
+        mounted.collapsedFab.show();
+      }
       // Auto-carregamento: ao abrir o pAIdegua DA PRIMEIRA VEZ dentro de
       // um processo, dispara a listagem sem exigir clique no botão. Se a
       // árvore do PJe vier incompleta por lazy loading, o usuário clica
