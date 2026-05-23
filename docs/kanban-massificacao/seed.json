@@ -6269,6 +6269,54 @@
           "comando": "Card aberto após análise do pacote externo pacote-contadoria-r1.zip e decisão conjunta (owner + claude) de seguir com módulo nativo na pAIdegua aproveitando apenas a estrutura conceitual (taxonomia + 4 blocos + lógica heurística+LLM+manual). Plano aprovado pelo owner em sessão 14/05/2026. Próximos passos antes de qualquer código: (1) entrevista com o servidor da Contadoria solicitante usando questionário estruturado preparado nesta sessão, (2) realinhamento do plano, (3) autorização expressa para codificar, (4) abertura dos sub-cards CONTAD-02 a CONTAD-05. Rito gravado também na memória persistente do projeto (feedback_rito_modulo_novo.md)."
         }
       ]
+    },
+    {
+      "id": "RANK-01",
+      "titulo": "Ranking de advogados por nº de processos — recurso de teste discreto (futuro produção)",
+      "descricao": "Recurso solicitado em 22/05/2026 pelo owner: a partir da infra que já agrupa processos por advogado na pauta de audiência, construir um RANKING geral — para todas as tarefas da caixa do usuário (não só Audiência-Designar), responder a pergunta 'quais advogados têm mais processos hoje na minha unidade?'.\n\nNATUREZA: RECURSO DE TESTE, NÃO PRODUÇÃO. Decisão explícita do owner: máxima discrição na entrega — sem botão no popup, sem injeção de UI no PJe, sem toggle em 'Mais opções', sem documentação para pilotos. Acesso exclusivo por URL direta (chrome-extension://<id>/ranking-advogados/ranking.html) que o owner memoriza ou salva como bookmark. Objetivo: validar utilidade do ranking gerencial antes de decidir se vira feature de produção (com UI, comunicação aos pilotos, item no popup etc.) ou se é apagado sem deixar rastro.\n\nESCOPO MVP (decisões fechadas em sessão 22/05/2026):\n  - Escopo de dados: caixa do usuário logado (reusa listarTarefasDoPainel + listarProcessosDaTarefa). NÃO cobre a unidade inteira (exigiria perfil gerencial/endpoint diferente — fora do escopo).\n  - Seleção de tarefas: todas as tarefas detectadas no painel listadas com checkbox, todas marcadas por default, owner desmarca o que não quer contar.\n  - Estratégia de advogado: HÍBRIDA — 1ª passada extrairAdvogadoDoPoloAtivo do poloAtivo achatado da REST (instantâneo, heurística); 2ª passada enriquecerComAdvogados via HTML dos autos SÓ nos processos sem OAB identificada (preciso, ~30-60s/1000 procs). Otimiza o custo mantendo precisão.\n  - Apresentação: tabela ranqueada simples (#, Advogado, OAB, Total). Sem drilldown na v0 — virá depois se a feature for promovida a produção.\n  - Export: PDF + DOCX (regra feedback_formatos_download_relatorios). Nada de MD.\n\nARQUITETURA DE TESTE DISCRETA:\n  - src/content/ranking/ranking-coletor.ts (novo): varre tarefas selecionadas, dedup por idProcesso, enriquecimento híbrido, agrupa por chaveAgrupamentoAdvogado, ordena desc por contagem.\n  - src/ranking-advogados/ranking.{html,ts,css} (novos): página standalone, sem entrada visível em popup ou content.\n  - Canais novos em shared/constants.ts: RANKING_LISTAR_TAREFAS, RANKING_RUN_COLETA.\n  - Handlers no background.ts e content.ts: descobrir aba PJe ativa via chrome.tabs.query *.jus.br, repassar coletor.\n  - manifest.json: ranking-advogados/* em web_accessible_resources.\n  - webpack.config.js: entry + copy de ranking.html/css.\n  - enriquecerComAdvogados em audiencia-coletor.ts: exportar (hoje é interna) para o ranking-coletor reusar.\n\nCRITÉRIOS PARA PROMOVER A PRODUÇÃO (decisão futura, NÃO faz parte do escopo deste card):\n  - Owner usar o ranking ao menos 3x e validar utilidade gerencial.\n  - Definir gatilho público (botão no popup + toggle em 'Mais opções', padrão paidegua_ui_toggle_pattern).\n  - Adicionar drilldown por advogado (lista de processos clicáveis + link aos autos).\n  - Comunicação aos pilotos via Resend (audience id 0762d792-...).\n  - Novo card RANK-02 'promoção a produção' abre quando essa decisão for tomada.\n\nCRITÉRIO PARA APAGAR (alternativa):\n  - Owner decidir que não vale o esforço de produção.\n  - Remover 3 arquivos (ranking-coletor.ts, ranking-advogados/), tirar canais novos, remover entry/copy do webpack.config.js, tirar do web_accessible_resources. Sem migration, sem comunicação, sem rastro.",
+      "categoria": "gestao",
+      "prioridade": "P3",
+      "coluna": "dev",
+      "origem": "Sessão owner 22/05/2026 — pergunta gerencial sobre quantos processos cada advogado tem na caixa, expandindo o agrupamento já existente em Audiência-Designar.",
+      "tags": [
+        "ranking",
+        "advogados",
+        "gerencial",
+        "teste",
+        "discreto",
+        "uso-interno-owner"
+      ],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "Página standalone acessível por chrome-extension://<id>/ranking-advogados/ranking.html, sem entrada visível em popup ou no PJe",
+        "Página, ao carregar, descobre a aba PJe aberta e lista as tarefas do painel com checkboxes (todas marcadas por default)",
+        "Coletor varre as tarefas selecionadas, dedup por idProcesso e enriquece OAB com estratégia híbrida (REST primeiro, HTML só nos sem OAB)",
+        "Resultado: tabela ranqueada [#, Advogado, OAB, Total] ordenada desc por contagem, com total de processos varridos e total de advogados únicos",
+        "Botões de export PDF e DOCX funcionando (regra feedback_formatos_download_relatorios)",
+        "Validação manual pelo owner em pelo menos uma vara real",
+        "Zero comunicação aos pilotos (recurso é de teste, não de produção)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-22T12:00:00.000Z",
+      "atualizadoEm": "2026-05-22T12:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-22",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-22",
+          "data": "2026-05-22T12:00:00.000Z",
+          "comando": "Card aberto após sessão de discovery com owner em 22/05/2026. Owner pediu recurso para ranking de advogados (caixa do usuário, todas as tarefas), expandindo a infra que já agrupa por advogado em Audiência-Designar. Decisão: entregar como RECURSO DE TESTE DISCRETO — sem entrada visível, acessível só por URL direta — para validar utilidade gerencial antes de decidir promoção a produção ou descarte. Implementação aprovada nesta sessão (Go expressamente dado pelo owner)."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "dev",
+          "autor": "claude-code/sessao-2026-05-22",
+          "data": "2026-05-22T12:00:00.000Z",
+          "comando": "Implementação iniciada na mesma sessão de discovery — escopo MVP fechado, owner autorizou go direto."
+        }
+      ]
     }
   ]
 }
