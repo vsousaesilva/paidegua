@@ -18,6 +18,7 @@ import type {
   AnaliseCriterio,
   AnaliseProcessoResult
 } from '../../shared/types';
+import { ensureDocLinkStyle, linkifyDocIdsInText } from './doc-id-link';
 
 export interface AnaliseProcessoBubbleActions {
   /**
@@ -357,7 +358,11 @@ function buildCriterioItem(c: AnaliseCriterio, openByDefault: boolean): HTMLLIEl
 
   const justif = document.createElement('div');
   justif.className = 'paidegua-analise__item-justif';
-  justif.textContent = c.justificativa || '(sem justificativa fornecida pelo modelo)';
+  if (c.justificativa) {
+    justif.append(linkifyDocIdsInText(c.justificativa));
+  } else {
+    justif.textContent = '(sem justificativa fornecida pelo modelo)';
+  }
   body.append(justif);
 
   if (!c.atendido && c.providenciaSolicitada) {
@@ -367,7 +372,7 @@ function buildCriterioItem(c: AnaliseCriterio, openByDefault: boolean): HTMLLIEl
     tag.className = 'paidegua-analise__providencia-label';
     tag.textContent = 'Providência sugerida';
     const txt = document.createElement('span');
-    txt.textContent = c.providenciaSolicitada;
+    txt.append(linkifyDocIdsInText(c.providenciaSolicitada));
     prov.append(tag, txt);
     body.append(prov);
   }
@@ -399,7 +404,7 @@ function buildAuxSection(
   list.className = 'paidegua-analise__aux-list';
   for (const item of items) {
     const li = document.createElement('li');
-    li.textContent = item;
+    li.append(linkifyDocIdsInText(item));
     list.append(li);
   }
   section.append(list);
@@ -417,6 +422,7 @@ export function createAnaliseProcessoBubble(
   actions: AnaliseProcessoBubbleActions
 ): HTMLElement {
   ensureStyle(shadow);
+  ensureDocLinkStyle(shadow);
 
   const root = document.createElement('div');
   root.className = 'paidegua-analise';
@@ -437,7 +443,7 @@ export function createAnaliseProcessoBubble(
   if (result.panorama) {
     const panorama = document.createElement('div');
     panorama.className = 'paidegua-analise__panorama';
-    panorama.textContent = result.panorama;
+    panorama.append(linkifyDocIdsInText(result.panorama));
     root.append(panorama);
   }
 

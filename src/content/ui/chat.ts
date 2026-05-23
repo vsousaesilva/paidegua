@@ -11,6 +11,7 @@
 
 import type { ChatMessage } from '../../shared/types';
 import { renderMarkdown } from './markdown';
+import { ensureDocLinkStyle, linkifyDocIdsInElement } from './doc-id-link';
 
 export interface ChatBubbleAction {
   id: string;
@@ -361,6 +362,7 @@ export function mountChat(
   options: ChatOptions = {}
 ): ChatController {
   ensureStyle(shadow);
+  ensureDocLinkStyle(shadow);
   const bubbleActions = options.bubbleActions ?? [];
 
   container.innerHTML = '';
@@ -476,6 +478,7 @@ export function mountChat(
       if (currentAssistantBubble) {
         const renderedHtml = renderMarkdown(currentAssistantText);
         currentAssistantBubble.innerHTML = renderedHtml;
+        linkifyDocIdsInElement(currentAssistantBubble);
         if (bubbleActions.length > 0 && currentAssistantText.trim().length > 0) {
           appendBubbleActions(
             currentAssistantBubble,
