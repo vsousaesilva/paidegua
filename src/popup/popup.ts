@@ -992,6 +992,45 @@ async function requestLogout(): Promise<void> {
   await chrome.runtime.sendMessage({ channel: MESSAGE_CHANNELS.AUTH_LOGOUT });
 }
 
+/**
+ * Estado intermediário do gate de autenticação. Existe entre o "Enviar
+ * código" e o "Validar código" para sobreviver ao fechamento do popup
+ * quando o usuário alterna para a guia do e-mail. Após 10 min o pending
+ * é descartado (alinhado à expiração do código no backend).
+ */
+interface AuthPending {
+  email: string;
+  requestedAt: number;
+}
+
+const AUTH_PENDING_TTL_MS = 10 * 60 * 1000;
+
+async function loadAuthPending(): Promise<AuthPending | null> {
+  const raw = await chrome.storage.local.get(STORAGE_KEYS.AUTH_PENDING);
+  const value = raw[STORAGE_KEYS.AUTH_PENDING] as Partial<AuthPending> | undefined;
+  if (
+    !value ||
+    typeof value.email !== 'string' ||
+    typeof value.requestedAt !== 'number'
+  ) {
+    return null;
+  }
+  if (Date.now() - value.requestedAt > AUTH_PENDING_TTL_MS) {
+    await chrome.storage.local.remove(STORAGE_KEYS.AUTH_PENDING);
+    return null;
+  }
+  return { email: value.email, requestedAt: value.requestedAt };
+}
+
+async function saveAuthPending(email: string): Promise<void> {
+  const pending: AuthPending = { email, requestedAt: Date.now() };
+  await chrome.storage.local.set({ [STORAGE_KEYS.AUTH_PENDING]: pending });
+}
+
+async function clearAuthPending(): Promise<void> {
+  await chrome.storage.local.remove(STORAGE_KEYS.AUTH_PENDING);
+}
+
 function bindAuthGate(): void {
   const requestBtn = $authEl<HTMLButtonElement>('auth-request-btn');
   const verifyBtn = $authEl<HTMLButtonElement>('auth-verify-btn');
@@ -1038,6 +1077,7 @@ function bindAuthGate(): void {
           showAuthStage('code');
           setAuthStatus('auth-status-code', '', '');
           codeInput.focus();
+          await saveAuthPending(email);
         } else {
           setAuthStatus(
             'auth-status-email',
@@ -1069,6 +1109,7 @@ function bindAuthGate(): void {
       try {
         const result = await verifyLoginCode(email, code);
         if (result.ok && result.email) {
+          await clearAuthPending();
           await enterAuthenticatedUI(result.email);
         } else {
           setAuthStatus(
@@ -1085,6 +1126,7 @@ function bindAuthGate(): void {
   });
 
   backBtn.addEventListener('click', () => {
+    void clearAuthPending();
     showAuthStage('email');
     setAuthStatus('auth-status-email', '', '');
     codeInput.value = '';
@@ -1093,6 +1135,7 @@ function bindAuthGate(): void {
   logoutBtn?.addEventListener('click', () => {
     void (async () => {
       await requestLogout();
+      await clearAuthPending();
       renderUserPill(null);
       // Sem reload: apenas reabre a tela de login. O usuario pode fechar
       // o popup; na proxima abertura, o gate ja estara ativo de novo.
@@ -1273,12 +1316,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const status = await fetchAuthStatus();
     if (status.authenticated && status.email) {
       await enterAuthenticatedUI(status.email);
-    } else {
-      showAuthGate();
-      showAuthStage('email');
-      const emailInput = document.getElementById('auth-email-input') as HTMLInputElement | null;
-      emailInput?.focus();
+      return;
     }
+    showAuthGate();
+    // Se há um pedido de código recente ainda dentro do TTL, retoma o
+    // fluxo na tela de inserir o código — sobrevive ao fechamento do
+    // popup quando o usuário foi até o e-mail buscar o código.
+    const pending = await loadAuthPending();
+    if (pending) {
+      const emailDisplay = document.getElementById('auth-email-display');
+      if (emailDisplay) emailDisplay.textContent = pending.email;
+      showAuthStage('code');
+      const codeInput = document.getElementById('auth-code-input') as HTMLInputElement | null;
+      codeInput?.focus();
+      return;
+    }
+    showAuthStage('email');
+    const emailInput = document.getElementById('auth-email-input') as HTMLInputElement | null;
+    emailInput?.focus();
   })();
 });
 

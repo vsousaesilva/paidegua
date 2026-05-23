@@ -681,7 +681,22 @@ export const MESSAGE_CHANNELS = {
    * aba. Mesma topologia do Consultor: catálogo embarcado, aba
    * autossuficiente, sem estado de aba PJe.
    */
-  FLUXOS_OPEN_JORNADAS: 'paidegua/fluxos/open-jornadas'
+  FLUXOS_OPEN_JORNADAS: 'paidegua/fluxos/open-jornadas',
+
+  /**
+   * Canais do "Ranking de advogados" (RANK-01 — recurso de teste discreto,
+   * sem entrada visível na extensão; acessível só por URL direta). Topologia
+   * stateless: a página standalone manda LISTAR_TAREFAS e RUN_COLETA ao
+   * background, que descobre a aba PJe ativa via chrome.tabs.query *.jus.br
+   * e repassa ao content script. Sem requestId, sem rota persistida — toda
+   * chamada redescobre a aba.
+   */
+  RANKING_LISTAR_TAREFAS: 'paidegua/ranking/listar-tarefas',
+  RANKING_RUN_COLETA: 'paidegua/ranking/run-coleta',
+  /** Ranking parcial em tempo real — content → page (broadcast via runtime). */
+  RANKING_PROGRESSO: 'paidegua/ranking/progresso',
+  /** Cancelamento da coleta — page → background → content. */
+  RANKING_CANCELAR: 'paidegua/ranking/cancelar'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -709,6 +724,16 @@ export const STORAGE_KEYS = {
    * background recusa qualquer chamada a provedor de IA.
    */
   AUTH: 'paidegua.auth',
+  /**
+   * Estado intermediário entre "pedir código por e-mail" e "validar
+   * código". Persiste o e-mail digitado para que, se o usuário alternar
+   * de guia para abrir o e-mail e o popup do Chrome fechar (comportamento
+   * nativo de MV3), ao reabrir ele caia direto na tela de inserir o
+   * código em vez de voltar para a tela de e-mail. Conteúdo:
+   * `{ email, requestedAt }`. TTL de 10 min (alinhado à expiração do
+   * código no backend).
+   */
+  AUTH_PENDING: 'paidegua.auth.pending',
   /**
    * Chave usada APENAS em `chrome.storage.session` (volátil — apagada ao
    * fechar o navegador) para entregar o payload do dashboard de triagem
