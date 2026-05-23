@@ -107,7 +107,13 @@ export const geminiProvider: LLMProvider = {
             // raciocínio interno antes de produzir texto. Para análise jurídica
             // queremos a resposta direta, então zeramos o budget de thinking
             // para liberar todo o maxOutputTokens para o output visível.
-            thinkingConfig: { thinkingBudget: 0 }
+            thinkingConfig: { thinkingBudget: 0 },
+            // JSON mode nativo: força resposta sintaticamente válida quando o
+            // caller pede. Sem isso, o Gemini frequentemente devolve markdown
+            // fences, aspas curvas ou vírgulas finais que quebram JSON.parse.
+            ...(params.responseFormat === 'json'
+              ? { responseMimeType: 'application/json' }
+              : {})
           }
         })
       },

@@ -54,6 +54,7 @@ import {
   parseAnaliseProcessoResponse,
   parseEtiquetasMarkersResponse,
   parseTriagemResponse,
+  tryParseLooseJson,
   getTemplateActionsForGrau,
   type CriterioResolvido,
   type TemplateAction,
@@ -1116,6 +1117,29 @@ function dispatchMessage(
         );
         return true;
 
+      case MESSAGE_CHANNELS.RANKING_LISTAR_TAREFAS:
+        void handleRankingListarTarefas(sendResponse);
+        return true;
+
+      case MESSAGE_CHANNELS.RANKING_RUN_COLETA:
+        void handleRankingRunColeta(
+          message.payload as {
+            nomesTarefas: string[];
+            capEnriquecimento?: number;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.RANKING_CANCELAR:
+        void handleRankingCancelar(sendResponse);
+        return true;
+
+      case MESSAGE_CHANNELS.RANKING_PROGRESSO:
+        // Broadcast vindo do content script. O background ignora — a page
+        // do ranking escuta diretamente via chrome.runtime.onMessage.
+        return false;
+
       case MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR:
         void handleOpenFluxosConsultor(sendResponse);
         return true;
@@ -1637,38 +1661,27 @@ function parseRerankResponse(
   raw: string,
   expectedSize: number
 ): { ranking: number[]; justificativa: string } | null {
-  if (!raw) return null;
-  // Tenta pegar o maior bloco { ... } da resposta.
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start < 0 || end < 0 || end <= start) return null;
-  const slice = raw.slice(start, end + 1);
-  try {
-    const obj = JSON.parse(slice) as {
-      ranking?: unknown;
-      justificativa?: unknown;
-    };
-    if (!Array.isArray(obj.ranking)) return null;
-    const ranking: number[] = [];
-    const seen = new Set<number>();
-    for (const r of obj.ranking) {
-      const n = typeof r === 'number' ? r : Number(r);
-      if (!Number.isInteger(n) || n < 0 || n >= expectedSize) return null;
-      if (seen.has(n)) continue;
-      seen.add(n);
-      ranking.push(n);
-    }
-    if (ranking.length === 0) return null;
-    // Completa com índices ausentes na ordem original (defensivo).
-    for (let i = 0; i < expectedSize; i++) {
-      if (!seen.has(i)) ranking.push(i);
-    }
-    const justificativa =
-      typeof obj.justificativa === 'string' ? obj.justificativa.trim() : '';
-    return { ranking, justificativa };
-  } catch {
-    return null;
+  const parsed = tryParseLooseJson(raw);
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as { ranking?: unknown; justificativa?: unknown };
+  if (!Array.isArray(obj.ranking)) return null;
+  const ranking: number[] = [];
+  const seen = new Set<number>();
+  for (const r of obj.ranking) {
+    const n = typeof r === 'number' ? r : Number(r);
+    if (!Number.isInteger(n) || n < 0 || n >= expectedSize) return null;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    ranking.push(n);
   }
+  if (ranking.length === 0) return null;
+  // Completa com índices ausentes na ordem original (defensivo).
+  for (let i = 0; i < expectedSize; i++) {
+    if (!seen.has(i)) ranking.push(i);
+  }
+  const justificativa =
+    typeof obj.justificativa === 'string' ? obj.justificativa.trim() : '';
+  return { ranking, justificativa };
 }
 
 // =====================================================================
@@ -1741,6 +1754,7 @@ async function handleMinutarTriagem(
       messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
       temperature: 0,
       maxTokens: 512,
+      responseFormat: 'json',
       signal: controller.signal
     });
 
@@ -1752,6 +1766,10 @@ async function handleMinutarTriagem(
     const allowedIds = actions.map((a) => a.id);
     const parsed = parseTriagemResponse(raw, allowedIds);
     if (!parsed) {
+      console.warn(
+        `${LOG_PREFIX} handleMinutarTriagem: parse falhou. raw=`,
+        raw.slice(0, 4000)
+      );
       sendResponse({
         ok: false,
         availableActions,
@@ -1849,9 +1867,10 @@ async function handleAnalisarProcesso(
         }
       ],
       temperature: 0,
-      // Resposta carrega justificativa para cada critério da NT (até 11) +
-      // critérios livres. 4096 cobre com folga sem desperdício.
-      maxTokens: 4096,
+      // 11 critérios da NT + critérios livres + 3 arrays auxiliares + panorama
+      // estouravam 4096 com Gemini 3.x. 8192 dá folga sem custo perceptível.
+      maxTokens: 8192,
+      responseFormat: 'json',
       signal: controller.signal
     });
 
@@ -1862,6 +1881,10 @@ async function handleAnalisarProcesso(
 
     const parsed = parseAnaliseProcessoResponse(raw, criterios);
     if (!parsed) {
+      console.warn(
+        `${LOG_PREFIX} handleAnalisarProcesso: parse falhou. raw=`,
+        raw.slice(0, 4000)
+      );
       sendResponse({
         ok: false,
         error: 'Resposta do LLM não pôde ser interpretada como JSON de análise.'
@@ -2402,6 +2425,7 @@ async function handleTemplatesRerank(
       messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
       temperature: 0,
       maxTokens: 512,
+      responseFormat: 'json',
       signal: controller.signal
     });
 
@@ -2412,6 +2436,10 @@ async function handleTemplatesRerank(
 
     const parsed = parseRerankResponse(raw, payload.candidates.length);
     if (!parsed) {
+      console.warn(
+        `${LOG_PREFIX} handleTemplatesRerank: parse falhou. raw=`,
+        raw.slice(0, 4000)
+      );
       sendResponse({
         ok: false,
         error: 'Resposta do LLM não pôde ser interpretada como JSON de rerank.'
@@ -5454,6 +5482,111 @@ async function handleAudienciaAplicarEtiquetas(
     sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAudienciaAplicarEtiquetas falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+// =====================================================================
+// Ranking de advogados (RANK-01 — recurso de teste discreto)
+// =====================================================================
+
+/**
+ * Descobre a primeira aba *.jus.br aberta e devolve seu id. Stateless —
+ * cada chamada redescobre, pois a página standalone do ranking não guarda
+ * rota persistida (não há `setRota` aqui). Se houver mais de uma aba PJe
+ * aberta, pega a primeira retornada por chrome.tabs.query (priorizando
+ * ativa quando existir).
+ */
+async function descobrirAbaPJeParaRanking(): Promise<
+  | { ok: true; tabId: number }
+  | { ok: false; error: string }
+> {
+  const todas = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+  if (todas.length === 0) {
+    return {
+      ok: false,
+      error:
+        'Nenhuma aba do PJe aberta. Abra o painel do PJe em outra aba antes de usar o ranking.'
+    };
+  }
+  const ativa = todas.find((t) => t.active && typeof t.id === 'number');
+  const escolhida = ativa ?? todas.find((t) => typeof t.id === 'number');
+  if (!escolhida || typeof escolhida.id !== 'number') {
+    return { ok: false, error: 'Aba PJe sem id atribuído pelo Chrome.' };
+  }
+  return { ok: true, tabId: escolhida.id };
+}
+
+async function handleRankingListarTarefas(
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const r = await descobrirAbaPJeParaRanking();
+    if (!r.ok) {
+      sendResponse({ ok: false, tarefas: [], error: r.error });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(r.tabId, {
+      channel: MESSAGE_CHANNELS.RANKING_LISTAR_TAREFAS
+    });
+    sendResponse(
+      resp ?? {
+        ok: false,
+        tarefas: [],
+        error: 'Aba do PJe não respondeu ao listar tarefas.'
+      }
+    );
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleRankingListarTarefas falhou:`, err);
+    sendResponse({ ok: false, tarefas: [], error: errorMessage(err) });
+  }
+}
+
+async function handleRankingRunColeta(
+  payload: { nomesTarefas: string[]; capEnriquecimento?: number },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !Array.isArray(payload.nomesTarefas)) {
+      sendResponse({ ok: false, error: 'Payload de ranking inválido.' });
+      return;
+    }
+    const r = await descobrirAbaPJeParaRanking();
+    if (!r.ok) {
+      sendResponse({ ok: false, error: r.error });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(r.tabId, {
+      channel: MESSAGE_CHANNELS.RANKING_RUN_COLETA,
+      payload: {
+        nomesTarefas: payload.nomesTarefas,
+        capEnriquecimento: payload.capEnriquecimento
+      }
+    });
+    sendResponse(
+      resp ?? { ok: false, error: 'Aba do PJe não respondeu ao coletar ranking.' }
+    );
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleRankingRunColeta falhou:`, err);
+    sendResponse({ ok: false, error: errorMessage(err) });
+  }
+}
+
+async function handleRankingCancelar(
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const r = await descobrirAbaPJeParaRanking();
+    if (!r.ok) {
+      sendResponse({ ok: false, error: r.error });
+      return;
+    }
+    const resp = await chrome.tabs.sendMessage(r.tabId, {
+      channel: MESSAGE_CHANNELS.RANKING_CANCELAR
+    });
+    sendResponse(resp ?? { ok: true, abortado: false });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleRankingCancelar falhou:`, err);
     sendResponse({ ok: false, error: errorMessage(err) });
   }
 }

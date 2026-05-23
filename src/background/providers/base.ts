@@ -17,6 +17,14 @@ export interface SendMessageParams {
   temperature: number;
   maxTokens: number;
   signal: AbortSignal;
+  /**
+   * Quando `'json'`, sinaliza ao provider que a resposta DEVE ser JSON
+   * sintaticamente válido. Provedores que suportam JSON mode nativo
+   * (ex.: Gemini com `responseMimeType: 'application/json'`) ativam a
+   * funcionalidade; os demais ignoram (a confiabilidade fica por conta
+   * do prompt).
+   */
+  responseFormat?: 'json';
 }
 
 /** Chunk emitido pelo gerador de streaming. */

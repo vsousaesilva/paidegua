@@ -511,6 +511,56 @@ export function buildTriagemPrompt(
 }
 
 /**
+ * Tenta parsear uma resposta bruta do LLM como JSON, tolerando defeitos
+ * comuns que provedores (especialmente Gemini) introduzem mesmo quando o
+ * prompt pede JSON puro:
+ *  - bloco markdown ```json ... ``` em volta;
+ *  - texto livre antes/depois do objeto;
+ *  - aspas curvas tipográficas (U+2018/U+2019/U+201C/U+201D) que o LLM
+ *    "herda" do estilo do contexto jurídico;
+ *  - vírgula final antes de `}` ou `]`.
+ *
+ * Retorna o objeto desserializado ou `null` se nada utilizável puder ser
+ * recuperado. Não tenta consertar JSON truncado a meio caminho.
+ */
+export function tryParseLooseJson(raw: string): unknown | null {
+  if (!raw) return null;
+
+  let text = raw.trim();
+
+  // Remove fence ```json ... ``` ou ``` ... ``` envolvendo a resposta.
+  const fenceMatch = /^```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text);
+  if (fenceMatch && fenceMatch[1]) {
+    text = fenceMatch[1];
+  }
+
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end < 0 || end <= start) return null;
+  text = text.slice(start, end + 1);
+
+  // Normaliza aspas curvas → retas. Quando o LLM usa curvas como
+  // delimitador de string o JSON.parse rejeita; quando aparecem dentro
+  // de uma string já correta, viram aspas retas (caso muito raro em
+  // contexto jurídico, e o trade-off compensa a perda).
+  text = text
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Última tentativa: remover vírgula final antes de `}` ou `]`.
+    const dejunked = text.replace(/,(\s*[}\]])/g, '$1');
+    try {
+      return JSON.parse(dejunked);
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
  * Extrai {actionId, justificativa} de uma resposta bruta do LLM. Tolera
  * markdown ou texto adicional em volta do objeto JSON.
  * Retorna null se o `actionId` não estiver na lista permitida.
@@ -519,23 +569,14 @@ export function parseTriagemResponse(
   raw: string,
   allowedActionIds: readonly string[]
 ): TriagemResult | null {
-  if (!raw) return null;
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start < 0 || end < 0 || end <= start) return null;
-  try {
-    const obj = JSON.parse(raw.slice(start, end + 1)) as {
-      actionId?: unknown;
-      justificativa?: unknown;
-    };
-    const actionId = typeof obj.actionId === 'string' ? obj.actionId.trim() : '';
-    if (!actionId || !allowedActionIds.includes(actionId)) return null;
-    const justificativa =
-      typeof obj.justificativa === 'string' ? obj.justificativa.trim() : '';
-    return { actionId, justificativa };
-  } catch {
-    return null;
-  }
+  const parsed = tryParseLooseJson(raw);
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as { actionId?: unknown; justificativa?: unknown };
+  const actionId = typeof obj.actionId === 'string' ? obj.actionId.trim() : '';
+  if (!actionId || !allowedActionIds.includes(actionId)) return null;
+  const justificativa =
+    typeof obj.justificativa === 'string' ? obj.justificativa.trim() : '';
+  return { actionId, justificativa };
 }
 
 /** Teto de imagens (páginas digitalizadas) anexadas a um contexto. */
@@ -923,17 +964,9 @@ export function parseAnaliseProcessoResponse(
   raw: string,
   criterios: readonly CriterioResolvido[]
 ): AnaliseProcessoResult | null {
-  if (!raw) return null;
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start < 0 || end < 0 || end <= start) return null;
-
-  let obj: Record<string, unknown>;
-  try {
-    obj = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+  const parsed = tryParseLooseJson(raw);
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as Record<string, unknown>;
 
   const allowedIds = new Set(criterios.map((c) => c.id));
   const labelById = new Map(criterios.map((c) => [c.id, c.label]));
