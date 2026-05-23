@@ -6317,6 +6317,137 @@
           "comando": "Implementação iniciada na mesma sessão de discovery — escopo MVP fechado, owner autorizou go direto."
         }
       ]
+    },
+    {
+      "id": "BUG-22",
+      "titulo": "Triagem Inteligente falha com Gemini: 'Resposta do LLM não pôde ser interpretada como JSON de análise'",
+      "descricao": "Owner reportou em 23/05/2026 que a Triagem Inteligente (Analisar o processo) retornava erro consistente no provider Google Gemini: 'Resposta do LLM não pôde ser interpretada como JSON de análise'. Reproduzia em qualquer processo, com qualquer conjunto de critérios.\n\nDiagnóstico: o parser parseAnaliseProcessoResponse (src/shared/prompts.ts) chamava JSON.parse direto sobre o raw do LLM, sem sanitização. Gemini 3.x frequentemente devolve JSON com defeitos comuns mesmo quando o prompt pede 'JSON puro': fences de markdown, aspas curvas tipográficas (U+2018/U+2019/U+201C/U+201D) que o modelo 'herda' do estilo do contexto jurídico, e vírgula final antes de fechar } ou ]. Qualquer um derruba JSON.parse. Pior: o handler não logava o raw — erro voltava ao usuário sem nenhuma informação para diagnóstico.\n\nFix em três camadas (commit 6952195):\n1. Novo helper tryParseLooseJson em prompts.ts: remove fences de markdown, normaliza aspas curvas → retas, elimina vírgula final, antes do JSON.parse. parseTriagemResponse, parseAnaliseProcessoResponse e parseRerankResponse passam a usar.\n2. Provider Gemini ativa JSON mode nativo (responseMimeType: application/json) quando o caller passa responseFormat: 'json' no SendMessageParams. Os 3 handlers (handleAnalisarProcesso, handleMinutarTriagem, handleTemplatesRerank) sinalizam isso.\n3. Os 3 handlers logam raw.slice(0, 4000) com console.warn quando o parse falha. Próximas falhas vêm com o raw no DevTools do service worker.\n\nBônus: maxTokens da análise sobe de 4096 → 8192. 11 critérios da NT + 4 seções auxiliares + JSON estruturado estouravam o budget com Gemini 3.x.\n\nValidado pelo owner: 'Funcionou.' (sessão 23/05/2026).",
+      "categoria": "ergonomia",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Relato do owner em 23/05/2026 — Triagem Inteligente retornando JSON-parse-error consistente no Gemini",
+      "tags": ["bug", "gemini", "json-parse", "triagem", "analisar-processo", "parser"],
+      "esforco": "S",
+      "depende": [],
+      "aceitacao": [
+        "tryParseLooseJson tolera fences, aspas curvas e vírgula final em prompts.ts",
+        "Gemini envia responseMimeType: application/json quando o caller pede responseFormat: 'json'",
+        "Os 3 handlers (analisar, triagem, rerank) logam raw.slice(0, 4000) com console.warn na falha do parse",
+        "maxTokens da análise = 8192",
+        "build.bat OK (typecheck + webpack)",
+        "Owner validou Triagem Inteligente funcionando no Gemini em processo real"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-23T00:00:00.000Z",
+      "atualizadoEm": "2026-05-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-23",
+          "data": "2026-05-23T00:00:00.000Z",
+          "comando": "Owner relatou Triagem Inteligente retornando 'Resposta do LLM não pôde ser interpretada como JSON de análise' no Gemini. Diagnóstico apontou parser frágil + ausência de JSON mode nativo no provider Gemini + ausência de log do raw na falha. Fix em 4 arquivos: src/shared/prompts.ts (helper + 2 parsers), src/background/providers/base.ts (responseFormat), src/background/providers/gemini.ts (responseMimeType), src/background/background.ts (3 handlers + log do raw + maxTokens 8192 + parseRerankResponse). Commit 6952195. Owner validou e seguiu para a próxima melhoria."
+        }
+      ]
+    },
+    {
+      "id": "ERG-18",
+      "titulo": "IDs de documentos viram hiperlinks clicáveis nos resultados do sidebar",
+      "descricao": "Solicitado pelo owner em 23/05/2026 após validar o fix da Triagem (BUG-22): nos resultados que a IA devolve no sidebar (Analisar o processo, resumo FIRAC+, chat geral), as menções 'id 12345678' que o LLM inclui em justificativas, panorama, providências e demais campos passam a ser botões clicáveis que abrem o documento referido no painel direito do PJe.\n\nImplementação (commit 2406a36):\n- Novo helper src/content/ui/doc-id-link.ts com duas APIs: linkifyDocIdsInText(text) → DocumentFragment para uso em construção de DOM (textos curtos); linkifyDocIdsInElement(el) → muta o elemento via TreeWalker para uso depois de renderMarkdown (bolhas de chat).\n- Regex aceita 'id 12345678', '(id 12345678)' e variações de caixa (id/ID), com 4 a 12 dígitos.\n- Botão renderizado como <button class='paidegua-doc-link'> (não <a>) para evitar navegação acidental; ao clicar, chama activateDocumentInPje(docId) que já existe em src/content/extractor.ts e localiza+clica o doc na árvore do PJe (inclusive em iframes).\n- Aplicado em: panorama, justificativa, providência sugerida e itens das seções auxiliares da bolha de análise (analise-processo-bubble.ts); bolhas do assistente do chat após renderMarkdown via linkifyDocIdsInElement (chat.ts em endAssistantMessage).\n- CSS injetado uma única vez por shadow root via ensureDocLinkStyle. TreeWalker ignora text nodes já dentro de <a>/<button>/.paidegua-doc-link para não duplicar.\n\nValidado pelo owner: 'Funcionou.' (sessão 23/05/2026).",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "qa",
+      "origem": "Pedido do owner em 23/05/2026 ao final do fix da Triagem (BUG-22)",
+      "tags": ["sidebar", "ux", "link", "navegacao", "doc-id", "feature"],
+      "esforco": "S",
+      "depende": ["BUG-22"],
+      "aceitacao": [
+        "Helper src/content/ui/doc-id-link.ts criado com linkifyDocIdsInText e linkifyDocIdsInElement",
+        "Bolha da análise (panorama, justificativa, providência, aux sections) renderiza IDs como botões",
+        "Bolha do chat (após renderMarkdown) renderiza IDs como botões via TreeWalker",
+        "Click no botão chama activateDocumentInPje e o documento abre no painel direito do PJe",
+        "CSS injetado uma única vez por shadow root via ensureDocLinkStyle",
+        "build.bat OK (typecheck + webpack)",
+        "Owner validou a navegação clicando em IDs reais"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-23T00:00:00.000Z",
+      "atualizadoEm": "2026-05-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-23",
+          "data": "2026-05-23T00:00:00.000Z",
+          "comando": "Após validar o fix da Triagem (BUG-22), owner pediu que as menções 'id N' nos resultados virassem hiperlinks clicáveis que abrissem o documento referido no painel direito. Implementação criou helper genérico aplicável a qualquer texto que o LLM devolve (análise + chat), reusando activateDocumentInPje que já existia. Commit 2406a36."
+        }
+      ]
+    },
+    {
+      "id": "ERG-19",
+      "titulo": "Sidebar recolhe automaticamente ao clicar fora + FAB lateral de retorno",
+      "descricao": "Solicitado pelo owner em 23/05/2026 imediatamente após ERG-18: para usar os links de documento, o usuário precisava recolher o sidebar manualmente para ler o doc, e queria poder reabrir mantendo as bolhas e análises no estado em que estavam.\n\nImplementação (commit 697fbfb):\n- Novo FAB src/content/ui/collapsed-fab.ts: botão circular fixo na lateral direita em altura média (top: 50%), com logo do pAIdegua, opacity 0.55 normal e 1.0 no hover/focus. Aparece somente quando o sidebar está recolhido. Click reabre o sidebar com tudo preservado.\n- Auto-recolhimento via attachOutsideMouseDownListener em src/content/content.ts, com 3 camadas para acertar todo o PJe (que é cheio de iframes):\n  1) mousedown capture-phase no document principal — cobre cliques na árvore, toolbar e demais áreas do top-level.\n  2) Mesmo listener anexado em todos os iframes same-origin, com re-scan a cada 2s porque o PJe injeta iframes ao abrir um documento.\n  3) window blur + activeElement check (IFRAME/EMBED/OBJECT/FRAME) para o caso do visualizador de PDF do Chrome, que é iframe CROSS-origin (contentDocument lança e o mousedown nunca chega). Antes de recolher, checa document.visibilityState === 'visible' para não fechar quando o usuário só muda de aba do navegador.\n- Exclusões: (a) hosts do pAIdegua, identificados por id começando com 'paidegua-' — cobre shell, toast contextual e qualquer outro host futuro; (b) clique dentro de .paidegua-navbtn-host — botão da navbar do PJe é o atalho oficial de toggle; deixar o outside-click fechá-lo geraria flicker fecha→reabre.\n- DOM do sidebar é apenas oculto (transform: translateX(100%)), nunca destruído — chat, bolhas de análise, resumos permanecem exatamente como estavam.\n- unmountUI desfaz tudo (detach do listener + destroy do FAB).\n\nFalhas intermediárias do fluxo documentadas para sucessores: a primeira implementação só ouvia o document principal — não pegava cliques na árvore de documentos do PJe (que está em iframe). A segunda implementação cobriu iframes same-origin via scan periódico — mas o visualizador de PDF é cross-origin e ainda não recolhia. Só a 3ª camada (window blur + activeElement) destravou.\n\nValidado pelo owner: 'Deu certo!' (sessão 23/05/2026, clicando dentro do PDF de um laudo previdenciário).",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "qa",
+      "origem": "Pedido do owner em 23/05/2026 — natural após ERG-18 (links abrindo o doc atrás do sidebar)",
+      "tags": ["sidebar", "ux", "fab", "auto-collapse", "iframes", "pdf-viewer", "feature"],
+      "esforco": "M",
+      "depende": ["ERG-18"],
+      "aceitacao": [
+        "Novo src/content/ui/collapsed-fab.ts com show/hide/destroy e estilo lateral-direita-meio-vertical transparente",
+        "attachOutsideMouseDownListener cobre 3 camadas: document principal, iframes same-origin (re-scan 2s) e window blur para iframes cross-origin",
+        "Outside-click ignora hosts pAIdegua (id paidegua-*) e .paidegua-navbtn-host",
+        "Click no PDF do visualizador do Chrome recolhe o sidebar (validado pelo owner)",
+        "FAB reabre o sidebar com chat e análises no estado preservado",
+        "Mudar de aba do navegador NÃO recolhe o sidebar (visibilityState check)",
+        "build.bat OK (typecheck + webpack)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-23T00:00:00.000Z",
+      "atualizadoEm": "2026-05-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-23",
+          "data": "2026-05-23T00:00:00.000Z",
+          "comando": "Owner pediu auto-recolhimento ao clicar fora do sidebar + FAB lateral de retorno para conviver com a leitura de documentos no PJe (especialmente útil junto com ERG-18). Implementação evoluiu em 3 iterações guiadas pelo teste real do owner: (1) só document principal — não pegava cliques na árvore (iframe); (2) + iframes same-origin com scan periódico — não pegava PDF viewer (cross-origin); (3) + window blur com activeElement check — fechou o caso do PDF. Commit 697fbfb."
+        }
+      ]
+    },
+    {
+      "id": "BUG-23",
+      "titulo": "Tela de inserir código de validação some ao alternar guia (popup MV3 fecha ao perder foco)",
+      "descricao": "Owner reportou em 23/05/2026 que o fluxo de auth por e-mail estava quebrado em uso real: usuário digita o e-mail no popup, clica 'Receber código por e-mail', a tela troca para o campo de 6 dígitos, ele alterna para a guia do e-mail para copiar o código — e ao voltar para a extensão a tela do código sumiu (volta ao estado inicial de 'digite seu e-mail').\n\nCausa raiz: comportamento nativo do popup da action do Chrome em MV3 — o popup fecha automaticamente quando perde o foco. Todo o DOM e variáveis em memória são destruídos. Ao reabrir, DOMContentLoaded chama fetchAuthStatus(), que consulta apenas o JWT em chrome.storage.local. Como ainda não houve verifyCode bem-sucedido, não existe JWT salvo, e o handler cai sempre em showAuthStage('email'). O e-mail digitado vive em variável JS efêmera (emailDisplay.textContent), também perdido.\n\nFix (commit 59b73f0):\n- Nova chave STORAGE_KEYS.AUTH_PENDING em src/shared/constants.ts (chrome.storage.local, formato { email, requestedAt }, TTL 10 min alinhado à expiração do código no backend).\n- popup.ts: helpers loadAuthPending/saveAuthPending/clearAuthPending. requestBtn salva pending após sucesso do requestLoginCode. verifyBtn (sucesso), backBtn e logout limpam pending.\n- DOMContentLoaded: se houver pending válido ao reabrir, vai direto para showAuthStage('code') com #auth-email-display preenchido e foco em #auth-code-input — usuário cola o código sem reler o e-mail.\n\nValidado pelo owner: 'Funcionou.' (sessão 23/05/2026, fluxo completo).",
+      "categoria": "ergonomia",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Relato do owner em 23/05/2026 — fluxo de auth quebrado em uso real",
+      "tags": ["bug", "auth", "popup", "mv3", "ux", "ciclo-de-vida"],
+      "esforco": "S",
+      "depende": [],
+      "aceitacao": [
+        "STORAGE_KEYS.AUTH_PENDING criado em src/shared/constants.ts",
+        "Pending salvo ao chamar requestLoginCode com sucesso",
+        "Pending limpo em verifyCode sucesso, backBtn e logout",
+        "Pending tem TTL de 10 min — após esse tempo o popup volta à tela de e-mail",
+        "Ao reabrir o popup com pending válido, cai direto na tela de código com email preenchido",
+        "build.bat OK (typecheck + webpack)",
+        "Owner validou: digita email → recebe código → alterna guia → volta → tela do código continua ativa"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-23T00:00:00.000Z",
+      "atualizadoEm": "2026-05-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-23",
+          "data": "2026-05-23T00:00:00.000Z",
+          "comando": "Owner relatou bug de UX no fluxo de auth: tela do código de 6 dígitos sumia ao alternar guia (popup MV3 do Chrome fecha ao perder foco). Fix persiste estado intermediário em chrome.storage.local com TTL 10 min; ao reabrir o popup, hidrata direto a tela do código se ainda dentro do TTL. Commit 59b73f0."
+        }
+      ]
     }
   ]
 }
