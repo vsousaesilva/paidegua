@@ -61,7 +61,10 @@ module.exports = (_env, argv) => {
       'fluxos-consultor/consultor': './src/fluxos-consultor/consultor.ts',
       // Mapas de Jornada (FLUX-09) — visualização estruturada
       // complementar ao Consultor. Lane por query string (?lane=jef).
-      'fluxos-jornadas/jornadas': './src/fluxos-jornadas/jornadas.ts'
+      'fluxos-jornadas/jornadas': './src/fluxos-jornadas/jornadas.ts',
+      // Ranking de advogados (RANK-01) — recurso de teste discreto,
+      // sem entrada visível no popup ou no PJe. Acesso só por URL direta.
+      'ranking-advogados/ranking': './src/ranking-advogados/ranking.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -160,6 +163,9 @@ module.exports = (_env, argv) => {
           // curado das trilhas e agrupamentos de cada lane.
           { from: 'src/fluxos-jornadas/jornadas.html', to: 'fluxos-jornadas/jornadas.html' },
           { from: 'src/fluxos-jornadas/jornadas.css', to: 'fluxos-jornadas/jornadas.css' },
+          // Ranking de advogados (RANK-01) — recurso de teste discreto.
+          { from: 'src/ranking-advogados/ranking.html', to: 'ranking-advogados/ranking.html' },
+          { from: 'src/ranking-advogados/ranking.css', to: 'ranking-advogados/ranking.css' },
           {
             from: 'assets/jornadas-jef.json',
             to: 'assets/jornadas-jef.json',
