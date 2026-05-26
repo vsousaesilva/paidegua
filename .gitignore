@@ -25,3 +25,7 @@ docs/kanban-massificacao/kv-atual.json
 # (o canonico e %USERPROFILE%\.paidegua-cf-token, fora do repo)
 .paidegua-cf-token
 *.cf-token
+
+# Artefatos de discovery e exploracao local (nao versionar)
+docs/questionario-contadoria-discovery.doc*
+scripts/inspect-pdf*.mjs

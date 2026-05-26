@@ -6504,6 +6504,123 @@
           "comando": "Card movido para lançado após aprovação CWS da v1.6.6 e smoke test OK."
         }
       ]
+    },
+    {
+      "id": "BUG-24",
+      "titulo": "Anthropic 400 em requests com muitas imagens: 'image dimensions exceed max allowed size for many-image requests: 2000 pixels'",
+      "descricao": "Owner reportou em 26/05/2026 que o chat com autos usando chave da Anthropic Claude falhava consistentemente com erro 400: 'messages.0.content.27.image.source.base64.data: At least one of the image dimensions exceed max allowed size for many-image requests: 2000 pixels.'\n\nCausa: a Anthropic impõe um limite extra para requests multimodais com muitas imagens (>~20): cada imagem tem que ter no máximo 2000 pixels em cada dimensão. Outros provedores (Gemini, OpenAI) não têm essa regra, então o erro era específico do Claude. PDFs com MediaBox maior que A4 (ofício, scans em DPI alto) renderizados em src/content/ocr.ts com RENDER_SCALE = 1.5 estouravam os 2000px e disparavam o 400 quando o documento tinha muitas páginas.\n\nFix em src/background/providers/anthropic.ts:\n- Novo helper downscaleImagesForAnthropic: para cada ImagemIA, abre via createImageBitmap, mede dimensões; se max(width,height) > 2000, reencoda em JPEG q=0.85 num OffscreenCanvas mantendo proporção. Imagens já ≤ 2000 passam intactas (zero re-encode).\n- Helpers base64ToBlob + uint8ToBase64 (com chunking de 0x8000 bytes para não estourar a stack do btoa em imagens grandes).\n- sendMessage agora é async no map e chama o downscaler antes de montar o array multimodal.\n- Gemini e OpenAI NÃO foram tocados (não têm a regra dos 2000 px).\n\nValidado pelo owner em 26/05/2026: build local + teste em chat real — 'Ele não apresentou mais o erro.'",
+      "categoria": "ergonomia",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Relato do owner em 26/05/2026 — chat com autos via Claude retornando 400 em processos com muitas imagens",
+      "tags": ["bug", "anthropic", "claude", "imagens", "many-image", "provider"],
+      "esforco": "S",
+      "depende": [],
+      "aceitacao": [
+        "downscaleImagesForAnthropic decoda, mede e reencoda imagens >2000px em src/background/providers/anthropic.ts",
+        "Helpers base64ToBlob + uint8ToBase64 (chunked) suportam imagens grandes sem estourar btoa",
+        "Imagens já ≤ 2000px passam intactas (zero re-encode)",
+        "Gemini e OpenAI continuam intocados",
+        "build.bat OK (typecheck + webpack)",
+        "Owner validou: chat com autos via Claude não retorna mais 400 em processos com muitas páginas digitalizadas",
+        "Aprovação CWS + smoke do owner → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-26T00:00:00.000Z",
+      "atualizadoEm": "2026-05-26T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-26",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-26",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Owner relatou erro 400 ao usar chave da Anthropic em chats com muitas imagens. Diagnóstico: regra dos 2000px para many-image requests, específica do Claude. Fix: downscaler dentro do provider Anthropic que reencoda imagens >2000px em JPEG ajustado ao limite. Validado em chat real."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-05-26",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Fix implementado e validado em uso real pelo owner ('Ele não apresentou mais o erro'). Aguarda release v1.6.7 + aprovação CWS para mover a lancado."
+        }
+      ]
+    },
+    {
+      "id": "PERF-01",
+      "titulo": "Prompt caching da Anthropic — system + imagens do 1º turno (TTFT cai em chats multi-turno)",
+      "descricao": "Após o fix do BUG-24, owner reportou que o texto gerado via Claude continuava perceptivelmente mais lento que via Gemini. Diagnóstico em duas camadas:\n\nESTRUTURAL (sem solução técnica): Gemini Flash gera ~200-400 tokens/s; Claude Opus ~50-70 t/s, Sonnet ~80-100, Haiku ~100-150. Diferença de modelo/infra entre provedores.\n\nESTRATÉGICA (com margem real): prompt caching da Anthropic. Marcando blocos do request com cache_control: {type: 'ephemeral'}, a partir do 2º turno da mesma conversa o TTFT cai 70-85% e o custo de cache hit fica 90% mais barato. TTL 5 min. Fit perfeito para 'carregar autos → várias perguntas no chat', 'analisar processo + reanalisar', 'etiquetas em lote do mesmo processo'.\n\nFix em src/background/providers/anthropic.ts:\n- buildSystemBlocks: transforma system: string em array de content blocks. Marca cache_control: ephemeral quando o prompt ≥ 5000 chars (~1250 tokens, acima do piso de 1024 do Opus/Sonnet). Abaixo do piso, sem cache_control para não desperdiçar 1 dos 4 breakpoints disponíveis.\n- Breakpoint na 1ª user com imagens: encontra o índice do primeiro user com images; se tiver ≥3 imagens, marca o último content block desse turno com cache_control. Cobre o prefixo todo (system + imagens + texto). Do 2º turno em diante, hit garantido.\n- Telemetria: parse de message_start no SSE, log '[pAIdegua] anthropic cache: read=X created=Y input=Z model=...' só quando há sinal (não polui console em chamadas sem cache).\n- Tipagem AnthropicSseDelta.message.usage adicionada.\n\nValidação esperada (DevTools service worker):\n- 1ª pergunta: 'anthropic cache: read=0 created=N' (N = tokens do prefixo)\n- 2ª pergunta: 'anthropic cache: read=N created=0' → hit, TTFT cai visivelmente\n\nNão tocados: Gemini (tem implicit caching automático) e OpenAI (cache próprio, não é o gargalo aqui).\n\nNão foi feito na v1 (postergado para evolução): cachear histórico de turnos passados — complexidade extra, ganho marginal frente ao já capturado. Limite hard de 4 breakpoints na API permite essa evolução.",
+      "categoria": "ergonomia",
+      "prioridade": "P2",
+      "coluna": "qa",
+      "origem": "Reclamação do owner em 26/05/2026 sobre lentidão do Claude vs Gemini após o fix do BUG-24",
+      "tags": ["performance", "anthropic", "claude", "prompt-caching", "ttft", "provider"],
+      "esforco": "S",
+      "depende": ["BUG-24"],
+      "aceitacao": [
+        "buildSystemBlocks marca cache_control no system quando prompt ≥ 5000 chars",
+        "Breakpoint de cache no último content block da 1ª user com imagens (quando ≥3 imagens)",
+        "Telemetria de cache logada via console.log no message_start do SSE (só quando há sinal)",
+        "Tipagem AnthropicSseDelta atualizada com usage.cache_creation_input_tokens e cache_read_input_tokens",
+        "Gemini e OpenAI continuam intocados",
+        "build.bat OK (typecheck + webpack)",
+        "Validação no DevTools: 1ª pergunta com 'created=N read=0', 2ª pergunta com 'read=N created=0'",
+        "Aprovação CWS + smoke do owner → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-26T00:00:00.000Z",
+      "atualizadoEm": "2026-05-26T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-26",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-26",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Owner reclamou da lentidão do Claude vs Gemini após o fix do BUG-24. Diagnóstico: diferença estrutural entre provedores (tokens/s) + margem de prompt caching. Implementado caching automático no system + 1ª imagem do user, com telemetria via console.log. Owner reagiu: 'Ainda um pouco lento, mas vamos seguir.'"
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-05-26",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Caching implementado. Aguarda release v1.6.7 + telemetria em produção para medir efeito real. Owner pode acompanhar o efeito no DevTools do service worker."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.6.7",
+      "titulo": "Release v1.6.7 — fix Anthropic 400 (many-image >2000px) + prompt caching automático",
+      "descricao": "Patch para resolver o erro 400 da Anthropic em chats com muitas imagens (BUG-24) e otimizar a latência do Claude em conversas multi-turno (PERF-01). Ambos os fixes vivem no provider src/background/providers/anthropic.ts; nenhum outro provider foi tocado.\n\nBundle inclui também o WIP RANK-01 (recurso de teste discreto: coletor de ranking de advogados por nº de processos, acessível só por URL direta chrome-extension://<id>/ranking-advogados/ranking.html, sem entrada visível em popup ou PJe). Coerente com a natureza 'teste discreto' do recurso — o card RANK-01 segue em 'dev' no Kanban até validação do owner.\n\nMudanças por arquivo:\n- src/background/providers/anthropic.ts: downscaleImagesForAnthropic + base64ToBlob + uint8ToBase64 + buildSystemBlocks + breakpoint de cache + telemetria de cache no SSE\n- (sem mudanças nos demais providers, no content, no popup ou na infra)\n\nBump 1.6.6 → 1.6.7. Sem novas permissões, sem novos hosts, sem URLs de CDN — risco CWS baixo (mesmo destino de dados, mesma chave, mesmo endpoint; cache_control é apenas marcação JSON ao servidor da Anthropic).",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "dev",
+      "origem": "skill release-extensao — sessão 26/05/2026 (fix BUG-24 + otimização PERF-01)",
+      "tags": ["release", "extensao", "cws", "anthropic", "claude", "performance"],
+      "esforco": "XS",
+      "depende": ["BUG-24", "PERF-01", "RANK-01"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.6.7; dist/manifest.json em 1.6.7",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/background.js contém referência a 'cache_control' (caching compilado)",
+        "dist/background.js contém referência a 'createImageBitmap' ou 'OffscreenCanvas' (downscaler compilado)",
+        "zip versoes/dist v1.6.7.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados → mover para lancado",
+        "Tag git v1.6.7 + Release no GitHub criada"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-05-26T00:00:00.000Z",
+      "atualizadoEm": "2026-05-26T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-26",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-05-26",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Card aberto na skill release-extensao após validação de BUG-24 (fix 400) e PERF-01 (prompt caching) pelo owner. Bump 1.6.6 → 1.6.7 confirmado. Inclui o WIP RANK-01 já commitado no main (coerente com 'teste discreto' do recurso)."
+        }
+      ]
     }
   ]
 }
