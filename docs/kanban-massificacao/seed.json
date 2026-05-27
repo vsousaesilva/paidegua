@@ -6511,7 +6511,7 @@
       "descricao": "Owner reportou em 26/05/2026 que o chat com autos usando chave da Anthropic Claude falhava consistentemente com erro 400: 'messages.0.content.27.image.source.base64.data: At least one of the image dimensions exceed max allowed size for many-image requests: 2000 pixels.'\n\nCausa: a Anthropic impõe um limite extra para requests multimodais com muitas imagens (>~20): cada imagem tem que ter no máximo 2000 pixels em cada dimensão. Outros provedores (Gemini, OpenAI) não têm essa regra, então o erro era específico do Claude. PDFs com MediaBox maior que A4 (ofício, scans em DPI alto) renderizados em src/content/ocr.ts com RENDER_SCALE = 1.5 estouravam os 2000px e disparavam o 400 quando o documento tinha muitas páginas.\n\nFix em src/background/providers/anthropic.ts:\n- Novo helper downscaleImagesForAnthropic: para cada ImagemIA, abre via createImageBitmap, mede dimensões; se max(width,height) > 2000, reencoda em JPEG q=0.85 num OffscreenCanvas mantendo proporção. Imagens já ≤ 2000 passam intactas (zero re-encode).\n- Helpers base64ToBlob + uint8ToBase64 (com chunking de 0x8000 bytes para não estourar a stack do btoa em imagens grandes).\n- sendMessage agora é async no map e chama o downscaler antes de montar o array multimodal.\n- Gemini e OpenAI NÃO foram tocados (não têm a regra dos 2000 px).\n\nValidado pelo owner em 26/05/2026: build local + teste em chat real — 'Ele não apresentou mais o erro.'",
       "categoria": "ergonomia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Relato do owner em 26/05/2026 — chat com autos via Claude retornando 400 em processos com muitas imagens",
       "tags": ["bug", "anthropic", "claude", "imagens", "many-image", "provider"],
       "esforco": "S",
@@ -6527,8 +6527,8 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-26T00:00:00.000Z",
-      "atualizadoEm": "2026-05-26T00:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-26",
+      "atualizadoEm": "2026-05-27T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-27-fechamento",
       "historico": [
         {
           "tipo": "criado",
@@ -6543,6 +6543,20 @@
           "autor": "claude-code/sessao-2026-05-26",
           "data": "2026-05-26T00:00:00.000Z",
           "comando": "Fix implementado e validado em uso real pelo owner ('Ele não apresentou mais o erro'). Aguarda release v1.6.7 + aprovação CWS para mover a lancado."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27-fechamento",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Fix entregue na v1.6.7 (commit b2801bb). Pacote enviado à CWS em 26/05/2026 e aprovado pela Chrome Web Store no mesmo dia. Smoke do owner OK; pilotos comunicados via broadcast Resend dedicado à v1.6.7."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27-fechamento",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado em 27/05/2026, sessão de fechamento retroativo da v1.6.7 (que já foi sucedida pela v1.6.8 em produção)."
         }
       ]
     },
@@ -6552,7 +6566,7 @@
       "descricao": "Após o fix do BUG-24, owner reportou que o texto gerado via Claude continuava perceptivelmente mais lento que via Gemini. Diagnóstico em duas camadas:\n\nESTRUTURAL (sem solução técnica): Gemini Flash gera ~200-400 tokens/s; Claude Opus ~50-70 t/s, Sonnet ~80-100, Haiku ~100-150. Diferença de modelo/infra entre provedores.\n\nESTRATÉGICA (com margem real): prompt caching da Anthropic. Marcando blocos do request com cache_control: {type: 'ephemeral'}, a partir do 2º turno da mesma conversa o TTFT cai 70-85% e o custo de cache hit fica 90% mais barato. TTL 5 min. Fit perfeito para 'carregar autos → várias perguntas no chat', 'analisar processo + reanalisar', 'etiquetas em lote do mesmo processo'.\n\nFix em src/background/providers/anthropic.ts:\n- buildSystemBlocks: transforma system: string em array de content blocks. Marca cache_control: ephemeral quando o prompt ≥ 5000 chars (~1250 tokens, acima do piso de 1024 do Opus/Sonnet). Abaixo do piso, sem cache_control para não desperdiçar 1 dos 4 breakpoints disponíveis.\n- Breakpoint na 1ª user com imagens: encontra o índice do primeiro user com images; se tiver ≥3 imagens, marca o último content block desse turno com cache_control. Cobre o prefixo todo (system + imagens + texto). Do 2º turno em diante, hit garantido.\n- Telemetria: parse de message_start no SSE, log '[pAIdegua] anthropic cache: read=X created=Y input=Z model=...' só quando há sinal (não polui console em chamadas sem cache).\n- Tipagem AnthropicSseDelta.message.usage adicionada.\n\nValidação esperada (DevTools service worker):\n- 1ª pergunta: 'anthropic cache: read=0 created=N' (N = tokens do prefixo)\n- 2ª pergunta: 'anthropic cache: read=N created=0' → hit, TTFT cai visivelmente\n\nNão tocados: Gemini (tem implicit caching automático) e OpenAI (cache próprio, não é o gargalo aqui).\n\nNão foi feito na v1 (postergado para evolução): cachear histórico de turnos passados — complexidade extra, ganho marginal frente ao já capturado. Limite hard de 4 breakpoints na API permite essa evolução.",
       "categoria": "ergonomia",
       "prioridade": "P2",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Reclamação do owner em 26/05/2026 sobre lentidão do Claude vs Gemini após o fix do BUG-24",
       "tags": ["performance", "anthropic", "claude", "prompt-caching", "ttft", "provider"],
       "esforco": "S",
@@ -6569,8 +6583,8 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-26T00:00:00.000Z",
-      "atualizadoEm": "2026-05-26T00:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-26",
+      "atualizadoEm": "2026-05-27T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-27-fechamento",
       "historico": [
         {
           "tipo": "criado",
@@ -6585,6 +6599,20 @@
           "autor": "claude-code/sessao-2026-05-26",
           "data": "2026-05-26T00:00:00.000Z",
           "comando": "Caching implementado. Aguarda release v1.6.7 + telemetria em produção para medir efeito real. Owner pode acompanhar o efeito no DevTools do service worker."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27-fechamento",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "Otimização entregue na v1.6.7 (commit b2801bb). Pacote enviado à CWS em 26/05/2026 e aprovado pela Chrome Web Store no mesmo dia. Smoke do owner OK; pilotos comunicados via broadcast Resend dedicado à v1.6.7."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27-fechamento",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado em 27/05/2026, sessão de fechamento retroativo da v1.6.7. Caching ativo em produção; telemetria via console.log no service worker pode confirmar cache hits a partir do 2º turno em chats Anthropic."
         }
       ]
     },
@@ -6594,7 +6622,7 @@
       "descricao": "Patch para resolver o erro 400 da Anthropic em chats com muitas imagens (BUG-24) e otimizar a latência do Claude em conversas multi-turno (PERF-01). Ambos os fixes vivem no provider src/background/providers/anthropic.ts; nenhum outro provider foi tocado.\n\nBundle inclui também o WIP RANK-01 (recurso de teste discreto: coletor de ranking de advogados por nº de processos, acessível só por URL direta chrome-extension://<id>/ranking-advogados/ranking.html, sem entrada visível em popup ou PJe). Coerente com a natureza 'teste discreto' do recurso — o card RANK-01 segue em 'dev' no Kanban até validação do owner.\n\nMudanças por arquivo:\n- src/background/providers/anthropic.ts: downscaleImagesForAnthropic + base64ToBlob + uint8ToBase64 + buildSystemBlocks + breakpoint de cache + telemetria de cache no SSE\n- (sem mudanças nos demais providers, no content, no popup ou na infra)\n\nBump 1.6.6 → 1.6.7. Sem novas permissões, sem novos hosts, sem URLs de CDN — risco CWS baixo (mesmo destino de dados, mesma chave, mesmo endpoint; cache_control é apenas marcação JSON ao servidor da Anthropic).",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "dev",
+      "coluna": "lancado",
       "origem": "skill release-extensao — sessão 26/05/2026 (fix BUG-24 + otimização PERF-01)",
       "tags": ["release", "extensao", "cws", "anthropic", "claude", "performance"],
       "esforco": "XS",
@@ -6611,14 +6639,28 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-05-26T00:00:00.000Z",
-      "atualizadoEm": "2026-05-26T00:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-05-26",
+      "atualizadoEm": "2026-05-27T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-05-27-fechamento",
       "historico": [
         {
           "tipo": "criado",
           "autor": "claude-code/sessao-2026-05-26",
           "data": "2026-05-26T00:00:00.000Z",
           "comando": "Card aberto na skill release-extensao após validação de BUG-24 (fix 400) e PERF-01 (prompt caching) pelo owner. Bump 1.6.6 → 1.6.7 confirmado. Inclui o WIP RANK-01 já commitado no main (coerente com 'teste discreto' do recurso)."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27-fechamento",
+          "data": "2026-05-26T00:00:00.000Z",
+          "comando": "v1.6.7 aprovada pela Chrome Web Store em 26/05/2026 e em produção. Smoke do owner OK. Pilotos comunicados via broadcast Resend dedicado à v1.6.7. Commit b2801bb em origin/main."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27-fechamento",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado em 27/05/2026 — sessão de fechamento retroativo. Tag git v1.6.7 + GitHub Release v1.6.7 (workflow release-extension.yml) criados nesta sessão. v1.6.7 já sucedida em produção pela v1.6.8 (INFRA-21 — helper XLSX)."
         }
       ]
     },
