@@ -6625,10 +6625,10 @@
     {
       "id": "INFRA-21",
       "titulo": "Helper compartilhado de export XLSX (src/shared/xlsx-export.ts) via SheetJS",
-      "descricao": "Owner pediu em 27/05/2026 que todo dashboard do pAIdegua que renderiza tabelas com processos passe a oferecer, além do botão Copiar lista, um botão Baixar Excel. Este card cobre a infra técnica que sustenta o ERG-20: novo helper compartilhado src/shared/xlsx-export.ts com SheetJS (lib xlsx ^0.18.5 adicionada como dependency no package.json).\n\nAPI pública:\n- downloadExcel<T>(rows, columns, fileName, sheetName?) — gera .xlsx real e dispara download via XLSX.writeFile.\n- attachExcelButton<T>(sec, getRows, columns, fileName, options?) — espelha attachCopyButton de cada dashboard, criando botão .xlsx-btn ao lado do .copy-btn.\n- ExcelColumn<T> { header, key, width?, type? } — colunas tipadas (string/number/date) para preservar tipo no Excel.\n\nDecisões de design:\n- xlsx é carregada apenas pelas páginas de dashboard (não pelo content script), evitando inflar o bundle injetado no PJe.\n- Funciona 100% offline (sem CDN externo) — compatível com scripts/strip-cdn-urls.mjs (regra paidegua_mv3_cdn_strip).\n- Tipagem por coluna: datas exportadas como tipo data nativo do Excel; CNJ exportado como string para preservar zeros à esquerda e máscara; dias na tarefa como número para permitir SUM/AVG.\n- Nome de arquivo padrão: pAIdegua_<modulo>_<YYYY-MM-DD_HHmm>.xlsx.\n- Ícone EXCEL_ICON_SVG adicionado em src/shared/icons.ts.\n\nNão faz parte deste card aplicar o botão nos dashboards — isso é ERG-20.\n\nImplementado em 27/05/2026: typecheck inicial falhou em src/shared/xlsx-export.ts:98 (AOA2SheetOpts['data'] inexistente); fix imediato trocando o cast por tipagem local Cell[][]. build.bat passou em seguida.",
+      "descricao": "Owner pediu em 27/05/2026 que todo dashboard do pAIdegua que renderiza tabelas com processos passe a oferecer, além do botão Copiar lista, um botão Baixar Excel. Este card cobre a infra técnica que sustenta o ERG-20: novo helper compartilhado src/shared/xlsx-export.ts com SheetJS (lib xlsx ^0.18.5 adicionada como dependency no package.json).\n\nAPI pública:\n- downloadExcel<T>(rows, columns, fileName, sheetName?) — gera .xlsx real e dispara download via XLSX.writeFile.\n- attachExcelButton<T>(sec, getRows, columns, fileName, options?) — espelha attachCopyButton de cada dashboard, criando botão .xlsx-btn ao lado do .copy-btn.\n- ExcelColumn<T> { header, key, width?, type? } — colunas tipadas (string/number/date) para preservar tipo no Excel.\n\nDecisões de design:\n- xlsx é carregada apenas pelas páginas de dashboard (não pelo content script), evitando inflar o bundle injetado no PJe.\n- Funciona 100% offline (sem CDN externo) — compatível com scripts/strip-cdn-urls.mjs (regra paidegua_mv3_cdn_strip).\n- Tipagem por coluna: datas exportadas como tipo data nativo do Excel; CNJ exportado como string para preservar zeros à esquerda e máscara; dias na tarefa como número para permitir SUM/AVG.\n- Nome de arquivo padrão: pAIdegua_<modulo>_<YYYY-MM-DD_HHmm>.xlsx.\n- Ícone EXCEL_ICON_SVG adicionado em src/shared/icons.ts.\n\nNão faz parte deste card aplicar o botão nos dashboards — isso é ERG-20.\n\nImplementado em 27/05/2026: typecheck inicial falhou em src/shared/xlsx-export.ts:98 (AOA2SheetOpts['data'] inexistente); fix imediato trocando o cast por tipagem local Cell[][]. build.bat passou em seguida.\n\nEntregue na v1.6.8 (commit 5bb33ad). Aprovada pela CWS em 27/05/2026; smoke do owner OK; pilotos comunicados via broadcast Resend.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Pedido do owner em 27/05/2026 (Excel em dashboards + limite customizável no Painel Gerencial)",
       "tags": ["export", "xlsx", "sheetjs", "shared", "dashboard", "infra"],
       "esforco": "S",
@@ -6660,16 +6660,30 @@
           "autor": "claude-code/sessao-2026-05-27",
           "data": "2026-05-27T00:00:00.000Z",
           "comando": "Helper xlsx-export.ts implementado, build.bat passou após fix de tipagem. Sustenta ERG-20 (que também foi implementado). Aguarda release v1.6.8 + smoke do owner."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Bundle v1.6.8 (commit 5bb33ad) aprovado pela CWS em 27/05/2026. Smoke do owner em produção confirmou que o helper compila corretamente e é usado por todos os dashboards. Pilotos comunicados via broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado após aprovação CWS da v1.6.8 e smoke OK."
         }
       ]
     },
     {
       "id": "ERG-20",
       "titulo": "Botão Baixar Excel em todos os dashboards com tabelas de processos",
-      "descricao": "Solicitado pelo owner em 27/05/2026: ao lado do botão Copiar lista de processos, todos os dashboards do pAIdegua que renderizam tabelas devem oferecer também Baixar Excel. Hoje o fluxo dependia de copiar → colar no Excel → limpar coluna a coluna, perdendo tipagem (datas viram texto, dias viram strings, CNJ perde zeros à esquerda e máscara).\n\nDashboards atingidos (9):\n- Painel Gerencial (src/gestao-dashboard/gestao-dashboard.ts) — 10 mais antigos (geral) + 10 mais antigos por tarefa + prioritários + sigilosos\n- Painel de Triagem 'Analisar tarefas' (src/dashboard/dashboard.ts) — 10 mais antigos + por assunto + prioritários + sigilosos\n- Controle Metas CNJ (src/metas-dashboard/dashboard.ts) — lista de pendentes por meta (exporta TODOS, não só os 50 da tela)\n- Sigcrim (src/criminal-dashboard/dashboard.ts) — botão Baixar Excel no header, exporta acervo filtrado\n- Prazos na Fita (src/prazos-fita-dashboard/prazos-fita-dashboard.ts) — botão por card de tarefa\n- Pauta de Perícias (src/pericias-dashboard/pericias-dashboard.ts) — botão por pauta de perito\n- Ranking de Advogados (src/ranking-advogados/ranking.ts) — soma-se ao PDF/DOCX existentes\n- Audiência pAIdegua (src/audiencia-painel/painel.ts) — por pauta + não agrupados\n- Central de Comunicação (src/comunicacao-painel/painel.ts) — por grupo perito/Ceab\n\nUsa attachExcelButton de src/shared/xlsx-export.ts (INFRA-21) onde a seção segue o padrão position:relative do .copy-btn; nos demais (metas, sigcrim, prazos, perícias, audiência, comunicação, ranking) o botão é construído inline.\n\nAjuste feito durante o smoke (27/05): coluna 'URL' removida do Excel a pedido do owner — fica só CNJ + metadados úteis para análise. Recortado em todos os 9 dashboards.\n\nNão faz parte deste card unificar os attachCopyButton duplicados em cada dashboard (refactor próprio futuro). Também não faz parte adicionar export CSV alternativo — decisão pelo XLSX nativo.",
+      "descricao": "Solicitado pelo owner em 27/05/2026: ao lado do botão Copiar lista de processos, todos os dashboards do pAIdegua que renderizam tabelas devem oferecer também Baixar Excel. Hoje o fluxo dependia de copiar → colar no Excel → limpar coluna a coluna, perdendo tipagem (datas viram texto, dias viram strings, CNJ perde zeros à esquerda e máscara).\n\nDashboards atingidos (9):\n- Painel Gerencial (src/gestao-dashboard/gestao-dashboard.ts) — 10 mais antigos (geral) + 10 mais antigos por tarefa + prioritários + sigilosos\n- Painel de Triagem 'Analisar tarefas' (src/dashboard/dashboard.ts) — 10 mais antigos + por assunto + prioritários + sigilosos\n- Controle Metas CNJ (src/metas-dashboard/dashboard.ts) — lista de pendentes por meta (exporta TODOS, não só os 50 da tela)\n- Sigcrim (src/criminal-dashboard/dashboard.ts) — botão Baixar Excel no header, exporta acervo filtrado\n- Prazos na Fita (src/prazos-fita-dashboard/prazos-fita-dashboard.ts) — botão por card de tarefa\n- Pauta de Perícias (src/pericias-dashboard/pericias-dashboard.ts) — botão por pauta de perito\n- Ranking de Advogados (src/ranking-advogados/ranking.ts) — soma-se ao PDF/DOCX existentes\n- Audiência pAIdegua (src/audiencia-painel/painel.ts) — por pauta + não agrupados\n- Central de Comunicação (src/comunicacao-painel/painel.ts) — por grupo perito/Ceab\n\nUsa attachExcelButton de src/shared/xlsx-export.ts (INFRA-21) onde a seção segue o padrão position:relative do .copy-btn; nos demais (metas, sigcrim, prazos, perícias, audiência, comunicação, ranking) o botão é construído inline.\n\nAjuste feito durante o smoke (27/05): coluna 'URL' removida do Excel a pedido do owner — fica só CNJ + metadados úteis para análise. Recortado em todos os 9 dashboards.\n\nNão faz parte deste card unificar os attachCopyButton duplicados em cada dashboard (refactor próprio futuro). Também não faz parte adicionar export CSV alternativo — decisão pelo XLSX nativo.\n\nEntregue na v1.6.8 (commit 5bb33ad). Aprovada pela CWS em 27/05/2026; smoke do owner OK; pilotos comunicados via broadcast Resend.",
       "categoria": "ergonomia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Pedido do owner em 27/05/2026 (Excel em dashboards + limite customizável no Painel Gerencial)",
       "tags": ["dashboard", "export", "xlsx", "ux", "feature"],
       "esforco": "M",
@@ -6703,16 +6717,30 @@
           "autor": "claude-code/sessao-2026-05-27",
           "data": "2026-05-27T00:00:00.000Z",
           "comando": "Botão Excel implementado em todos os 9 dashboards. Coluna URL removida no smoke a pedido do owner. build.bat OK. Owner aprovou o smoke local — aguarda release v1.6.8 + aprovação CWS + smoke do owner em produção."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Bundle v1.6.8 (commit 5bb33ad) aprovado pela CWS em 27/05/2026. Smoke do owner em produção confirmou Excel funcionando em todos os 9 dashboards com tipos preservados (datas, números, CNJ mascarado). Pilotos comunicados via broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado após aprovação CWS da v1.6.8 e smoke OK."
         }
       ]
     },
     {
       "id": "ERG-21",
       "titulo": "Backup geral inclui acervo completo do Sigcrim (config + processos)",
-      "descricao": "Solicitado pelo owner em 27/05/2026 durante a sessão de Excel em dashboards: até a v1.6.7 o backup de configurações da aba geral (popup) e o backup do Sigcrim eram artefatos separados — exportar/restaurar configurações deixava o acervo Sigcrim de fora, exigindo dois passos (e duas pastas).\n\nMudança em src/popup/popup.ts + src/shared/criminal-store.ts:\n- BACKUP_VERSION bump 2 → 3. BACKUP_VERSIONS_ACEITAS passa a aceitar [1,2,3] — pacotes v1/v2 importam normalmente (sem tocar no Sigcrim).\n- Novo campo opcional `sigcrim?: { config?, processos[] }` no BackupPacote. Inclui CriminalConfig e o acervo completo (processos com réus embutidos, mesmo shape de listAllProcessos).\n- Exportação: Promise.all carrega config + processos via loadCriminalConfig + listAllProcessos. Tolerante a falhas (devolve undefined/[] se o IDB Sigcrim ainda não existe na máquina).\n- Importação: nova função substituirAcervoCompleto(processos, config?) em criminal-store.ts. Apaga PROCESSOS/REUS/META e re-insere em transação única, preservando ids originais.\n- Pasta de auto-export NÃO é exportada — FileSystemHandle vive em outra meta key e só funciona com gesto do usuário na máquina onde foi concedido. UI avisa que precisa religar.\n- Mensagem do confirm de importação lista quantos processos Sigcrim virão; toast final inclui contagem.\n- popup.html: texto da aba geral atualizado para 'configurações + Sigcrim'.\n\nNão tocado (escopo limitado): a aba 'Backup do Sigcrim' em criminal-config segue intocada — não foi tocada em nada do Sigcrim e seu backup próprio, apenas a aba geral passa a 'levar tudo'.",
+      "descricao": "Solicitado pelo owner em 27/05/2026 durante a sessão de Excel em dashboards: até a v1.6.7 o backup de configurações da aba geral (popup) e o backup do Sigcrim eram artefatos separados — exportar/restaurar configurações deixava o acervo Sigcrim de fora, exigindo dois passos (e duas pastas).\n\nMudança em src/popup/popup.ts + src/shared/criminal-store.ts:\n- BACKUP_VERSION bump 2 → 3. BACKUP_VERSIONS_ACEITAS passa a aceitar [1,2,3] — pacotes v1/v2 importam normalmente (sem tocar no Sigcrim).\n- Novo campo opcional `sigcrim?: { config?, processos[] }` no BackupPacote. Inclui CriminalConfig e o acervo completo (processos com réus embutidos, mesmo shape de listAllProcessos).\n- Exportação: Promise.all carrega config + processos via loadCriminalConfig + listAllProcessos. Tolerante a falhas (devolve undefined/[] se o IDB Sigcrim ainda não existe na máquina).\n- Importação: nova função substituirAcervoCompleto(processos, config?) em criminal-store.ts. Apaga PROCESSOS/REUS/META e re-insere em transação única, preservando ids originais.\n- Pasta de auto-export NÃO é exportada — FileSystemHandle vive em outra meta key e só funciona com gesto do usuário na máquina onde foi concedido. UI avisa que precisa religar.\n- Mensagem do confirm de importação lista quantos processos Sigcrim virão; toast final inclui contagem.\n- popup.html: texto da aba geral atualizado para 'configurações + Sigcrim'.\n\nNão tocado (escopo limitado): a aba 'Backup do Sigcrim' em criminal-config segue intocada — não foi tocada em nada do Sigcrim e seu backup próprio, apenas a aba geral passa a 'levar tudo'.\n\nEntregue na v1.6.8 (commit 5bb33ad). Aprovada pela CWS em 27/05/2026; smoke do owner OK (export com sigcrim.processos populado); pilotos comunicados via broadcast Resend.",
       "categoria": "ergonomia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Pedido do owner em 27/05/2026 (mesma sessão de ERG-20/INFRA-21/GES-09)",
       "tags": ["backup", "popup", "sigcrim", "configuracoes", "migracao", "feature"],
       "esforco": "S",
@@ -6747,16 +6775,30 @@
           "autor": "claude-code/sessao-2026-05-27",
           "data": "2026-05-27T00:00:00.000Z",
           "comando": "Implementado: BACKUP_VERSION=3, exportação inclui sigcrim.config + sigcrim.processos, importação chama substituirAcervoCompleto. popup.html atualizado. build.bat OK. Aguarda release v1.6.8 + smoke do owner em produção (export → import em outra instância)."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Bundle v1.6.8 (commit 5bb33ad) aprovado pela CWS em 27/05/2026. Smoke do owner confirmou que o backup exportado da aba geral contém o campo sigcrim.processos populado. Pilotos comunicados via broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado após aprovação CWS da v1.6.8 e smoke OK."
         }
       ]
     },
     {
       "id": "GES-09",
       "titulo": "Limite customizável de processos mais antigos no Painel Gerencial",
-      "descricao": "Solicitado pelo owner em 27/05/2026: o Painel Gerencial mostra hoje os 10 processos mais antigos no geral e 10 por tarefa (.slice(0, 10) hardcoded em src/gestao-dashboard/gestao-dashboard.ts:230 e :271). A coleta ao PJe via listarProcessosDaTarefa em src/content/pje-api/pje-api-from-content.ts:404 já traz todos os processos da tarefa (paginação sem limite), então o '10' é apenas corte de renderização. Owner quer poder expandir esse corte sem refazer a coleta.\n\nUX: ao lado de cada cabeçalho de seção 'X mais antigos', um <select> com presets 10 / 25 / 50 / 100 / Todos / Outro… A opção Outro… abre prompt validando inteiro entre 1 e 10000 e adiciona a opção dinamicamente.\n\nPersistência: chrome.storage.local com chave 'gestao:limiteMaisAntigos'. Mesma chave compartilhada entre 'geral' e 'por tarefa' por simplicidade — fácil de dividir em chaves separadas no futuro se demandado.\n\n'Todos' representado internamente como Infinity (runtime) e 'todos' (storage). Performance: array já está totalmente carregado em memória; wrapScroll existente garante scroll vertical limitado mesmo com listas longas. Virtualização (se necessária) fica para card futuro.\n\nTítulo das seções atualiza dinamicamente conforme o limite (ex.: '25 mais antigos (geral)', 'Todos os processos por tarefa').\n\nMudar o limite NÃO refaz coleta ao PJe — apenas re-render local das duas seções afetadas.",
+      "descricao": "Solicitado pelo owner em 27/05/2026: o Painel Gerencial mostra hoje os 10 processos mais antigos no geral e 10 por tarefa (.slice(0, 10) hardcoded em src/gestao-dashboard/gestao-dashboard.ts:230 e :271). A coleta ao PJe via listarProcessosDaTarefa em src/content/pje-api/pje-api-from-content.ts:404 já traz todos os processos da tarefa (paginação sem limite), então o '10' é apenas corte de renderização. Owner quer poder expandir esse corte sem refazer a coleta.\n\nUX: ao lado de cada cabeçalho de seção 'X mais antigos', um <select> com presets 10 / 25 / 50 / 100 / Todos / Outro… A opção Outro… abre prompt validando inteiro entre 1 e 10000 e adiciona a opção dinamicamente.\n\nPersistência: chrome.storage.local com chave 'gestao:limiteMaisAntigos'. Mesma chave compartilhada entre 'geral' e 'por tarefa' por simplicidade — fácil de dividir em chaves separadas no futuro se demandado.\n\n'Todos' representado internamente como Infinity (runtime) e 'todos' (storage). Performance: array já está totalmente carregado em memória; wrapScroll existente garante scroll vertical limitado mesmo com listas longas. Virtualização (se necessária) fica para card futuro.\n\nTítulo das seções atualiza dinamicamente conforme o limite (ex.: '25 mais antigos (geral)', 'Todos os processos por tarefa').\n\nMudar o limite NÃO refaz coleta ao PJe — apenas re-render local das duas seções afetadas.\n\nEntregue na v1.6.8 (commit 5bb33ad). Aprovada pela CWS em 27/05/2026; smoke do owner OK (limite muda dinamicamente e persiste entre sessões sem refazer coleta); pilotos comunicados via broadcast Resend.",
       "categoria": "ergonomia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Pedido do owner em 27/05/2026 (Excel em dashboards + limite customizável no Painel Gerencial)",
       "tags": ["painel-gerencial", "gestao", "ux", "limite", "customizacao", "feature"],
       "esforco": "S",
@@ -6790,16 +6832,30 @@
           "autor": "claude-code/sessao-2026-05-27",
           "data": "2026-05-27T00:00:00.000Z",
           "comando": "Implementado: <select> 10/25/50/100/Todos/Outro… com persistência em chrome.storage.local. buildMaisAntigos e buildMaisAntigosPorTarefa refatorados; renderDashboard agora carrega o limite antes do primeiro render e re-renderiza in-place via replaceWith. build.bat OK. Aguarda release v1.6.8 + smoke do owner."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Bundle v1.6.8 (commit 5bb33ad) aprovado pela CWS em 27/05/2026. Smoke do owner confirmou que o seletor de limite muda a tabela dinamicamente, persiste entre sessões e não dispara nova coleta ao PJe. Pilotos comunicados via broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado após aprovação CWS da v1.6.8 e smoke OK."
         }
       ]
     },
     {
       "id": "REL-1.6.8",
       "titulo": "Release v1.6.8 — Excel em dashboards + limite customizável no Painel Gerencial + backup geral inclui Sigcrim",
-      "descricao": "Bundle das melhorias ergonômicas/funcionais pedidas pelo owner em 27/05/2026:\n\n- INFRA-21: helper compartilhado src/shared/xlsx-export.ts (downloadExcel + attachExcelButton) via SheetJS (xlsx ^0.18.5). Carregado só nas páginas de dashboard; sem URL de CDN; passa pelo strip-cdn-urls.mjs.\n- ERG-20: botão Baixar Excel em todos os 9 dashboards (Painel Gerencial, Painel de Triagem 'Analisar tarefas', Metas CNJ, Sigcrim, Prazos na Fita, Perícias, Audiência, Comunicação, Ranking). Colunas tipadas (datas/números/strings), CNJ preservando máscara, sem coluna URL (recortada no smoke a pedido do owner).\n- GES-09: limite customizável no Painel Gerencial — <select> 10/25/50/100/Todos/Outro… nas seções 'X mais antigos (geral)' e 'X mais antigos por tarefa'. Persistido em chrome.storage.local (chave 'gestao:limiteMaisAntigos'). NÃO refaz coleta ao PJe.\n- ERG-21: backup de configurações da aba geral (popup) passa a incluir o acervo completo do Sigcrim (config + processos com réus). BACKUP_VERSION 2→3; aceita pacotes v1/v2 sem tocar no Sigcrim. Nova função substituirAcervoCompleto em criminal-store.ts. Pasta de auto-export NÃO migra (FileSystemHandle por máquina).\n\nMudanças por arquivo:\n- package.json: + xlsx ^0.18.5\n- src/shared/icons.ts: + EXCEL_ICON_SVG\n- src/shared/xlsx-export.ts: NOVO\n- src/shared/criminal-store.ts: + substituirAcervoCompleto\n- src/popup/popup.ts + popup.html: backup v3 com sigcrim\n- src/gestao-dashboard/gestao-dashboard.ts + .css: Excel + seletor de limite\n- src/dashboard/dashboard.ts + .css: Excel em Triagem\n- src/metas-dashboard/dashboard.ts + .css: Excel\n- src/criminal-dashboard/dashboard.ts + .html: Excel no header\n- src/prazos-fita-dashboard/* + .css: Excel por card de tarefa\n- src/pericias-dashboard/pericias-dashboard.ts: Excel ao lado de PDF/DOCX/CSV\n- src/ranking-advogados/ranking.ts + .html: Excel ao lado de PDF/DOCX\n- src/audiencia-painel/painel.ts + .css: Excel por pauta\n- src/comunicacao-painel/painel.ts + .css: Excel por grupo\n\nBump 1.6.7 → 1.6.8. Sem novas permissões, sem novos hosts; xlsx é offline-only — risco CWS baixo.",
+      "descricao": "Bundle das melhorias ergonômicas/funcionais pedidas pelo owner em 27/05/2026:\n\n- INFRA-21: helper compartilhado src/shared/xlsx-export.ts (downloadExcel + attachExcelButton) via SheetJS (xlsx ^0.18.5). Carregado só nas páginas de dashboard; sem URL de CDN; passa pelo strip-cdn-urls.mjs.\n- ERG-20: botão Baixar Excel em todos os 9 dashboards (Painel Gerencial, Painel de Triagem 'Analisar tarefas', Metas CNJ, Sigcrim, Prazos na Fita, Perícias, Audiência, Comunicação, Ranking). Colunas tipadas (datas/números/strings), CNJ preservando máscara, sem coluna URL (recortada no smoke a pedido do owner).\n- GES-09: limite customizável no Painel Gerencial — <select> 10/25/50/100/Todos/Outro… nas seções 'X mais antigos (geral)' e 'X mais antigos por tarefa'. Persistido em chrome.storage.local (chave 'gestao:limiteMaisAntigos'). NÃO refaz coleta ao PJe.\n- ERG-21: backup de configurações da aba geral (popup) passa a incluir o acervo completo do Sigcrim (config + processos com réus). BACKUP_VERSION 2→3; aceita pacotes v1/v2 sem tocar no Sigcrim. Nova função substituirAcervoCompleto em criminal-store.ts. Pasta de auto-export NÃO migra (FileSystemHandle por máquina).\n\nMudanças por arquivo:\n- package.json: + xlsx ^0.18.5\n- src/shared/icons.ts: + EXCEL_ICON_SVG\n- src/shared/xlsx-export.ts: NOVO\n- src/shared/criminal-store.ts: + substituirAcervoCompleto\n- src/popup/popup.ts + popup.html: backup v3 com sigcrim\n- src/gestao-dashboard/gestao-dashboard.ts + .css: Excel + seletor de limite\n- src/dashboard/dashboard.ts + .css: Excel em Triagem\n- src/metas-dashboard/dashboard.ts + .css: Excel\n- src/criminal-dashboard/dashboard.ts + .html: Excel no header\n- src/prazos-fita-dashboard/* + .css: Excel por card de tarefa\n- src/pericias-dashboard/pericias-dashboard.ts: Excel ao lado de PDF/DOCX/CSV\n- src/ranking-advogados/ranking.ts + .html: Excel ao lado de PDF/DOCX\n- src/audiencia-painel/painel.ts + .css: Excel por pauta\n- src/comunicacao-painel/painel.ts + .css: Excel por grupo\n\nBump 1.6.7 → 1.6.8. Sem novas permissões, sem novos hosts; xlsx é offline-only — risco CWS baixo.\n\nCommit 5bb33ad pushed em origin/main 27/05/2026. Aprovação CWS no mesmo dia. Smoke do owner OK. Pilotos comunicados via broadcast Resend. Tag git v1.6.8 + GitHub Release publicada.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "dev",
+      "coluna": "lancado",
       "origem": "skill release-extensao — sessão 27/05/2026",
       "tags": ["release", "extensao", "cws", "excel", "xlsx", "dashboard"],
       "esforco": "XS",
@@ -6824,6 +6880,20 @@
           "autor": "claude-code/sessao-2026-05-27",
           "data": "2026-05-27T00:00:00.000Z",
           "comando": "Card aberto na skill release-extensao após smoke local aprovado pelo owner. Bump 1.6.7 → 1.6.8 confirmado. Bundle reúne INFRA-21 + ERG-20 + GES-09 + ERG-21."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Bundle v1.6.8 (commit 5bb33ad) aprovado pela CWS em 27/05/2026. Smoke do owner em produção (chrome://extensions confirmou 1.6.8 instalado, Excel + limite + backup com sigcrim funcionando). Pilotos comunicados via broadcast Resend. Tag git v1.6.8 + GitHub Release publicada pelo workflow release-extension.yml (job release; publish-cws permanece opt-in)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-05-27",
+          "data": "2026-05-27T00:00:00.000Z",
+          "comando": "Card movido para lançado após aprovação CWS, smoke OK, broadcast aos pilotos e tag v1.6.8 publicada no GitHub."
         }
       ]
     }
