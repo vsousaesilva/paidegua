@@ -17,7 +17,8 @@ import {
 } from '../shared/header-meta';
 import {
   criarBotaoCopiar,
-  criarLinkAbrirExterno
+  criarLinkAbrirExterno,
+  EXCEL_ICON_SVG
 } from '../shared/icons';
 import type {
   AudienciaColetaResult,
@@ -26,6 +27,69 @@ import type {
   AudienciaPautaItem,
   AudienciaTarefaInfo
 } from '../shared/types';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
+
+function parseDataPtBr(s: string | null): Date | null {
+  if (!s) return null;
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(
+    Number(m[3]),
+    Number(m[2]) - 1,
+    Number(m[1]),
+    Number(m[4] ?? 0),
+    Number(m[5] ?? 0)
+  );
+}
+
+const COLUNAS_EXCEL_AUDIENCIA: ExcelColumn<AudienciaPautaItem>[] = [
+  { header: 'Número CNJ', key: (it) => it.numeroProcesso ?? `id ${it.idProcesso}`, type: 'string', width: 28 },
+  { header: 'Classe', key: 'classeJudicial', type: 'string', width: 16 },
+  { header: 'Assunto principal', key: 'assuntoPrincipal', type: 'string', width: 36 },
+  { header: 'Polo ativo', key: 'poloAtivo', type: 'string', width: 30 },
+  { header: 'Tarefa', key: 'tarefaNome', type: 'string', width: 30 },
+  { header: 'Chegada na tarefa', key: (it) => parseDataPtBr(it.dataChegadaTarefa), type: 'date', format: 'dd/mm/yyyy', width: 18 },
+  { header: 'Etiquetas do processo', key: (it) => (it.etiquetasProcesso ?? []).join('; '), type: 'string', width: 36 }
+];
+
+function criarBotaoExcelPauta(
+  titulo: string,
+  obterItens: () => AudienciaPautaItem[],
+  slug: string,
+  sheetName?: string
+): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pauta__excel-btn';
+  btn.title = titulo;
+  btn.setAttribute('aria-label', titulo);
+  btn.innerHTML = EXCEL_ICON_SVG;
+  btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const itens = obterItens();
+    if (itens.length === 0) {
+      alert('Pauta vazia — nada para exportar.');
+      return;
+    }
+    try {
+      downloadExcel(
+        itens,
+        COLUNAS_EXCEL_AUDIENCIA,
+        defaultFileName(`audiencia_${slug}`),
+        { sheetName: (sheetName ?? 'Pauta').slice(0, 31) }
+      );
+    } catch (err) {
+      console.error('[pAIdegua audiencia] excel falhou:', err);
+      alert('Falha ao gerar Excel. Veja o console.');
+    }
+  });
+  return btn;
+}
 
 interface AplicarEtiquetasResponse {
   ok: boolean;
@@ -350,6 +414,14 @@ function renderizarResultado(resp: AudienciaColetaResult): void {
         tamanho: 16
       })
     );
+    head.appendChild(
+      criarBotaoExcelPauta(
+        `Baixar lista de ${resp.naoAgrupados.length} processo(s) em Excel`,
+        () => resp.naoAgrupados,
+        'nao-agrupados',
+        'Não agrupados'
+      )
+    );
     card.appendChild(head);
     const ul = document.createElement('ul');
     ul.className = 'pauta__processos';
@@ -394,6 +466,15 @@ function renderizarPauta(p: AudienciaPauta): HTMLElement {
     tamanho: 16
   });
   head.appendChild(btnCopyAll);
+  const slugAdv = p.advogadoNome.replace(/[^\w-]+/g, '-').toLowerCase().slice(0, 40);
+  head.appendChild(
+    criarBotaoExcelPauta(
+      `Baixar lista de ${p.itens.length} processo(s) em Excel`,
+      () => p.itens,
+      slugAdv,
+      p.advogadoNome.slice(0, 31)
+    )
+  );
   card.appendChild(head);
 
   const etqLinha = document.createElement('div');

@@ -22,6 +22,36 @@ import type {
   PericiaPautaItem,
   PericiasDashboardPayload
 } from '../shared/types';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
+
+function parseDataChegadaPje(s: string | null): Date | null {
+  if (!s) return null;
+  // PJe normalmente entrega "dd/mm/aaaa" ou "dd/mm/aaaa hh:mm"
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(
+    Number(m[3]),
+    Number(m[2]) - 1,
+    Number(m[1]),
+    Number(m[4] ?? 0),
+    Number(m[5] ?? 0)
+  );
+}
+
+const COLUNAS_EXCEL_PERICIAS: ExcelColumn<PericiaPautaItem>[] = [
+  { header: 'Número CNJ', key: (it) => extractCNJ(it.numeroProcesso ?? ''), type: 'string', width: 28 },
+  { header: 'Classe', key: 'classeJudicial', type: 'string', width: 16 },
+  { header: 'Assunto principal', key: 'assuntoPrincipal', type: 'string', width: 36 },
+  { header: 'Polo ativo', key: 'poloAtivo', type: 'string', width: 30 },
+  { header: 'Chegada na tarefa', key: (it) => parseDataChegadaPje(it.dataChegadaTarefa), type: 'date', format: 'dd/mm/yyyy', width: 18 },
+  { header: 'Tarefa', key: 'tarefaNome', type: 'string', width: 30 },
+  { header: 'Etiqueta-fonte', key: 'etiquetaOrigemNome', type: 'string', width: 30 },
+  { header: 'Etiquetas do processo', key: (it) => (it.etiquetasProcesso ?? []).join('; '), type: 'string', width: 36 }
+];
 
 const LOG = `${LOG_PREFIX} [pericias-dashboard]`;
 
@@ -234,6 +264,28 @@ function buildPautaCard(pauta: PericiaPauta): HTMLElement {
     void copyToClipboard(txt, `Copiado: ${pauta.itens.length} processo(s).`);
   });
   toolbar.appendChild(btnCopy);
+
+  const btnExcel = buildBtn('Baixar Excel', () => {
+    if (!pauta.itens.length) {
+      showToast('Pauta vazia — nada para exportar.');
+      return;
+    }
+    try {
+      const slug = (pauta.peritoNomeCompleto ?? `perito-${pauta.peritoId}`)
+        .replace(/[^\w-]+/g, '-').toLowerCase().slice(0, 40);
+      downloadExcel(
+        pauta.itens,
+        COLUNAS_EXCEL_PERICIAS,
+        defaultFileName(`pericias_${slug}`),
+        { sheetName: (pauta.peritoNomeCompleto ?? 'Pauta').slice(0, 31) }
+      );
+      showToast(`Excel gerado: ${pauta.itens.length} processo(s).`);
+    } catch (err) {
+      console.error('[pAIdegua pericias] excel falhou:', err);
+      showToast('Falha ao gerar Excel. Veja o console.');
+    }
+  });
+  toolbar.appendChild(btnExcel);
 
   const btnCsv = buildBtn('Baixar CSV', () => {
     baixarCsvPauta(pauta);

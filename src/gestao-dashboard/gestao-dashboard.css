@@ -412,6 +412,61 @@ a:hover { text-decoration: underline; }
   outline-offset: 2px;
 }
 
+/* Botão de baixar Excel — irmão do .copy-btn, à esquerda dele. */
+.xlsx-btn {
+  position: absolute;
+  top: 16px;
+  right: 56px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 7px;
+  cursor: pointer;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.xlsx-btn:hover {
+  background: rgba(33, 115, 70, 0.10);
+  color: #217346;
+  border-color: var(--border-strong);
+}
+.xlsx-btn:active { background: rgba(33, 115, 70, 0.18); }
+.xlsx-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+.xlsx-btn.is-ok { color: #217346; border-color: #217346; }
+.xlsx-btn.is-err { color: #b00020; border-color: #b00020; }
+
+/* Seletor "Mostrar: 10 ▼" no cabeçalho das seções de mais antigos. */
+.limite-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.limite-selector__label { font-weight: 500; }
+.limite-selector__select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.limite-selector__select:hover { border-color: var(--border-strong); }
+.limite-selector__select:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 1px;
+}
+
 /* Toast de confirmação. */
 .toast {
   position: fixed;

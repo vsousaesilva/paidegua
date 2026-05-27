@@ -134,6 +134,23 @@ html, body {
 .pauta__copy-all.is-ok { color: var(--success); border-color: rgba(30, 126, 52, 0.4); }
 .pauta__copy-all.is-err { color: var(--danger); border-color: rgba(192, 57, 43, 0.4); }
 
+.pauta__excel-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 6px;
+  color: #217346;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  line-height: 0;
+  margin-left: 6px;
+}
+.pauta__excel-btn svg { width: 16px; height: 16px; }
+.pauta__excel-btn:hover {
+  background: rgba(33, 115, 70, 0.08);
+  border-color: #217346;
+}
+
 .input {
   padding: 8px 10px;
   border: 1px solid var(--border-strong);

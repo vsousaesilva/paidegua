@@ -27,6 +27,48 @@ import type {
   ProcessoExpediente,
   StatusPrazo
 } from '../shared/types';
+import { EXCEL_ICON_SVG } from '../shared/icons';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
+
+function parseDataHoraPje(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!m) return null;
+  return new Date(
+    Number(m[3]),
+    Number(m[2]) - 1,
+    Number(m[1]),
+    Number(m[4] ?? 0),
+    Number(m[5] ?? 0),
+    Number(m[6] ?? 0)
+  );
+}
+
+/** Colunas Excel para uma LinhaExpediente do dashboard Prazos na Fita. */
+const COLUNAS_EXCEL_PRAZOS: ExcelColumn<LinhaExpediente>[] = [
+  { header: 'Número CNJ', key: (l) => extractCnjLocal(l.numeroProcesso), type: 'string', width: 28 },
+  { header: 'Tarefa', key: 'tarefaNome', type: 'string', width: 30 },
+  { header: 'Tipo do ato', key: (l) => l.exp.tipoAto, type: 'string', width: 24 },
+  { header: 'Destinatário', key: (l) => l.exp.destinatario, type: 'string', width: 30 },
+  { header: 'Ciência registrada', key: (l) => (l.exp.cienciaRegistrada ? 'Sim' : 'Não'), type: 'string', width: 12 },
+  { header: 'Data ciência', key: (l) => parseDataHoraPje(l.exp.cienciaDataHora), type: 'date', format: 'dd/mm/yyyy hh:mm', width: 18 },
+  { header: 'Data limite', key: (l) => parseDataHoraPje(l.exp.dataLimite), type: 'date', format: 'dd/mm/yyyy hh:mm', width: 18 },
+  { header: 'Dias restantes', key: 'diasRestantes', type: 'number', width: 14 },
+  { header: 'Prazo (dias)', key: (l) => l.exp.prazoDias, type: 'number', width: 12 },
+  { header: 'Natureza prazo', key: (l) => l.exp.naturezaPrazoLiteral, type: 'string', width: 20 },
+  { header: 'Status', key: (l) => l.exp.status, type: 'string', width: 14 },
+  { header: 'Anomalias', key: (l) => (l.exp.anomalias ?? []).join('; '), type: 'string', width: 24 }
+];
+
+function extractCnjLocal(raw: string): string {
+  if (!raw) return '';
+  const m = raw.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/);
+  return m ? m[0] : raw.trim();
+}
 
 /**
  * Estado do streaming: o payload carregado pode estar em andamento
@@ -603,8 +645,15 @@ function renderCardTarefaInner(tarefa: string): string {
   const sub = total > 10
     ? `${total} expediente(s) aberto(s) — role a lista para ver os demais. Clique no ícone do cabeçalho para ordenar.`
     : `${total} expediente(s) aberto(s). Clique no ícone do cabeçalho para ordenar.`;
+  const xlsxBtn =
+    `<button type="button" class="card__xlsx-btn" data-tarefa="${escapeAttr(tarefa)}" ` +
+    `title="Baixar lista em Excel" aria-label="Baixar lista da tarefa ${escapeAttr(tarefa)} em Excel">` +
+    `${EXCEL_ICON_SVG}<span>Excel</span></button>`;
   return (
-    `<h2 class="card__title">${escapeHtml(tarefa)}</h2>` +
+    `<div class="card__head">` +
+      `<h2 class="card__title">${escapeHtml(tarefa)}</h2>` +
+      xlsxBtn +
+    `</div>` +
     `<p class="card__sub">${escapeHtml(sub)}</p>` +
     `<div class="${wrapCls}"><table><thead><tr>` +
     COLUNAS.map((c) => renderTh(c, state)).join('') +
@@ -1002,6 +1051,31 @@ function instalarCopyDelegation(): void {
   document.addEventListener('click', (ev) => {
     const target = ev.target as HTMLElement | null;
     if (!target) return;
+    const xlsxBtn = target.closest<HTMLElement>('.card__xlsx-btn');
+    if (xlsxBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const tarefa = xlsxBtn.dataset.tarefa || '';
+      const linhas = tarefa ? (linhasPorTarefa.get(tarefa) ?? []) : [];
+      if (linhas.length === 0) {
+        showToast('Sem expedientes para exportar nesta tarefa.');
+        return;
+      }
+      try {
+        const slug = tarefa.replace(/[^\w-]+/g, '-').toLowerCase().slice(0, 40);
+        downloadExcel(
+          linhas,
+          COLUNAS_EXCEL_PRAZOS,
+          defaultFileName(`prazos-fita_${slug}`),
+          { sheetName: tarefa.slice(0, 31) }
+        );
+        showToast(`Excel gerado: ${linhas.length} expediente(s).`);
+      } catch (err) {
+        console.error('[pAIdegua prazos] excel falhou:', err);
+        showToast('Falha ao gerar Excel. Veja o console.');
+      }
+      return;
+    }
     const copyBtn = target.closest<HTMLElement>('.proc-copy');
     if (copyBtn) {
       ev.preventDefault();

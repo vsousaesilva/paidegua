@@ -243,16 +243,49 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-soft);
 }
 
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .card__title {
   margin: 0 0 4px;
   font-size: 16px;
   color: var(--primary-dark);
 }
+.card__head .card__title { margin: 0; }
 
 .card__sub {
   margin: 0 0 14px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.card__xlsx-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #217346;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+.card__xlsx-btn:hover {
+  background: rgba(33, 115, 70, 0.08);
+  border-color: #217346;
+}
+.card__xlsx-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
 }
 
 .table-wrap {

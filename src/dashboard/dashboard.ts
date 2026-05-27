@@ -25,6 +25,40 @@ import type {
   TriagemProcesso,
   TriagemSugestao
 } from '../shared/types';
+import { attachExcelButton, type ExcelColumn } from '../shared/xlsx-export';
+
+function parseDataTriagem(raw: string | null): Date | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  let m = s.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const aa = Number(m[3]);
+    const ano = aa < 70 ? 2000 + aa : 1900 + aa;
+    return new Date(ano, Number(m[2]) - 1, Number(m[1]));
+  }
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return null;
+}
+
+function extractCnjTriagem(raw: string): string {
+  if (!raw) return '';
+  const m = raw.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/);
+  return m ? m[0] : raw.trim();
+}
+
+const COLUNAS_EXCEL_TRIAGEM: ExcelColumn<TriagemProcesso>[] = [
+  { header: 'Número CNJ', key: (p) => extractCnjTriagem(p.numeroProcesso), type: 'string', width: 28 },
+  { header: 'Assunto', key: 'assunto', type: 'string', width: 40 },
+  { header: 'Órgão', key: 'orgao', type: 'string', width: 30 },
+  { header: 'Dias na tarefa', key: 'diasNaTarefa', type: 'number', width: 14 },
+  { header: 'Data de entrada', key: (p) => parseDataTriagem(p.dataEntradaTarefa), type: 'date', width: 16 },
+  { header: 'Dias último movimento', key: 'diasUltimoMovimento', type: 'number', width: 18 },
+  { header: 'Última movimentação', key: 'ultimaMovimentacaoTexto', type: 'string', width: 50 },
+  { header: 'Prioritário', key: (p) => (p.prioritario ? 'Sim' : 'Não'), type: 'string', width: 12 },
+  { header: 'Sigiloso', key: (p) => (p.sigiloso ? 'Sim' : 'Não'), type: 'string', width: 10 },
+  { header: 'Etiquetas', key: (p) => (p.etiquetas ?? []).join('; '), type: 'string', width: 30 }
+];
 
 interface AggSubject {
   assunto: string;
@@ -323,6 +357,13 @@ function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
   makeTableSortable(table, ord, procTableColumns());
   sec.appendChild(wrapScroll(table));
   attachCopyButton(sec, () => procsToText(ord), 'Copiar lista de processos');
+  attachExcelButton(
+    sec,
+    () => ord,
+    COLUNAS_EXCEL_TRIAGEM,
+    'triagem_mais-antigos',
+    { label: 'Baixar lista em Excel', sheetName: 'Mais antigos', onToast: showToast }
+  );
   return sec;
 }
 
@@ -435,6 +476,13 @@ function buildAssuntos(procs: TriagemProcesso[]): HTMLElement {
     () => procsToText(todosProcs),
     'Copiar lista de processos'
   );
+  attachExcelButton(
+    sec,
+    () => todosProcs,
+    COLUNAS_EXCEL_TRIAGEM,
+    'triagem_por-assunto',
+    { label: 'Baixar consolidado em Excel', sheetName: 'Por assunto', onToast: showToast }
+  );
   return sec;
 }
 
@@ -524,6 +572,13 @@ function buildPrioritarios(procs: TriagemProcesso[]): HTMLElement {
   const lista = procs.filter((p) => p.prioritario);
   sec.appendChild(buildProcLista(lista));
   attachCopyButton(sec, () => procsToText(lista), 'Copiar lista de processos');
+  attachExcelButton(
+    sec,
+    () => lista,
+    COLUNAS_EXCEL_TRIAGEM,
+    'triagem_prioritarios',
+    { label: 'Baixar lista em Excel', sheetName: 'Prioritários', onToast: showToast }
+  );
   return sec;
 }
 
@@ -533,6 +588,13 @@ function buildSigilosos(procs: TriagemProcesso[]): HTMLElement {
   const lista = procs.filter((p) => p.sigiloso);
   sec.appendChild(buildProcLista(lista));
   attachCopyButton(sec, () => procsToText(lista), 'Copiar lista de processos');
+  attachExcelButton(
+    sec,
+    () => lista,
+    COLUNAS_EXCEL_TRIAGEM,
+    'triagem_sigilosos',
+    { label: 'Baixar lista em Excel', sheetName: 'Sigilosos', onToast: showToast }
+  );
   return sec;
 }
 

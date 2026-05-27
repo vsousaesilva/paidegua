@@ -217,6 +217,24 @@ html, body {
 }
 .grupo-perito__copy-all.is-ok { color: var(--success); border-color: rgba(30, 126, 52, 0.4); }
 .grupo-perito__copy-all.is-err { color: var(--danger); border-color: rgba(192, 57, 43, 0.4); }
+
+.grupo-perito__excel-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 6px;
+  color: #217346;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  line-height: 0;
+  margin-left: 6px;
+}
+.grupo-perito__excel-btn svg { width: 16px; height: 16px; }
+.grupo-perito__excel-btn:hover {
+  background: rgba(33, 115, 70, 0.08);
+  border-color: #217346;
+}
+
 .grupo-perito__cobranca { color: var(--warning); font-size: 11px; }
 .grupo-perito__processos {
   list-style: none; margin: 10px 0 0; padding: 0;

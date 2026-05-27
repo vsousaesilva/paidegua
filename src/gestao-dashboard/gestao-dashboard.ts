@@ -32,6 +32,39 @@ import type {
   TriagemProcesso,
   TriagemTarefaSnapshot
 } from '../shared/types';
+import { attachExcelButton, type ExcelColumn } from '../shared/xlsx-export';
+
+/**
+ * Chave em chrome.storage.local que guarda o limite escolhido para as
+ * seções "X mais antigos (geral)" e "X mais antigos por tarefa". Valor
+ * é número inteiro positivo ou a string 'todos'. Default 10.
+ */
+const STORAGE_KEY_LIMITE = 'gestao:limiteMaisAntigos';
+const LIMITE_DEFAULT = 10;
+/** Valor interno usado para representar "Todos" em runtime. */
+const LIMITE_TODOS = Number.POSITIVE_INFINITY;
+
+async function loadLimiteMaisAntigos(): Promise<number> {
+  try {
+    const out = await chrome.storage.local.get(STORAGE_KEY_LIMITE);
+    const raw = out?.[STORAGE_KEY_LIMITE];
+    if (raw === 'todos') return LIMITE_TODOS;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1 && n <= 10000) return Math.floor(n);
+    return LIMITE_DEFAULT;
+  } catch {
+    return LIMITE_DEFAULT;
+  }
+}
+
+async function saveLimiteMaisAntigos(limite: number): Promise<void> {
+  try {
+    const val = limite === LIMITE_TODOS ? 'todos' : Math.floor(limite);
+    await chrome.storage.local.set({ [STORAGE_KEY_LIMITE]: val });
+  } catch (err) {
+    console.warn('[pAIdegua gestao] falha ao persistir limite:', err);
+  }
+}
 
 void main();
 instalarCleanupNoFechamento();
@@ -48,7 +81,8 @@ async function main(): Promise<void> {
       return;
     }
     renderMeta(meta, payload);
-    renderDashboard(root, payload);
+    const limiteInicial = await loadLimiteMaisAntigos();
+    renderDashboard(root, payload, limiteInicial);
     if (payload.urlHydrationScanId) {
       instalarHidratacaoUrls(payload);
     }
@@ -117,17 +151,46 @@ function extractUnidadeJudicial(payload: GestaoDashboardPayload): string {
   return payload.hostnamePJe;
 }
 
-function renderDashboard(root: HTMLElement, payload: GestaoDashboardPayload): void {
+function renderDashboard(
+  root: HTMLElement,
+  payload: GestaoDashboardPayload,
+  limiteInicial: number
+): void {
   root.innerHTML = '';
 
   const todos = payload.tarefas.flatMap((t) => t.processos);
   const ind = payload.indicadores;
 
+  // Estado compartilhado do limite das seções "mais antigos".
+  const limiteState: { value: number } = { value: limiteInicial };
+
   root.appendChild(buildMetricas(ind, payload.totalProcessos, todos));
 
-  // Linha 1: 10 mais antigos (geral) | faixas de tempo
+  // Refs vivas das duas seções afetadas pelo limite (re-renderizadas
+  // in-place quando o usuário muda o seletor).
+  let secGeral: HTMLElement;
+  let secPorTarefa: HTMLElement;
+
+  const aplicarNovoLimite = (novo: number): void => {
+    limiteState.value = novo;
+    void saveLimiteMaisAntigos(novo);
+    const novaGeral = buildMaisAntigos(todos, limiteState.value, aplicarNovoLimite);
+    secGeral.replaceWith(novaGeral);
+    secGeral = novaGeral;
+    const novaPorTarefa = buildMaisAntigosPorTarefa(
+      payload.tarefas,
+      ind.limiarAtrasoDias,
+      limiteState.value,
+      aplicarNovoLimite
+    );
+    secPorTarefa.replaceWith(novaPorTarefa);
+    secPorTarefa = novaPorTarefa;
+  };
+
+  // Linha 1: X mais antigos (geral) | faixas de tempo
   const grid1 = el('section', 'grid-2');
-  grid1.appendChild(buildMaisAntigos(todos));
+  secGeral = buildMaisAntigos(todos, limiteState.value, aplicarNovoLimite);
+  grid1.appendChild(secGeral);
   grid1.appendChild(buildFaixas(todos, ind.limiarAtrasoDias));
   root.appendChild(grid1);
 
@@ -137,8 +200,14 @@ function renderDashboard(root: HTMLElement, payload: GestaoDashboardPayload): vo
   grid2.appendChild(buildTopEtiquetas(ind));
   root.appendChild(grid2);
 
-  // Card NOVO com destaque: 10 mais antigos POR tarefa
-  root.appendChild(buildMaisAntigosPorTarefa(payload.tarefas, ind.limiarAtrasoDias));
+  // Card NOVO com destaque: X mais antigos POR tarefa
+  secPorTarefa = buildMaisAntigosPorTarefa(
+    payload.tarefas,
+    ind.limiarAtrasoDias,
+    limiteState.value,
+    aplicarNovoLimite
+  );
+  root.appendChild(secPorTarefa);
 
   // Prioritários / sigilosos (só aparecem quando existem)
   if (todos.some((p) => p.prioritario)) {
@@ -220,14 +289,21 @@ function pct(n: number, total: number): string {
 // 10 mais antigos (geral)
 // =====================================================================
 
-function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
-  const sec = section('10 processos mais antigos (geral)');
-  setHint(sec, 'Ordenados pelos dias decorridos desde a entrada na tarefa atual.');
-
-  const ord = [...procs]
+function buildMaisAntigos(
+  procs: TriagemProcesso[],
+  limite: number,
+  onChangeLimite: (novo: number) => void
+): HTMLElement {
+  const ordenados = [...procs]
     .filter((p) => p.diasNaTarefa !== null)
-    .sort((a, b) => (b.diasNaTarefa ?? 0) - (a.diasNaTarefa ?? 0))
-    .slice(0, 10);
+    .sort((a, b) => (b.diasNaTarefa ?? 0) - (a.diasNaTarefa ?? 0));
+
+  const ord = aplicarLimite(ordenados, limite);
+  const titulo = `${tituloLimite(limite, ordenados.length)} processos mais antigos (geral)`;
+
+  const sec = section(titulo);
+  setHint(sec, 'Ordenados pelos dias decorridos desde a entrada na tarefa atual.');
+  appendLimiteSelector(sec, limite, ordenados.length, onChangeLimite);
 
   if (ord.length === 0) {
     sec.appendChild(textEl('p', 'section__hint', 'Sem datas de entrada disponíveis.'));
@@ -236,6 +312,17 @@ function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
 
   sec.appendChild(wrapScroll(buildProcTable(ord)));
   attachCopyButton(sec, () => procsToText(ord), 'Copiar lista de processos');
+  attachExcelButton(
+    sec,
+    () => ord,
+    COLUNAS_EXCEL_PROCESSO,
+    'painel-gerencial_mais-antigos-geral',
+    {
+      label: 'Baixar lista em Excel',
+      sheetName: 'Mais antigos (geral)',
+      onToast: showToast
+    }
+  );
   return sec;
 }
 
@@ -245,30 +332,41 @@ function buildMaisAntigos(procs: TriagemProcesso[]): HTMLElement {
 
 function buildMaisAntigosPorTarefa(
   tarefas: TriagemTarefaSnapshot[],
-  limiar: number
+  limiar: number,
+  limite: number,
+  onChangeLimite: (novo: number) => void
 ): HTMLElement {
   const sec = el('section', 'section section--copy section--highlight');
-  sec.appendChild(textEl('h2', '', '10 mais antigos por tarefa'));
-  setHint(
-    sec,
-    'Para cada tarefa varrida, os 10 processos com mais tempo parado. ' +
-      'Use para redistribuir carga e priorizar a vista imediata.'
-  );
 
   const ordenadas = [...tarefas].sort((a, b) => {
     const maxA = Math.max(0, ...a.processos.map((p) => p.diasNaTarefa ?? 0));
     const maxB = Math.max(0, ...b.processos.map((p) => p.diasNaTarefa ?? 0));
     return maxB - maxA;
   });
+  // Para o título e seletor, usamos o maior tamanho disponível entre as tarefas
+  // (o limite real é aplicado por tarefa abaixo).
+  const totalMaxPorTarefa = Math.max(
+    0,
+    ...ordenadas.map((t) => t.processos.filter((p) => p.diasNaTarefa !== null).length)
+  );
+
+  const titulo = `${tituloLimite(limite, totalMaxPorTarefa)} mais antigos por tarefa`;
+  sec.appendChild(textEl('h2', '', titulo));
+  setHint(
+    sec,
+    'Para cada tarefa varrida, os processos com mais tempo parado. ' +
+      'Use para redistribuir carga e priorizar a vista imediata.'
+  );
+  appendLimiteSelector(sec, limite, totalMaxPorTarefa, onChangeLimite);
 
   const todosListados: TriagemProcesso[] = [];
 
   const wrap = el('div', 'tarefa-cards');
   for (const t of ordenadas) {
-    const ord = [...t.processos]
+    const ordenadosTarefa = [...t.processos]
       .filter((p) => p.diasNaTarefa !== null)
-      .sort((a, b) => (b.diasNaTarefa ?? 0) - (a.diasNaTarefa ?? 0))
-      .slice(0, 10);
+      .sort((a, b) => (b.diasNaTarefa ?? 0) - (a.diasNaTarefa ?? 0));
+    const ord = aplicarLimite(ordenadosTarefa, limite);
     todosListados.push(...ord);
 
     const card = el('div', 'tarefa-card');
@@ -299,6 +397,17 @@ function buildMaisAntigosPorTarefa(
     sec,
     () => procsToText(todosListados),
     'Copiar lista consolidada dos mais antigos'
+  );
+  attachExcelButton(
+    sec,
+    () => todosListados,
+    COLUNAS_EXCEL_PROCESSO_COM_TAREFA(ordenadas),
+    'painel-gerencial_mais-antigos-por-tarefa',
+    {
+      label: 'Baixar lista consolidada em Excel',
+      sheetName: 'Mais antigos por tarefa',
+      onToast: showToast
+    }
   );
   return sec;
 }
@@ -410,6 +519,13 @@ function buildPrioritarios(procs: TriagemProcesso[]): HTMLElement {
   const lista = procs.filter((p) => p.prioritario);
   sec.appendChild(wrapScroll(buildProcTable(lista)));
   attachCopyButton(sec, () => procsToText(lista), 'Copiar lista de processos');
+  attachExcelButton(
+    sec,
+    () => lista,
+    COLUNAS_EXCEL_PROCESSO,
+    'painel-gerencial_prioritarios',
+    { label: 'Baixar lista em Excel', sheetName: 'Prioritários', onToast: showToast }
+  );
   return sec;
 }
 
@@ -419,6 +535,13 @@ function buildSigilosos(procs: TriagemProcesso[]): HTMLElement {
   const lista = procs.filter((p) => p.sigiloso);
   sec.appendChild(wrapScroll(buildProcTable(lista)));
   attachCopyButton(sec, () => procsToText(lista), 'Copiar lista de processos');
+  attachExcelButton(
+    sec,
+    () => lista,
+    COLUNAS_EXCEL_PROCESSO,
+    'painel-gerencial_sigilosos',
+    { label: 'Baixar lista em Excel', sheetName: 'Sigilosos', onToast: showToast }
+  );
   return sec;
 }
 
@@ -938,6 +1061,179 @@ function procsToText(procs: TriagemProcesso[]): string {
     .map((p) => extractCNJ(p.numeroProcesso))
     .filter((n) => n && n.trim())
     .join('\n');
+}
+
+// =====================================================================
+// Limite customizável das seções "X mais antigos"
+// =====================================================================
+
+function aplicarLimite<T>(arr: T[], limite: number): T[] {
+  if (!Number.isFinite(limite) || limite >= arr.length) return arr.slice();
+  return arr.slice(0, Math.max(0, Math.floor(limite)));
+}
+
+function tituloLimite(limite: number, total: number): string {
+  if (!Number.isFinite(limite) || limite >= total) return 'Todos os';
+  return String(Math.floor(limite));
+}
+
+/**
+ * Insere o seletor "Mostrar: 10 ▼" no cabeçalho da seção, com presets
+ * 10/25/50/100/Todos/Outro… O valor atual fica selecionado.
+ */
+function appendLimiteSelector(
+  sec: HTMLElement,
+  limiteAtual: number,
+  total: number,
+  onChange: (novo: number) => void
+): void {
+  const wrap = el('div', 'limite-selector');
+  const label = textEl('label', 'limite-selector__label', 'Mostrar:');
+  const sel = document.createElement('select');
+  sel.className = 'limite-selector__select';
+
+  const PRESETS = [10, 25, 50, 100];
+  const isTodos = limiteAtual === LIMITE_TODOS || limiteAtual >= total;
+  const isCustom =
+    !isTodos &&
+    Number.isFinite(limiteAtual) &&
+    !PRESETS.includes(Math.floor(limiteAtual));
+
+  for (const n of PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = String(n);
+    if (!isTodos && !isCustom && Math.floor(limiteAtual) === n) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  if (isCustom) {
+    const opt = document.createElement('option');
+    opt.value = String(Math.floor(limiteAtual));
+    opt.textContent = String(Math.floor(limiteAtual));
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
+  const optTodos = document.createElement('option');
+  optTodos.value = 'todos';
+  optTodos.textContent = 'Todos';
+  if (isTodos) optTodos.selected = true;
+  sel.appendChild(optTodos);
+
+  const optOutro = document.createElement('option');
+  optOutro.value = 'outro';
+  optOutro.textContent = 'Outro…';
+  sel.appendChild(optOutro);
+
+  sel.addEventListener('change', () => {
+    const v = sel.value;
+    if (v === 'todos') {
+      onChange(LIMITE_TODOS);
+      return;
+    }
+    if (v === 'outro') {
+      const entrada = window.prompt('Quantos processos mostrar? (1 a 10000)');
+      if (entrada === null) {
+        // cancelado: volta ao valor anterior
+        sincronizarSelecao(sel, limiteAtual, total);
+        return;
+      }
+      const n = Number(entrada.trim().replace(',', '.'));
+      if (!Number.isFinite(n) || n < 1 || n > 10000) {
+        window.alert('Informe um número inteiro entre 1 e 10000.');
+        sincronizarSelecao(sel, limiteAtual, total);
+        return;
+      }
+      onChange(Math.floor(n));
+      return;
+    }
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) onChange(Math.floor(n));
+  });
+
+  wrap.appendChild(label);
+  wrap.appendChild(sel);
+  sec.appendChild(wrap);
+}
+
+function sincronizarSelecao(sel: HTMLSelectElement, limite: number, total: number): void {
+  if (limite === LIMITE_TODOS || limite >= total) {
+    sel.value = 'todos';
+    return;
+  }
+  sel.value = String(Math.floor(limite));
+}
+
+// =====================================================================
+// Colunas Excel — TriagemProcesso
+// =====================================================================
+
+/**
+ * Converte a string de data do PJe ("dd-mm-aa" ou "dd/mm/aaaa") em Date,
+ * ou null se não der para parsear. O PJe entrega ano com 2 dígitos —
+ * assumimos 2000+ para anos < 70 e 1900+ para o restante (heurística).
+ */
+function parseDataPje(raw: string | null): Date | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  // dd-mm-aa
+  let m = s.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    const aa = Number(m[3]);
+    const ano = aa < 70 ? 2000 + aa : 1900 + aa;
+    return new Date(ano, mm - 1, dd);
+  }
+  // dd/mm/aaaa
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  }
+  // dd-mm-aaaa
+  m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (m) {
+    return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  }
+  return null;
+}
+
+/** Colunas Excel padrão para listas de TriagemProcesso (sem nome de tarefa). */
+const COLUNAS_EXCEL_PROCESSO: ExcelColumn<TriagemProcesso>[] = [
+  { header: 'Número CNJ', key: (p) => extractCNJ(p.numeroProcesso), type: 'string', width: 28 },
+  { header: 'Assunto', key: 'assunto', type: 'string', width: 40 },
+  { header: 'Órgão', key: 'orgao', type: 'string', width: 30 },
+  { header: 'Dias na tarefa', key: 'diasNaTarefa', type: 'number', width: 14 },
+  { header: 'Data de entrada', key: (p) => parseDataPje(p.dataEntradaTarefa), type: 'date', width: 16 },
+  { header: 'Dias último movimento', key: 'diasUltimoMovimento', type: 'number', width: 18 },
+  { header: 'Última movimentação', key: 'ultimaMovimentacaoTexto', type: 'string', width: 50 },
+  { header: 'Prioritário', key: (p) => (p.prioritario ? 'Sim' : 'Não'), type: 'string', width: 12 },
+  { header: 'Sigiloso', key: (p) => (p.sigiloso ? 'Sim' : 'Não'), type: 'string', width: 10 },
+  { header: 'Etiquetas', key: (p) => (p.etiquetas ?? []).join('; '), type: 'string', width: 30 }
+];
+
+/**
+ * Colunas com nome da tarefa à frente — usadas no consolidado "por
+ * tarefa". O nome da tarefa é resolvido olhando em qual snapshot o
+ * idProcesso se encontra.
+ */
+function COLUNAS_EXCEL_PROCESSO_COM_TAREFA(
+  tarefas: TriagemTarefaSnapshot[]
+): ExcelColumn<TriagemProcesso>[] {
+  const tarefaPorIdProcesso = new Map<string, string>();
+  for (const t of tarefas) {
+    for (const p of t.processos) {
+      tarefaPorIdProcesso.set(p.idProcesso, t.tarefaNome);
+    }
+  }
+  return [
+    {
+      header: 'Tarefa',
+      key: (p) => tarefaPorIdProcesso.get(p.idProcesso) ?? '',
+      type: 'string',
+      width: 32
+    },
+    ...COLUNAS_EXCEL_PROCESSO
+  ];
 }
 
 const COPY_ICON_SVG =

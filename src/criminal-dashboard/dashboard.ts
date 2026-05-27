@@ -56,6 +56,68 @@ import {
 } from '../shared/pje-task-popup';
 import { parsePdf } from '../content/pdf-parser';
 import { ocrPdf } from '../content/ocr';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
+
+/** Colunas Excel para exportação do acervo criminal (Sigcrim). */
+const COLUNAS_EXCEL_CRIMINAL: ExcelColumn<Processo>[] = [
+  { header: 'Número CNJ', key: 'numero_processo', type: 'string', width: 28 },
+  { header: 'Classe CNJ', key: 'classe_cnj', type: 'number', width: 10 },
+  {
+    header: 'Trilha',
+    key: (p) => (p.is_classe_primaria ? 'primária' : 'auxiliar'),
+    type: 'string',
+    width: 12
+  },
+  {
+    header: 'Categoria',
+    key: 'classe_categoria',
+    type: 'string',
+    width: 18
+  },
+  {
+    header: 'Réu principal',
+    key: (p) => p.reus?.[0]?.nome_reu ?? '',
+    type: 'string',
+    width: 32
+  },
+  {
+    header: 'Total de réus',
+    key: (p) => (p.reus?.length ?? 0),
+    type: 'number',
+    width: 12
+  },
+  {
+    header: 'Data recebimento denúncia',
+    key: (p) => parseIsoDateLocal(p.data_recebimento_denuncia ?? null),
+    type: 'date',
+    width: 18
+  },
+  {
+    header: 'Última sincronização PJe',
+    key: (p) => parseIsoDateTimeLocal(p.ultima_sincronizacao_pje ?? null),
+    type: 'date',
+    format: 'dd/mm/yyyy hh:mm',
+    width: 20
+  },
+  { header: 'Hostname PJe', key: 'hostname_pje', type: 'string', width: 24 }
+];
+
+function parseIsoDateLocal(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function parseIsoDateTimeLocal(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 // ── Ícones (SVG inline) ─────────────────────────────────────────
 
@@ -2738,6 +2800,26 @@ document.addEventListener('DOMContentLoaded', () => {
       'Para iniciar uma nova varredura, abra o painel-usuário do PJe e ' +
         'clique no botão "Sigcrim" na sidebar do paidegua.'
     );
+  });
+
+  $<HTMLButtonElement>('btn-baixar-excel').addEventListener('click', () => {
+    const lista = state.filtrados;
+    if (!lista || lista.length === 0) {
+      showToast('Lista vazia — nada para exportar.');
+      return;
+    }
+    try {
+      downloadExcel(
+        lista,
+        COLUNAS_EXCEL_CRIMINAL,
+        defaultFileName('sigcrim_acervo'),
+        { sheetName: 'Acervo Criminal' }
+      );
+      showToast(`Excel gerado: ${lista.length} processo(s).`);
+    } catch (err) {
+      console.error('[pAIdegua sigcrim] excel falhou:', err);
+      showToast('Falha ao gerar Excel. Veja o console.');
+    }
   });
 
   // Busca + filtros

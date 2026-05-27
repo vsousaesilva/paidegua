@@ -67,6 +67,12 @@ import {
   isGestaoProfileAvailable,
   isSecretariaProfileAvailable
 } from '../shared/pje-host';
+import {
+  listAllProcessos as listAllProcessosSigcrim,
+  loadCriminalConfig,
+  substituirAcervoCompleto as substituirAcervoSigcrim
+} from '../shared/criminal-store';
+import type { CriminalConfig, Processo as ProcessoSigcrim } from '../shared/criminal-types';
 
 interface SettingsResponse {
   ok: boolean;
@@ -2644,14 +2650,27 @@ function bindPericiasEvents(): void {
  * v1 → v2 (2026-05-09, v1.5.1): adiciona `uiToggles` e
  * `jornadasTelemetriaOptIn`. Campos opcionais — leitores v2 aceitam
  * pacotes v1 (compatibilidade pra trás).
+ *
+ * v2 → v3 (2026-05-27, v1.6.8): adiciona `sigcrim` (config + acervo
+ * completo do Sigcrim) para que o backup geral "leve" todos os dados
+ * do usuário (exceto chaves de API). Campo opcional — leitores v3
+ * aceitam pacotes v1/v2 normalmente; quando ausente, o acervo Sigcrim
+ * não é tocado na restauração.
  */
-const BACKUP_VERSION = 2 as const;
-const BACKUP_VERSIONS_ACEITAS: readonly number[] = [1, 2];
+const BACKUP_VERSION = 3 as const;
+const BACKUP_VERSIONS_ACEITAS: readonly number[] = [1, 2, 3];
+
+interface BackupSigcrim {
+  /** Configuração do Sigcrim (pasta de auto-export NÃO entra). */
+  config?: CriminalConfig;
+  /** Acervo completo — processos com réus embutidos. */
+  processos: ProcessoSigcrim[];
+}
 
 interface BackupPacote {
   pacote: 'paidegua-config';
-  /** Versão do pacote — leitores aceitam v1 (legado) e v2 (atual). */
-  version: 1 | 2;
+  /** Versão do pacote — leitores aceitam v1, v2 (legado) e v3 (atual). */
+  version: 1 | 2 | 3;
   exportedAt: string;
   /** Config gerais SEM api keys (nunca exportadas). */
   settings: Partial<PAIdeguaSettings>;
@@ -2663,6 +2682,14 @@ interface BackupPacote {
   uiToggles?: Record<string, boolean>;
   /** v2+: opt-in da telemetria local dos Mapas de Jornada (FLUX-11). */
   jornadasTelemetriaOptIn?: boolean;
+  /**
+   * v3+: snapshot completo do Sigcrim (config + acervo). Inclui nomes/
+   * CPF de réus por fidelidade ao acervo local — o usuário só
+   * exporta o pacote em estações institucionais e ele NÃO sobe para
+   * a nuvem. A pasta de auto-export NÃO é restaurada (handle do
+   * FileSystem é por máquina/perfil e não migra entre dispositivos).
+   */
+  sigcrim?: BackupSigcrim;
 }
 
 function setBackupStatus(
@@ -2692,14 +2719,17 @@ async function exportarConfig(): Promise<void> {
       setBackupStatus('Configurações ainda não carregadas.', 'error');
       return;
     }
-    const [peritosStore, sugestionaveis, storageData] = await Promise.all([
-      loadPericiasStore(),
-      listSugestionaveis(),
-      chrome.storage.local.get([
-        STORAGE_KEYS.UI_TOGGLES,
-        STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN
-      ])
-    ]);
+    const [peritosStore, sugestionaveis, storageData, sigcrimConfig, sigcrimProcessos] =
+      await Promise.all([
+        loadPericiasStore(),
+        listSugestionaveis(),
+        chrome.storage.local.get([
+          STORAGE_KEYS.UI_TOGGLES,
+          STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN
+        ]),
+        loadCriminalConfig().catch(() => undefined as CriminalConfig | undefined),
+        listAllProcessosSigcrim().catch(() => [] as ProcessoSigcrim[])
+      ]);
     const uiTogglesRaw = storageData[STORAGE_KEYS.UI_TOGGLES];
     const uiToggles =
       uiTogglesRaw && typeof uiTogglesRaw === 'object'
@@ -2708,6 +2738,17 @@ async function exportarConfig(): Promise<void> {
     const jornadasOptInRaw = storageData[STORAGE_KEYS.JORNADAS_TELEMETRIA_OPT_IN];
     const jornadasTelemetriaOptIn =
       typeof jornadasOptInRaw === 'boolean' ? jornadasOptInRaw : undefined;
+
+    // Sigcrim: o FileSystemHandle da pasta de auto-export fica em outra
+    // store (meta key 'exportFolderHandle') e NÃO entra no pacote — handles
+    // não migram entre máquinas. O CriminalConfig em si pode ir.
+    const sigcrim: BackupSigcrim | undefined =
+      sigcrimProcessos.length > 0 || sigcrimConfig
+        ? {
+            ...(sigcrimConfig ? { config: sigcrimConfig } : {}),
+            processos: sigcrimProcessos
+          }
+        : undefined;
 
     const pacote: BackupPacote = {
       pacote: 'paidegua-config',
@@ -2719,7 +2760,8 @@ async function exportarConfig(): Promise<void> {
       ...(uiToggles ? { uiToggles } : {}),
       ...(typeof jornadasTelemetriaOptIn === 'boolean'
         ? { jornadasTelemetriaOptIn }
-        : {})
+        : {}),
+      ...(sigcrim ? { sigcrim } : {})
     };
     const json = JSON.stringify(pacote, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
@@ -2751,15 +2793,25 @@ async function exportarConfig(): Promise<void> {
 function isBackupPacote(v: unknown): v is BackupPacote {
   if (!v || typeof v !== 'object') return false;
   const o = v as Record<string, unknown>;
-  return (
-    o.pacote === 'paidegua-config' &&
-    typeof o.version === 'number' &&
-    BACKUP_VERSIONS_ACEITAS.includes(o.version as number) &&
-    typeof o.exportedAt === 'string' &&
-    typeof o.settings === 'object' &&
-    typeof o.peritos === 'object' &&
-    Array.isArray(o.etiquetasSugestionaveis)
-  );
+  if (
+    o.pacote !== 'paidegua-config' ||
+    typeof o.version !== 'number' ||
+    !BACKUP_VERSIONS_ACEITAS.includes(o.version as number) ||
+    typeof o.exportedAt !== 'string' ||
+    typeof o.settings !== 'object' ||
+    typeof o.peritos !== 'object' ||
+    !Array.isArray(o.etiquetasSugestionaveis)
+  ) {
+    return false;
+  }
+  // Sigcrim é opcional (v3+); quando presente, valida shape mínimo.
+  if (o.sigcrim !== undefined) {
+    const s = o.sigcrim as Record<string, unknown> | null;
+    if (!s || typeof s !== 'object' || !Array.isArray(s.processos)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function importarConfig(file: File): Promise<void> {
@@ -2781,13 +2833,17 @@ async function importarConfig(file: File): Promise<void> {
       );
       return;
     }
+    const totalSigcrim = parsed.sigcrim?.processos?.length ?? 0;
     const confirmed = confirm(
       'Importar este backup substituirá:\n' +
         '  • Configurações gerais (exceto chaves de API);\n' +
         '  • Todos os peritos cadastrados;\n' +
         '  • A seleção de etiquetas sugestionáveis;\n' +
-        '  • Toggles de UI passiva e opt-in da telemetria de Mapas de Jornada (se presentes no arquivo).\n\n' +
-        'Deseja prosseguir?'
+        '  • Toggles de UI passiva e opt-in da telemetria de Mapas de Jornada (se presentes no arquivo).' +
+        (parsed.sigcrim
+          ? `\n  • Todo o acervo do Sigcrim (${totalSigcrim} processo[s] no arquivo) — a pasta de auto-export local NÃO é restaurada (precisa ser religada nas configurações do Sigcrim).`
+          : '') +
+        '\n\nDeseja prosseguir?'
     );
     if (!confirmed) {
       setBackupStatus('');
@@ -2837,6 +2893,23 @@ async function importarConfig(file: File): Promise<void> {
       });
     }
 
+    // 6) v3+: acervo Sigcrim completo (config + processos com réus).
+    // O handle da pasta de auto-export NÃO é restaurado — file system
+    // handles vivem em outra meta key e dependem de gesto do usuário.
+    let sigcrimResumo = '';
+    if (parsed.sigcrim && Array.isArray(parsed.sigcrim.processos)) {
+      try {
+        await substituirAcervoSigcrim(
+          parsed.sigcrim.processos as ProcessoSigcrim[],
+          parsed.sigcrim.config
+        );
+        sigcrimResumo = `, ${parsed.sigcrim.processos.length} processo(s) Sigcrim`;
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} importarConfig (sigcrim):`, err);
+        sigcrimResumo = ', falha ao restaurar Sigcrim (ver console)';
+      }
+    }
+
     // Re-renderiza para refletir as novidades.
     populateProviders();
     populateProfiles();
@@ -2851,7 +2924,7 @@ async function importarConfig(file: File): Promise<void> {
     await applyGrauRestrictions();
 
     setBackupStatus(
-      `Backup importado: ${parsed.peritos.peritos.length} perito(s), ${parsed.etiquetasSugestionaveis.length} etiqueta(s) sugestionável(is). Chaves de API não são restauradas.`,
+      `Backup importado: ${parsed.peritos.peritos.length} perito(s), ${parsed.etiquetasSugestionaveis.length} etiqueta(s) sugestionável(is)${sigcrimResumo}. Chaves de API não são restauradas.`,
       'ok'
     );
   } catch (err) {

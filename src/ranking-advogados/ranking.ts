@@ -17,6 +17,11 @@ import { asBlob } from 'html-docx-js/dist/html-docx';
 import html2pdf from 'html2pdf.js';
 import { LOG_PREFIX, MESSAGE_CHANNELS } from '../shared/constants';
 import type { GestaoTarefaInfo } from '../shared/types';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
 
 interface ListarTarefasResponse {
   ok: boolean;
@@ -75,7 +80,15 @@ const elResultadoAvisos = byId('resultado-avisos');
 const elTabelaWrap = byId('tabela-wrap');
 const elBtnBaixarPdf = byId<HTMLButtonElement>('btn-baixar-pdf');
 const elBtnBaixarDocx = byId<HTMLButtonElement>('btn-baixar-docx');
+const elBtnBaixarExcel = byId<HTMLButtonElement>('btn-baixar-excel');
 const elBtnNovaColeta = byId<HTMLButtonElement>('btn-nova-coleta');
+
+const COLUNAS_EXCEL_RANKING: ExcelColumn<RankingItem & { posicao: number }>[] = [
+  { header: 'Posição', key: 'posicao', type: 'number', width: 10 },
+  { header: 'Advogado', key: 'advogadoNome', type: 'string', width: 36 },
+  { header: 'OAB', key: 'advogadoOab', type: 'string', width: 14 },
+  { header: 'Quantidade de processos', key: 'quantidade', type: 'number', width: 22 }
+];
 
 let ultimoResultado: ColetarRankingResponse | null = null;
 let hostnamePJe = '';
@@ -97,6 +110,7 @@ async function main(): Promise<void> {
   elBtnNovaColeta.addEventListener('click', () => void carregarTarefas());
   elBtnBaixarPdf.addEventListener('click', () => void baixarPdf());
   elBtnBaixarDocx.addEventListener('click', () => baixarDocx());
+  elBtnBaixarExcel.addEventListener('click', () => baixarExcelRanking());
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.channel === MESSAGE_CHANNELS.RANKING_PROGRESSO) {
@@ -477,4 +491,24 @@ function baixarDocx(): void {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function baixarExcelRanking(): void {
+  if (!ultimoResultado) return;
+  const linhas = ultimoResultado.ranking.map((it, i) => ({ ...it, posicao: i + 1 }));
+  if (linhas.length === 0) {
+    alert('Ranking vazio — nada para exportar.');
+    return;
+  }
+  try {
+    downloadExcel(
+      linhas,
+      COLUNAS_EXCEL_RANKING,
+      defaultFileName('ranking-advogados'),
+      { sheetName: 'Ranking' }
+    );
+  } catch (err) {
+    console.warn('baixarExcelRanking falhou:', err);
+    alert('Falha ao gerar Excel: ' + (err instanceof Error ? err.message : String(err)));
+  }
 }

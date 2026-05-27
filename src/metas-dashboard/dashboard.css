@@ -176,3 +176,35 @@ html, body {
 }
 
 .footer { text-align: center; padding: 24px; color: var(--muted); font-size: 12px; }
+
+/* Cabeçalho da lista de pendentes (Meta CNJ) com botão Baixar Excel à direita. */
+.meta-card__pendentes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 6px;
+}
+.meta-card__xlsx-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #217346;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+.meta-card__xlsx-btn:hover {
+  background: rgba(33, 115, 70, 0.08);
+  border-color: #217346;
+}
+.meta-card__xlsx-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}

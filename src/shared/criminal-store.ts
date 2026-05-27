@@ -963,6 +963,49 @@ export async function apagarAcervoCompleto(
   console.info(`${LOG_PREFIX} acervo criminal apagado (manterConfig=${opts.manterConfig ?? false})`);
 }
 
+/**
+ * Substitui o acervo Sigcrim inteiro pelos processos fornecidos. Apaga
+ * todas as stores (PROCESSOS, REUS, e META quando `config` é dado) e
+ * re-insere em transação única. Usado pelo importador do backup geral
+ * (popup.ts) — espelha o mesmo shape produzido por `listAllProcessos`,
+ * preservando os ids originais para manter eventuais referências
+ * cruzadas no arquivo de backup.
+ *
+ * IMPORTANTE: não valida o conteúdo dos processos — confia no chamador,
+ * que já verificou que o backup é da pAIdegua. Falhas de unicidade no
+ * índice `numero_processo` abortam a transação.
+ */
+export async function substituirAcervoCompleto(
+  processos: readonly Processo[],
+  config?: CriminalConfig
+): Promise<void> {
+  await withTx(['PROCESSOS', 'REUS', 'META'], 'readwrite', (tx) => {
+    const procStore = tx.objectStore(CRIMINAL_STORES.PROCESSOS);
+    const reusStore = tx.objectStore(CRIMINAL_STORES.REUS);
+    const metaStore = tx.objectStore(CRIMINAL_STORES.META);
+    procStore.clear();
+    reusStore.clear();
+    if (config !== undefined) {
+      metaStore.clear();
+      metaStore.put({
+        key: META_KEY_CONFIG,
+        value: { ...config, schemaVersion: 1 }
+      } satisfies ConfigRecord);
+    }
+    for (const p of processos) {
+      const { reus, ...procSemReus } = p;
+      procStore.put(procSemReus);
+      for (const r of reus ?? []) {
+        const stored: ReuStored = { ...r, processo_id: p.id };
+        reusStore.put(stored);
+      }
+    }
+  });
+  console.info(
+    `${LOG_PREFIX} acervo criminal substituído (${processos.length} processo[s])`
+  );
+}
+
 // ── Estatísticas rápidas ─────────────────────────────────────────
 
 export interface CriminalStats {

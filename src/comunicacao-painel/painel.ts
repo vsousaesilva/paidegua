@@ -38,8 +38,14 @@ import {
 import { renderHeaderMeta } from '../shared/header-meta';
 import {
   criarBotaoCopiar,
-  criarLinkAbrirExterno
+  criarLinkAbrirExterno,
+  EXCEL_ICON_SVG
 } from '../shared/icons';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
 import type {
   ComunicacaoCanal,
   ComunicacaoColetaResult,
@@ -706,9 +712,44 @@ function montarHeadCard(
     tamanho: 16
   });
 
-  head.append(info, btnCopiarTudo);
+  const btnExcel = document.createElement('button');
+  btnExcel.type = 'button';
+  btnExcel.className = 'grupo-perito__excel-btn';
+  btnExcel.title = `Baixar lista de ${lista.length} processo(s) em Excel`;
+  btnExcel.setAttribute('aria-label', btnExcel.title);
+  btnExcel.innerHTML = EXCEL_ICON_SVG;
+  btnExcel.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (lista.length === 0) {
+      alert('Lista vazia — nada para exportar.');
+      return;
+    }
+    try {
+      const slug = nomeExibicao.replace(/[^\w-]+/g, '-').toLowerCase().slice(0, 40);
+      downloadExcel(
+        lista,
+        COLUNAS_EXCEL_COMUNICACAO,
+        defaultFileName(`comunicacao_${slug}`),
+        { sheetName: nomeExibicao.slice(0, 31) }
+      );
+    } catch (err) {
+      console.error('[pAIdegua comunicacao] excel falhou:', err);
+      alert('Falha ao gerar Excel. Veja o console.');
+    }
+  });
+
+  head.append(info, btnCopiarTudo, btnExcel);
   return head;
 }
+
+const COLUNAS_EXCEL_COMUNICACAO: ExcelColumn<ComunicacaoProcesso>[] = [
+  { header: 'Número CNJ', key: (p) => p.numeroProcesso ?? `id ${p.idProcesso}`, type: 'string', width: 28 },
+  { header: 'Classe', key: 'classeJudicial', type: 'string', width: 16 },
+  { header: 'Polo ativo', key: 'poloAtivo', type: 'string', width: 30 },
+  { header: 'Tarefa', key: 'tarefaNome', type: 'string', width: 30 },
+  { header: 'Etiquetas', key: (p) => (p.etiquetas ?? []).join('; '), type: 'string', width: 36 }
+];
 
 async function registrarCobranca(
   payload: Omit<RegistroCobranca, 'id' | 'geradoEm'>

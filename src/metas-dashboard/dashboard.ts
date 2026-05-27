@@ -34,6 +34,30 @@ import type {
   MetasCnjConfig,
   ProcessoMetasCnj
 } from '../shared/metas-cnj-types';
+import {
+  downloadExcel,
+  defaultFileName,
+  type ExcelColumn
+} from '../shared/xlsx-export';
+import { EXCEL_ICON_SVG } from '../shared/icons';
+
+/** Colunas Excel padrão para listas de ProcessoMetasCnj. */
+const COLUNAS_EXCEL_META: ExcelColumn<ProcessoMetasCnj>[] = [
+  { header: 'Número CNJ', key: 'numero_processo', type: 'string', width: 28 },
+  { header: 'Classe', key: 'classe_sigla', type: 'string', width: 12 },
+  { header: 'Assunto', key: 'assunto_principal', type: 'string', width: 40 },
+  { header: 'Órgão julgador', key: 'orgao_julgador', type: 'string', width: 30 },
+  { header: 'Distribuição', key: (p) => parseIsoDate(p.data_distribuicao), type: 'date', width: 14 },
+  { header: 'Tarefa atual', key: 'tarefa_origem_atual', type: 'string', width: 30 },
+  { header: 'Etiquetas PJe', key: (p) => (p.etiquetas_pje ?? []).join('; '), type: 'string', width: 30 }
+];
+
+function parseIsoDate(s: string | null): Date | null {
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
 
 const META_LABELS: Record<MetaCnjId, { titulo: string; sub: string }> = {
   'meta-2': {
@@ -190,10 +214,35 @@ function montarCardMeta(id: MetaCnjId): HTMLElement {
         : 'Nenhum processo pendente nesta meta — todos já foram julgados.';
     card.appendChild(aviso);
   } else {
+    const tituloRow = document.createElement('div');
+    tituloRow.className = 'meta-card__pendentes-head';
+
     const titulo = document.createElement('h4');
-    titulo.style.cssText = 'margin: 12px 0 6px; font-size: 13px;';
+    titulo.style.cssText = 'margin: 0; font-size: 13px;';
     titulo.textContent = `Processos pendentes (${pendentesArr.length}, ordenados pelos mais antigos)${pendentesArr.length > 50 ? ' — exibindo os 50 primeiros' : ''}:`;
-    card.appendChild(titulo);
+    tituloRow.appendChild(titulo);
+
+    const xlsxBtn = document.createElement('button');
+    xlsxBtn.type = 'button';
+    xlsxBtn.className = 'meta-card__xlsx-btn';
+    xlsxBtn.title = `Baixar todos os ${pendentesArr.length} pendentes em Excel`;
+    xlsxBtn.setAttribute('aria-label', xlsxBtn.title);
+    xlsxBtn.innerHTML = `${EXCEL_ICON_SVG}<span>Baixar Excel</span>`;
+    xlsxBtn.addEventListener('click', () => {
+      try {
+        downloadExcel(
+          pendentesArr,
+          COLUNAS_EXCEL_META,
+          defaultFileName(`metas-cnj_${id}`),
+          { sheetName: label.titulo.slice(0, 31) }
+        );
+      } catch (err) {
+        console.error('[pAIdegua metas] excel falhou:', err);
+        window.alert('Falha ao gerar Excel. Veja o console.');
+      }
+    });
+    tituloRow.appendChild(xlsxBtn);
+    card.appendChild(tituloRow);
 
     const ul = document.createElement('ul');
     ul.className = 'lista-processos';
