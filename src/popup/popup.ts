@@ -78,6 +78,8 @@ interface SettingsResponse {
   ok: boolean;
   settings: PAIdeguaSettings;
   apiKeyPresence: Record<ProviderId, boolean>;
+  /** null = sem chave; true = legada (AIzaSy); false = atual (AQ.). */
+  geminiKeyIsLegacy?: boolean | null;
   error?: string;
 }
 
@@ -87,6 +89,8 @@ let currentPresence: Record<ProviderId, boolean> = {
   openai: false,
   gemini: false
 };
+/** null = sem chave cadastrada; true = chave legada; false = chave atual. */
+let currentGeminiKeyIsLegacy: boolean | null = null;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -168,10 +172,14 @@ function populateProfiles(allowed?: readonly ProfileId[]): void {
 function populateModels(provider: ProviderId, selected?: string): void {
   const select = $<HTMLSelectElement>('model-select');
   select.innerHTML = '';
+  const warnLegacy = provider === 'gemini' && currentGeminiKeyIsLegacy === true;
   for (const m of PROVIDER_MODELS[provider]) {
     const option = document.createElement('option');
     option.value = m.id;
-    option.textContent = m.label + (m.recommended ? ' (recomendado)' : '');
+    let label = m.label;
+    if (m.recommended) label += ' (recomendado)';
+    if (warnLegacy && m.requiresAuthKey) label += ' — chave legada incompatível';
+    option.textContent = label;
     if (selected && selected === m.id) {
       option.selected = true;
     }
@@ -191,6 +199,12 @@ function renderForProvider(provider: ProviderId): void {
     setKeyStatus(`Nenhuma chave cadastrada para ${PROVIDER_LABELS[provider]}.`, 'error');
   }
   $<HTMLInputElement>('api-key-input').value = '';
+
+  // Exibe banner de aviso quando a chave Gemini está no formato legado (AIzaSy).
+  const banner = document.getElementById('gemini-legacy-key-banner');
+  if (banner) {
+    banner.hidden = !(provider === 'gemini' && currentGeminiKeyIsLegacy === true);
+  }
 }
 
 async function loadAll(): Promise<void> {
@@ -207,6 +221,7 @@ async function loadAll(): Promise<void> {
 
     currentSettings = response.settings;
     currentPresence = response.apiKeyPresence;
+    currentGeminiKeyIsLegacy = response.geminiKeyIsLegacy ?? null;
 
     populateProviders();
     populateProfiles();
@@ -452,6 +467,9 @@ async function saveApiKey(): Promise<void> {
   })) as { ok: boolean; error?: string };
   if (response?.ok) {
     currentPresence[provider] = true;
+    if (provider === 'gemini') {
+      currentGeminiKeyIsLegacy = apiKey.startsWith('AIzaSy');
+    }
     renderForProvider(provider);
     setStatus(`Chave ${PROVIDER_LABELS[provider]} salva.`, 'ok');
   } else {
@@ -488,6 +506,9 @@ async function removeApiKey(): Promise<void> {
   })) as { ok: boolean; error?: string };
   if (response?.ok) {
     currentPresence[provider] = false;
+    if (provider === 'gemini') {
+      currentGeminiKeyIsLegacy = null;
+    }
     renderForProvider(provider);
     setStatus(`Chave ${PROVIDER_LABELS[provider]} removida.`, 'ok');
   } else {

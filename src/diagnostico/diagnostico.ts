@@ -7,14 +7,22 @@
  * nova pelo popup. Nenhum caminho de coleta depende desta página.
  */
 
-import { STORAGE_KEYS } from '../shared/constants';
+import {
+  ADMIN_EMAILS,
+  MESSAGE_CHANNELS,
+  PROVIDER_IDS,
+  PROVIDER_LABELS,
+  PROVIDER_MODELS,
+  STORAGE_KEYS,
+  type ProviderId
+} from '../shared/constants';
 import {
   clearScans,
   listRecentScans,
   type ScanPhaseRecord,
   type ScanRecord
 } from '../shared/telemetry';
-import type { Http403Diagnostic } from '../shared/types';
+import type { AuthState, Http403Diagnostic } from '../shared/types';
 
 interface KeycloakCandidate {
   path: string;
@@ -573,7 +581,402 @@ function bindUi(): void {
   });
 }
 
+// =====================================================================
+// Testador de Modelos de IA (visível apenas para admin)
+// =====================================================================
+
+interface TestConnectionResult {
+  ok: boolean;
+  error?: string;
+  modelEcho?: string;
+}
+
+interface TestGenerateResult {
+  ok: boolean;
+  error?: string;
+  ttft?: number;
+  totalMs?: number;
+  chars?: number;
+  chunks?: number;
+}
+
+interface RowRefs {
+  tdChave: HTMLTableCellElement;
+  tdConexao: HTMLTableCellElement;
+  tdTtft: HTMLTableCellElement;
+  tdTotal: HTMLTableCellElement;
+  tdChars: HTMLTableCellElement;
+  tdStatus: HTMLTableCellElement;
+}
+
+async function isAdmin(): Promise<boolean> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.AUTH);
+    const auth = data?.[STORAGE_KEYS.AUTH] as AuthState | undefined;
+    return ADMIN_EMAILS.includes(auth?.email ?? '');
+  } catch {
+    return false;
+  }
+}
+
+async function hasApiKey(provider: ProviderId): Promise<boolean> {
+  try {
+    const result = (await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.HAS_API_KEY,
+      payload: { provider }
+    })) as { ok: boolean; present?: boolean } | undefined;
+    return result?.ok === true && result.present === true;
+  } catch {
+    return false;
+  }
+}
+
+function setBadge(
+  cell: HTMLTableCellElement,
+  text: string,
+  variant: 'ok' | 'error' | 'warn' | 'muted' | 'running'
+): void {
+  cell.innerHTML = '';
+  const badge = document.createElement('span');
+  badge.className = `diag-tester__badge-cell diag-tester__badge-cell--${variant}`;
+  badge.textContent = text;
+  cell.appendChild(badge);
+}
+
+function addTesterRow(
+  tbody: HTMLTableSectionElement,
+  providerLabel: string,
+  modelLabel: string
+): RowRefs {
+  const tr = document.createElement('tr');
+  const make = (text = ''): HTMLTableCellElement => {
+    const td = document.createElement('td');
+    td.textContent = text;
+    tr.appendChild(td);
+    return td;
+  };
+  make(providerLabel);
+  make(modelLabel);
+  const tdChave = make('—');
+  const tdConexao = make('—');
+  const tdTtft = make('—');
+  const tdTotal = make('—');
+  const tdChars = make('—');
+  const tdStatus = make('aguardando…');
+  tbody.appendChild(tr);
+  return { tdChave, tdConexao, tdTtft, tdTotal, tdChars, tdStatus };
+}
+
+function ms(n: number | undefined): string {
+  if (n === undefined) return '—';
+  return n < 1000 ? `${n} ms` : `${(n / 1000).toFixed(1)} s`;
+}
+
+async function runModelTests(): Promise<void> {
+  const tbody = document.getElementById('tester-tbody') as HTMLTableSectionElement | null;
+  const progressLabel = document.getElementById('tester-progress-label');
+  const resultsDiv = document.getElementById('tester-results');
+  const btn = document.getElementById('btn-test-models') as HTMLButtonElement | null;
+
+  if (!tbody || !progressLabel || !resultsDiv || !btn) return;
+
+  btn.disabled = true;
+  tbody.innerHTML = '';
+  resultsDiv.hidden = false;
+  progressLabel.hidden = false;
+  progressLabel.textContent = 'Verificando chaves de API…';
+
+  // Monta a lista de todos os pares (provider, model) com status de chave
+  type TestItem = {
+    provider: ProviderId;
+    model: string;
+    modelLabel: string;
+    temChave: boolean;
+    rows: RowRefs;
+  };
+  const items: TestItem[] = [];
+
+  for (const provider of PROVIDER_IDS) {
+    const temChave = await hasApiKey(provider);
+    for (const m of PROVIDER_MODELS[provider]) {
+      const rows = addTesterRow(tbody, PROVIDER_LABELS[provider], m.label);
+      setBadge(rows.tdChave, temChave ? 'sim' : 'não', temChave ? 'ok' : 'muted');
+      if (!temChave) {
+        setBadge(rows.tdStatus, 'sem chave', 'muted');
+      }
+      items.push({ provider, model: m.id, modelLabel: m.label, temChave, rows });
+    }
+  }
+
+  const withKey = items.filter((i) => i.temChave);
+  if (withKey.length === 0) {
+    progressLabel.textContent = 'Nenhuma chave de API cadastrada. Configure ao menos uma no popup da extensão.';
+    btn.disabled = false;
+    return;
+  }
+
+  let done = 0;
+  const total = withKey.length * 2; // conexão + geração por item
+
+  const setProgress = (extra = ''): void => {
+    progressLabel.textContent = `Testando… ${done}/${total} etapas concluídas.${extra ? ' ' + extra : ''}`;
+  };
+
+  setProgress();
+
+  for (const item of withKey) {
+    const { provider, model, rows } = item;
+
+    // ── Fase 1: conexão (streaming ping) ───────────────────────────
+    setBadge(rows.tdConexao, 'testando…', 'running');
+    setBadge(rows.tdStatus, 'testando conexão…', 'running');
+
+    const t0conn = performance.now();
+    let connResult: TestConnectionResult;
+    try {
+      connResult = (await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.TEST_CONNECTION,
+        payload: { provider, model }
+      })) as TestConnectionResult;
+    } catch (e) {
+      connResult = { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    const connMs = Math.round(performance.now() - t0conn);
+
+    if (connResult.ok) {
+      setBadge(rows.tdConexao, ms(connMs), 'ok');
+    } else {
+      setBadge(rows.tdConexao, `FALHA (${ms(connMs)})`, 'error');
+      rows.tdConexao.title = connResult.error ?? '';
+      setBadge(rows.tdStatus, 'falhou na conexão', 'error');
+      rows.tdStatus.title = connResult.error ?? '';
+      done += 2; // pula fase de geração
+      setProgress();
+      continue;
+    }
+
+    done++;
+    setProgress();
+
+    // ── Fase 2: geração real ─────────────────────────────────────────
+    setBadge(rows.tdTtft, 'gerando…', 'running');
+    setBadge(rows.tdStatus, 'testando geração…', 'running');
+
+    let genResult: TestGenerateResult;
+    try {
+      genResult = (await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.TEST_MODEL_GENERATE,
+        payload: { provider, model }
+      })) as TestGenerateResult;
+    } catch (e) {
+      genResult = { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+
+    if (genResult.ok) {
+      rows.tdTtft.textContent = ms(genResult.ttft);
+      rows.tdTotal.textContent = ms(genResult.totalMs);
+      rows.tdChars.textContent = String(genResult.chars ?? 0);
+      setBadge(rows.tdStatus, 'OK', 'ok');
+    } else {
+      setBadge(rows.tdTtft, '—', 'muted');
+      setBadge(rows.tdStatus, 'falhou na geração', 'error');
+      rows.tdStatus.title = genResult.error ?? '';
+      if (genResult.totalMs !== undefined) {
+        rows.tdTotal.textContent = ms(genResult.totalMs);
+      }
+    }
+
+    done++;
+    setProgress();
+  }
+
+  progressLabel.textContent = `Diagnóstico concluído. ${done} etapas executadas.`;
+  btn.disabled = false;
+}
+
+async function setupModelTester(): Promise<void> {
+  if (!(await isAdmin())) return;
+  const section = document.getElementById('model-tester-section');
+  if (section) section.hidden = false;
+  const btn = document.getElementById('btn-test-models');
+  btn?.addEventListener('click', () => {
+    void runModelTests();
+  });
+}
+
+// =====================================================================
+// Log de Uso Real — Gemini
+// =====================================================================
+
+const GEMINI_USAGE_LOG_KEY = 'paidegua.gemini.usageLog';
+
+interface GeminiUsageEntry {
+  ts: number;
+  model: string;
+  inChars: number;
+  ttft: number | null;
+  totalMs: number;
+  outChars: number;
+  finishReason: string | null;
+  ok: boolean;
+  errorSnippet: string | null;
+}
+
+async function lerGeminiUsageLog(): Promise<GeminiUsageEntry[]> {
+  try {
+    const data = await chrome.storage.local.get(GEMINI_USAGE_LOG_KEY);
+    const raw = data?.[GEMINI_USAGE_LOG_KEY];
+    return Array.isArray(raw) ? (raw as GeminiUsageEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function limparGeminiUsageLog(): Promise<void> {
+  await chrome.storage.local.remove(GEMINI_USAGE_LOG_KEY);
+}
+
+function kchars(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function avg(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
+function renderUsageStats(log: GeminiUsageEntry[]): void {
+  const statsDiv = document.getElementById('usage-stats');
+  const tbody = document.getElementById('usage-stats-tbody') as HTMLTableSectionElement | null;
+  if (!statsDiv || !tbody) return;
+
+  // Agrupa por modelo
+  const byModel = new Map<string, GeminiUsageEntry[]>();
+  for (const e of log) {
+    const arr = byModel.get(e.model) ?? [];
+    arr.push(e);
+    byModel.set(e.model, arr);
+  }
+
+  tbody.innerHTML = '';
+  for (const [model, entries] of Array.from(byModel.entries()).sort(([a], [b]) => a.localeCompare(b))) {
+    const ok = entries.filter((e) => e.ok).length;
+    const ttfts = entries.filter((e) => e.ttft !== null).map((e) => e.ttft as number);
+    const totals = entries.map((e) => e.totalMs);
+    const inputs = entries.map((e) => e.inChars);
+    const outputs = entries.map((e) => e.outChars);
+
+    const tr = document.createElement('tr');
+    const td = (text: string, cls?: string): HTMLTableCellElement => {
+      const cell = document.createElement('td');
+      cell.textContent = text;
+      if (cls) cell.className = cls;
+      return cell;
+    };
+    tr.appendChild(td(model));
+    tr.appendChild(td(String(entries.length)));
+    const successRate = Math.round((ok / entries.length) * 100);
+    const successCell = td(`${ok}/${entries.length} (${successRate}%)`);
+    successCell.className = successRate === 100 ? 'diag-usage__ok' : successRate < 50 ? 'diag-usage__error' : '';
+    tr.appendChild(successCell);
+    tr.appendChild(td(avg(ttfts) !== null ? ms(avg(ttfts) ?? undefined) : '—'));
+    tr.appendChild(td(avg(totals) !== null ? ms(avg(totals) ?? undefined) : '—'));
+    tr.appendChild(td(avg(inputs) !== null ? kchars(avg(inputs) ?? 0) : '—'));
+    tr.appendChild(td(avg(outputs) !== null ? kchars(avg(outputs) ?? 0) : '—'));
+    tbody.appendChild(tr);
+  }
+  statsDiv.hidden = false;
+}
+
+function renderUsageLog(log: GeminiUsageEntry[]): void {
+  const logDiv = document.getElementById('usage-log');
+  const tbody = document.getElementById('usage-log-tbody') as HTMLTableSectionElement | null;
+  const emptyEl = document.getElementById('usage-empty');
+
+  if (!logDiv || !tbody || !emptyEl) return;
+
+  if (log.length === 0) {
+    emptyEl.hidden = false;
+    logDiv.hidden = true;
+    return;
+  }
+
+  emptyEl.hidden = true;
+  tbody.innerHTML = '';
+
+  // Mais recente primeiro
+  const reversed = [...log].reverse().slice(0, 200);
+  for (const e of reversed) {
+    const tr = document.createElement('tr');
+
+    const td = (text: string): HTMLTableCellElement => {
+      const cell = document.createElement('td');
+      cell.textContent = text;
+      return cell;
+    };
+
+    tr.appendChild(td(formatClock(e.ts)));
+    tr.appendChild(td(e.model));
+    tr.appendChild(td(kchars(e.inChars)));
+    tr.appendChild(td(e.ttft !== null ? ms(e.ttft) : '—'));
+    tr.appendChild(td(ms(e.totalMs)));
+    tr.appendChild(td(kchars(e.outChars)));
+    tr.appendChild(td(e.finishReason ?? '—'));
+
+    const statusCell = document.createElement('td');
+    if (e.ok) {
+      const badge = document.createElement('span');
+      badge.className = 'diag-tester__badge-cell diag-tester__badge-cell--ok';
+      badge.textContent = 'OK';
+      statusCell.appendChild(badge);
+    } else {
+      const badge = document.createElement('span');
+      badge.className = 'diag-tester__badge-cell diag-tester__badge-cell--error';
+      badge.textContent = 'ERRO';
+      badge.title = e.errorSnippet ?? '';
+      statusCell.appendChild(badge);
+      if (e.errorSnippet) {
+        const detail = document.createElement('div');
+        detail.className = 'diag-usage__error-detail';
+        detail.textContent = e.errorSnippet.slice(0, 120);
+        statusCell.appendChild(detail);
+      }
+    }
+    tr.appendChild(statusCell);
+
+    tbody.appendChild(tr);
+  }
+
+  logDiv.hidden = false;
+}
+
+async function carregarUsageLog(): Promise<void> {
+  const log = await lerGeminiUsageLog();
+  renderUsageStats(log);
+  renderUsageLog(log);
+}
+
+async function setupGeminiUsageLog(): Promise<void> {
+  if (!(await isAdmin())) return;
+  const section = document.getElementById('gemini-usage-section');
+  if (section) section.hidden = false;
+
+  document.getElementById('btn-usage-refresh')?.addEventListener('click', () => {
+    void carregarUsageLog();
+  });
+  document.getElementById('btn-usage-clear')?.addEventListener('click', () => {
+    if (!window.confirm('Limpar todo o log de uso do Gemini?')) return;
+    void limparGeminiUsageLog().then(() => carregarUsageLog());
+  });
+
+  void carregarUsageLog();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   bindUi();
   void carregar();
+  void setupModelTester();
+  void setupGeminiUsageLog();
 });

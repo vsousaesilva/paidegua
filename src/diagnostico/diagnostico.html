@@ -22,6 +22,110 @@
     </header>
 
     <main class="diag-main">
+
+      <!-- ====== Testador de Modelos (visível apenas para admin) ====== -->
+      <section id="model-tester-section" hidden>
+        <header class="diag-tester__header">
+          <div>
+            <h2 class="diag-tester__title">
+              Testador de Modelos de IA
+              <span class="diag-tester__badge">Admin</span>
+            </h2>
+            <p class="diag-subtitle">
+              Testa conexão e geração de texto em todos os provedores e modelos configurados.
+              Identifica qual modelo funciona com cada chave de API sem precisar adivinhar.
+            </p>
+          </div>
+          <button type="button" id="btn-test-models" class="diag-btn diag-btn--primary">
+            Executar diagnóstico
+          </button>
+        </header>
+
+        <p id="tester-progress-label" class="diag-tester__progress" hidden></p>
+
+        <div id="tester-results" hidden>
+          <table class="diag-tester-table">
+            <thead>
+              <tr>
+                <th>Provedor</th>
+                <th>Modelo</th>
+                <th>Chave?</th>
+                <th>Conexão</th>
+                <th>1º Token</th>
+                <th>Total</th>
+                <th>Chars</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tester-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+      <!-- ============================================================== -->
+
+      <!-- ====== Log de Uso Real — Gemini (visível apenas para admin) == -->
+      <section id="gemini-usage-section" hidden>
+        <header class="diag-tester__header">
+          <div>
+            <h2 class="diag-tester__title">
+              Uso Real — Google Gemini
+              <span class="diag-tester__badge">Admin</span>
+            </h2>
+            <p class="diag-subtitle">
+              Captura automática de cada chamada real ao Gemini durante o uso da extensão.
+              TTFT e tempo total refletem comportamento em produção, não um ping sintético.
+            </p>
+          </div>
+          <div class="diag-actions">
+            <button type="button" id="btn-usage-refresh" class="diag-btn">Atualizar</button>
+            <button type="button" id="btn-usage-clear" class="diag-btn diag-btn--danger">Limpar log</button>
+          </div>
+        </header>
+
+        <div id="usage-stats" hidden>
+          <table class="diag-tester-table diag-usage-stats">
+            <thead>
+              <tr>
+                <th>Modelo</th>
+                <th>Chamadas</th>
+                <th>Sucesso</th>
+                <th>TTFT médio</th>
+                <th>Total médio</th>
+                <th>Input médio</th>
+                <th>Output médio</th>
+              </tr>
+            </thead>
+            <tbody id="usage-stats-tbody"></tbody>
+          </table>
+        </div>
+
+        <p id="usage-empty" class="diag-empty" hidden>
+          Nenhum uso registrado ainda. Use Resumir, Minutar ou o Chat da extensão com o Gemini ativo para capturar dados reais.
+        </p>
+
+        <div id="usage-log" hidden>
+          <p class="diag-tester__progress" style="margin-top: 12px;">
+            Últimas entradas (mais recente no topo):
+          </p>
+          <table class="diag-tester-table">
+            <thead>
+              <tr>
+                <th>Data/hora</th>
+                <th>Modelo</th>
+                <th>Input</th>
+                <th>TTFT</th>
+                <th>Total</th>
+                <th>Output</th>
+                <th>Finish</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="usage-log-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+      <!-- ============================================================== -->
+
       <section class="diag-probe" id="probe-section" hidden>
         <header class="diag-probe__head">
           <h2 class="diag-probe__title">Probe Keycloak</h2>

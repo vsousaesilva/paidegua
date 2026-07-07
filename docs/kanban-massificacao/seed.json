@@ -6938,6 +6938,127 @@
           "comando": "Card movido para lançado após aprovação CWS, smoke OK, broadcast aos pilotos e tag v1.6.8 publicada no GitHub."
         }
       ]
+    },
+    {
+      "id": "BUG-25",
+      "titulo": "Gemini: falhas silenciosas (thinkingConfig / thought / finishReason) + causa raiz cota Nível 1 + diagnóstico admin",
+      "descricao": "Usuária Danielle reportou (2026-06-13) que Resumir/Gerar Minuta com Gemini não produzia saída nem erro. Investigação (docs/gemini-cotas-nivel1-investigacao-2026-06.md) achou 3 bugs de falha silenciosa + a causa raiz de infraestrutura:\n\n- Bug 1: thinkingConfig ausente fazia os modelos Flash 'pensarem' 30-60s em silêncio. Corrigido com buildThinkingConfig(model) por família (Flash-Lite/2.5-Flash: thinkingBudget 0; 2.5-Pro: -1; 3.x: thinkingLevel MINIMAL/LOW).\n- Bug 2: tokens de raciocínio (thought:true) apareciam como texto. Corrigido com filtro antes do yield.\n- Bug 3: finishReason ausente/inesperado (SAFETY/RECITATION/OTHER/conexão fechada) era tratado como sucesso. Agora emite aviso inline e registra ok:false.\n- Causa raiz do 'parou no meio': cota TPM de chave Nível 1 do Google AI Studio (1M vs 4M do Nível 2). Sem correção de código possível — o aviso de finishReason agora informa o usuário; orientação de upgrade/uso de modelos estáveis documentada.\n\nFerramentas de diagnóstico (admin, ADMIN_EMAILS): Testador de Modelos e Log de Uso Real do Gemini (GeminiUsageEntry em chrome.storage.local, exibido no Diagnóstico).\n\nArquivos: src/background/providers/gemini.ts, retry.ts, src/shared/constants.ts, src/background/background.ts, src/diagnostico/{html,ts,css}.\n\nFollow-up (decisões pendentes §10 do doc): manter Testador/Log de Uso? Preview models na lista padrão (exigem Nível 2)? Banner proativo de cota no popup?",
+      "categoria": "gabinete",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Reporte da usuária Danielle (2026-06-13) — Resumir/Minuta com Gemini sem saída e sem erro",
+      "tags": ["gemini", "llm", "streaming", "cota", "diagnostico", "bug"],
+      "esforco": "L",
+      "depende": [],
+      "aceitacao": [
+        "thinkingConfig por família de modelo (buildThinkingConfig) — Flash não trava mais",
+        "Tokens thought:true filtrados (não aparecem como texto ao usuário)",
+        "finishReason ausente/inesperado gera aviso inline + registra ok:false no finally",
+        "Log de Uso Real do Gemini (GeminiUsageEntry, anel de 500) visível no Diagnóstico para admin",
+        "Testador de Modelos no Diagnóstico (admin) testa conexão + geração por modelo",
+        "Causa raiz (cota TPM Nível 1) documentada em docs/gemini-cotas-nivel1-investigacao-2026-06.md"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-06-13T00:00:00.000Z",
+      "atualizadoEm": "2026-07-07T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-07",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-07",
+          "data": "2026-07-07T00:00:00.000Z",
+          "comando": "Card registrado a partir da investigação de 2026-06-13..19 (doc gemini-cotas-nivel1-investigacao-2026-06.md). Trabalho de código concluído; entra no bundle da release v1.7.0."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-07",
+          "data": "2026-07-07T00:00:00.000Z",
+          "comando": "Correções aplicadas e confirmadas (gemini-2.5-flash volta a responder para a usuária). Aguarda release v1.7.0 + smoke."
+        }
+      ]
+    },
+    {
+      "id": "BUG-26",
+      "titulo": "Etiquetas da pauta de Perícias quebradas após atualização do PJe (v4 → v11)",
+      "descricao": "A migração do PJe TRF5 1G da versão 4 para a 11 (2026-07) quebrou a aplicação de etiquetas na pauta de Perícias (criar + vincular + favoritar). Mapa completo em docs/migracao-etiquetas-pje-v11.md. Três mudanças de contrato:\n\n1. Criação (POST /painelUsuario/tags): corpo passou a exigir {marcado, possuiFilhos, visivelPublicamente, nomeTag, nomeTagCompleto}; o corpo antigo {id:null,...} era rejeitado com 200 vazio.\n2. Execução: escritas precisam rodar no page world do iframe frontend-prd com minimalAuth (sem X-no-sso/X-pje-authorization); do isolated world o PJe rejeita silenciosamente (200 vazio).\n3. Resposta da vinculação (POST /painelUsuario/processoTags/inserir) virou objeto {id, nomeTag, idUsuario, idProcesso, idProcessoTag} (antes array) — validador relaxado para aceitar objeto/array de objetos, mantendo proteção contra sucesso fantasma.\n\nA vinculação continua por NOME ({tag, idProcesso}); duplicidade de nome causa 500 (ambiguidade). Mesma correção estendida à Triagem 'Inserir etiquetas mágicas'.\n\nArquivo: src/content/pericias/pericias-etiqueta-applier.ts. Relaciona-se ao módulo MOD-PERICIAS.",
+      "categoria": "audiencia",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Regressão pós-atualização do PJe TRF5 1G v4→v11 (2026-07)",
+      "tags": ["pericias", "etiquetas", "pje-v11", "regressao", "bug"],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "Criação via POST /tags com corpo {marcado, possuiFilhos, visivelPublicamente, nomeTag, nomeTagCompleto}",
+        "Escritas no page world + minimalAuth (sem X-no-sso/X-pje-authorization)",
+        "Vinculação por nome {tag, idProcesso} e validador que aceita resposta em objeto",
+        "Teste ponta-a-ponta no PJe real (TRF5 1G): criar + favoritar + vincular lote → etiqueta nos processos, criada 1x, favoritada",
+        "Correção espelhada na Triagem 'Inserir etiquetas mágicas'"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-07T00:00:00.000Z",
+      "atualizadoEm": "2026-07-07T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-07",
+      "evidencias": ["src/content/pericias/pericias-etiqueta-applier.ts", "docs/migracao-etiquetas-pje-v11.md"],
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-07",
+          "data": "2026-07-07T00:00:00.000Z",
+          "comando": "Card aberto para registrar a correção da regressão de etiquetas causada pela atualização do PJe v4→v11."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-07",
+          "data": "2026-07-07T00:00:00.000Z",
+          "comando": "Correção implementada e validada ponta-a-ponta no PJe de produção. Aguarda release v1.7.0 + smoke."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.7.0",
+      "titulo": "Release v1.7.0 — correção de etiquetas (PJe v11) + Gemini (falhas silenciosas, cotas Nível 1, diagnóstico admin)",
+      "descricao": "Bundle da release v1.7.0:\n\n- BUG-26: correção da aplicação de etiquetas na pauta de Perícias após a atualização do PJe TRF5 1G v4→v11 (criar/vincular/favoritar). Doc docs/migracao-etiquetas-pje-v11.md.\n- BUG-25: Gemini — correção de 3 falhas silenciosas (thinkingConfig, thought:true, finishReason), causa raiz de cota Nível 1 documentada, e ferramentas de diagnóstico admin (Testador de Modelos + Log de Uso Real). Doc docs/gemini-cotas-nivel1-investigacao-2026-06.md.\n\nBump 1.6.8 → 1.7.0 (minor). Sem novas permissões, sem novos hosts. Arquivos: src/content/pericias/pericias-etiqueta-applier.ts, src/background/providers/{gemini,retry}.ts, src/background/background.ts, src/shared/constants.ts, src/diagnostico/{html,ts,css}, src/popup/{html,ts}.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "skill release-extensao — sessão 2026-07-07",
+      "tags": ["release", "extensao", "cws", "gemini", "etiquetas", "pje-v11"],
+      "esforco": "XS",
+      "depende": ["BUG-26", "BUG-25"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.7.0; dist/manifest.json em 1.7.0",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/content.js contém a correção de etiquetas (processoTags/inserir, visivelPublicamente)",
+        "zip versoes/dist v1.7.0.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados → mover para lancado",
+        "Tag git v1.7.0 + Release no GitHub criada"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-07T00:00:00.000Z",
+      "atualizadoEm": "2026-07-07T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-07",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-07",
+          "data": "2026-07-07T00:00:00.000Z",
+          "comando": "Card aberto na skill release-extensao. Bump 1.6.8 → 1.7.0 confirmado. Bundle reúne BUG-26 (etiquetas PJe v11) + BUG-25 (Gemini). Build local OK, dist validado (1.7.0, BACKEND_URL preservada, correção de etiquetas no bundle)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-07",
+          "data": "2026-07-07T00:00:00.000Z",
+          "comando": "Aguarda upload à CWS + aprovação + smoke + broadcast + tag."
+        }
+      ]
     }
   ]
 }

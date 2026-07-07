@@ -122,6 +122,7 @@ import {
   savePrazosFitaDashboardPayload
 } from '../shared/prazos-fita-indexed-storage';
 import { gravarAuthSnapshot } from './pje-api-client';
+import { isLegacyGeminiKey } from './providers/gemini';
 import { getProvider } from './providers';
 import {
   PROMPT_SISTEMA_DADOS_PDF,
@@ -676,6 +677,13 @@ function dispatchMessage(
 
       case MESSAGE_CHANNELS.TEST_CONNECTION:
         void handleTestConnection(
+          message.payload as { provider: ProviderId; model: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.TEST_MODEL_GENERATE:
+        void handleTestModelGenerate(
           message.payload as { provider: ProviderId; model: string },
           sendResponse
         );
@@ -2824,7 +2832,16 @@ async function handleGetSettings(
   try {
     const settings = await getSettings();
     const presence = await getAllApiKeyPresence();
-    sendResponse({ ok: true, settings, apiKeyPresence: presence });
+    // Verifica o formato da chave Gemini para exibir aviso de depreciação na UI.
+    // null = nenhuma chave cadastrada; true = legada (AIzaSy); false = atual (AQ.).
+    let geminiKeyIsLegacy: boolean | null = null;
+    if (presence.gemini) {
+      const geminiKey = await getApiKey('gemini');
+      if (geminiKey) {
+        geminiKeyIsLegacy = isLegacyGeminiKey(geminiKey);
+      }
+    }
+    sendResponse({ ok: true, settings, apiKeyPresence: presence, geminiKeyIsLegacy });
   } catch (error: unknown) {
     sendResponse({ ok: false, error: errorMessage(error), settings: defaultSettings() });
   }
@@ -2907,6 +2924,63 @@ async function handleTestConnection(
     sendResponse(result);
   } catch (error: unknown) {
     sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Testa a geração real de texto para um provider/model específico.
+ * Envia um prompt mínimo e mede: tempo até o primeiro chunk (TTFT) e tempo
+ * total. Distingue falhas de conexão de falhas de geração — útil para
+ * diagnosticar qual modelo funciona com uma dada chave de API.
+ */
+async function handleTestModelGenerate(
+  payload: { provider: ProviderId; model: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const t0 = performance.now();
+  let ttft: number | undefined;
+  let totalChars = 0;
+  let chunkCount = 0;
+  try {
+    const apiKey = await getApiKey(payload.provider);
+    if (!apiKey) {
+      sendResponse({ ok: false, error: 'API key não cadastrada.' });
+      return;
+    }
+    const provider = getProvider(payload.provider);
+    const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), 30_000);
+    try {
+      const gen = provider.sendMessage({
+        apiKey,
+        model: payload.model,
+        systemPrompt: 'Você é um assistente de diagnóstico técnico.',
+        messages: [
+          {
+            role: 'user',
+            content: 'Responda com as palavras "teste ok" apenas, sem mais nada.',
+            timestamp: Date.now()
+          }
+        ],
+        temperature: 0,
+        maxTokens: 64,
+        signal: ac.signal
+      });
+      for await (const chunk of gen) {
+        if (ttft === undefined) {
+          ttft = Math.round(performance.now() - t0);
+        }
+        totalChars += chunk.delta.length;
+        chunkCount++;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    const totalMs = Math.round(performance.now() - t0);
+    sendResponse({ ok: true, ttft, totalMs, chars: totalChars, chunks: chunkCount });
+  } catch (error: unknown) {
+    const totalMs = Math.round(performance.now() - t0);
+    sendResponse({ ok: false, error: errorMessage(error), totalMs });
   }
 }
 

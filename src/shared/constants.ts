@@ -29,6 +29,16 @@ export const AUTH_ALLOWED_DOMAINS: readonly string[] = [
 export const AUTH_REVALIDATE_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
 
 /**
+ * E-mails com acesso a funcionalidades de administração (ex.: Testador de
+ * Modelos de IA na página de Diagnóstico). Checado localmente contra o
+ * e-mail do JWT — não é um controle de segurança robusto, apenas oculta
+ * ferramentas de debug da interface padrão.
+ */
+export const ADMIN_EMAILS: readonly string[] = [
+  'vsousaesilva@jfce.jus.br'
+] as const;
+
+/**
  * Padrões de domínio reconhecidos como instâncias do PJe.
  */
 export const PJE_HOST_PATTERNS: readonly RegExp[] = [
@@ -79,6 +89,13 @@ export interface ModelInfo {
   label: string;
   /** true = recomendado / default para o provedor. */
   recommended?: boolean;
+  /**
+   * true = modelo exige Auth key (formato AQ.) do Google AI Studio.
+   * Chaves legadas (formato AIzaSy) não têm acesso a esses modelos desde
+   * 19/06/2026, quando o Google iniciou a rejeição de Standard keys para
+   * modelos preview. Suporte total a Standard keys encerra em set/2026.
+   */
+  requiresAuthKey?: boolean;
 }
 
 export const PROVIDER_MODELS: Record<ProviderId, readonly ModelInfo[]> = {
@@ -92,11 +109,11 @@ export const PROVIDER_MODELS: Record<ProviderId, readonly ModelInfo[]> = {
     { id: 'gpt-4o-mini', label: 'GPT-4o mini (rápido)' }
   ],
   gemini: [
-    { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (mais capaz)' },
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (equilibrado)', recommended: true },
-    { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite (rápido)' },
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (estável)' },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (estável)' }
+    { id: 'gemini-3.5-flash',             label: 'Gemini 3.5 Flash (GA)',             recommended: true },
+    { id: 'gemini-3-flash-preview',        label: 'Gemini 3 Flash (preview)',         requiresAuthKey: true },
+    { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite (preview)', requiresAuthKey: true },
+    { id: 'gemini-2.5-pro',               label: 'Gemini 2.5 Pro (estável)' },
+    { id: 'gemini-2.5-flash',             label: 'Gemini 2.5 Flash (estável)' }
   ]
 };
 
@@ -170,6 +187,12 @@ export const MESSAGE_CHANNELS = {
   HAS_API_KEY: 'paidegua/has-api-key',
   REMOVE_API_KEY: 'paidegua/remove-api-key',
   TEST_CONNECTION: 'paidegua/test-connection',
+  /**
+   * Admin → background: testa a geração real de texto por um provider/model.
+   * Envia prompt mínimo, mede TTFT e tempo total. Usado pelo Testador de
+   * Modelos na página de Diagnóstico (visível apenas para ADMIN_EMAILS).
+   */
+  TEST_MODEL_GENERATE: 'paidegua/test-model-generate',
   TRANSCRIBE_AUDIO: 'paidegua/transcribe-audio',
   SYNTHESIZE_SPEECH: 'paidegua/synthesize-speech',
   /** Content → background: pede para inserir conteúdo no editor do PJe. */

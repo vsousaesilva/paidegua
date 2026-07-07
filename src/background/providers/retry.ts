@@ -73,6 +73,12 @@ export interface FetchWithRetryOptions {
    * "solicitação".
    */
   resourceLabel?: string;
+  /**
+   * Quando true, indica que a chave de API é do formato legado (AIzaSy).
+   * Erros 400/403 recebem nota adicional orientando a migrar para o novo
+   * formato (AQ.) no Google AI Studio.
+   */
+  isLegacyGeminiKey?: boolean;
 }
 
 /** Signal "dummy" para quando o caller não passa um — nunca aborta. */
@@ -121,7 +127,8 @@ export async function fetchWithRetry(
           response.status,
           attempt,
           apiBody,
-          resourceLabel
+          resourceLabel,
+          opts.isLegacyGeminiKey
         )
       });
     }
@@ -142,9 +149,18 @@ function describeHttpError(
   status: number,
   attempts: number,
   apiBody: string,
-  resourceLabel: string
+  resourceLabel: string,
+  isLegacyGeminiKey?: boolean
 ): string {
   const name = PROVIDER_LABELS[provider];
+
+  // Nota de migração de chave legada — anexada em erros de acesso do Gemini.
+  const legacyKeyNote =
+    provider === 'gemini' && isLegacyGeminiKey
+      ? ' Sua chave está no formato legado (AIzaSy), que não tem acesso a modelos ' +
+        'preview do Gemini 3 desde 19/06/2026. Gere uma nova chave no Google AI Studio ' +
+        'para obter o formato atual (AQ.) com acesso completo.'
+      : '';
 
   // A) Sobrecarga / instabilidade transitória do provedor.
   if (
@@ -177,7 +193,8 @@ function describeHttpError(
   if (status === 401 || status === 403) {
     return (
       `A chave de API do provedor de IA (${name}) foi recusada (erro ${status}). ` +
-      `Verifique se a chave está correta e ativa nas configurações do pAIdegua.`
+      `Verifique se a chave está correta e ativa nas configurações do pAIdegua.` +
+      legacyKeyNote
     );
   }
 
@@ -186,7 +203,8 @@ function describeHttpError(
   return (
     `O provedor de IA (${name}) recusou a ${resourceLabel} (erro ${status})` +
     (detail ? `: ${detail}` : '') +
-    '.'
+    '.' +
+    legacyKeyNote
   );
 }
 

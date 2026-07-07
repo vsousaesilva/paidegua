@@ -1,27 +1,28 @@
 /**
  * "Aplicar etiquetas" da pauta de Perícias.
  *
- * Fluxo:
+ * Fluxo (duas etapas de escrita):
  *   1. Carrega o catálogo atual com `listarEtiquetas`.
  *   2. Procura a etiqueta-pauta pelo `nomeTag` (case-insensitive, trim).
- *   3. Se não existir, cria via REST do PJe legacy.
- *   4. Para cada `idProcesso` do lote, vincula a etiqueta ao processo.
+ *   3. Se não existe, CRIA via POST `/painelUsuario/tags`.
+ *   4. Para cada `idProcesso` do lote, vincula via POST
+ *      `/painelUsuario/processoTags/inserir`.
  *
- * ATENÇÃO — ENDPOINTS ASSUMIDOS (requerem confirmação em campo):
- *   As rotas de criação e vinculação de etiquetas NÃO são oficialmente
- *   documentadas e foram inferidas a partir do padrão Seam REST do PJe
- *   legacy (`/painelUsuario/etiquetas` já é conhecido para listagem). Cada
- *   helper (`criarEtiqueta`, `vincularEtiquetaAoProcesso`) tenta a rota
- *   mais provável primeiro e cai em alternativas quando o servidor
- *   responde 404/405. TODA resposta não-2xx é logada com a URL completa,
- *   o status, e o corpo bruto — isso permite diagnosticar rapidamente em
- *   produção qual é o endpoint correto e ajustar o código de ENDPOINT_*.
+ * Histórico (2026-07): a atualização do PJe quebrou o fluxo. Captura no
+ * DevTools (TRF5 1G) mostrou que o `/tags` continua sendo o endpoint de
+ * criação e funciona (200 + entidade), mas o CORPO mudou — passou a exigir
+ *   { marcado, possuiFilhos, visivelPublicamente, nomeTag, nomeTagCompleto }
+ * e a rejeitar silenciosamente (200 sem corpo) o antigo `{ id:null, ... }`.
+ * A vinculação NÃO cria on-the-fly: `/processoTags/inserir` com nome
+ * inexistente devolve HTTP 500 ("Erro ao vincular a etiqueta ... ao
+ * processo"). Por isso a criação explícita é obrigatória.
  *
- * Se o primeiro uso em ambiente real falhar, abra as DevTools no painel
- * Angular do PJe, execute a ação manualmente (criar uma etiqueta,
- * vincular a um processo) e compare as requisições observadas com as
- * tentativas aqui — a URL/body correta deve substituir a primeira
- * alternativa de cada array.
+ * As escritas rodam no page world do iframe Angular (via
+ * `pericias-etiqueta-page-bridge`) para que o `Origin: frontend-prd` bata
+ * com a whitelist do PJe — do isolated world o servidor rejeita a escrita
+ * silenciosamente (200 sem corpo). Ambas usam `minimalAuth` (sem `X-no-sso`
+ * nem `X-pje-authorization`, ausentes nos requests que funcionam). TODA
+ * resposta é logada com URL, status e tamanho do corpo para diagnóstico.
  */
 
 import { LOG_PREFIX, STORAGE_KEYS } from '../../shared/constants';
@@ -60,20 +61,17 @@ export interface AplicarEtiquetasResult {
   idEtiqueta?: number;
 }
 
-// Tentativas de rotas — a primeira é a rota oficial confirmada em campo
-// (DevTools no PJe TRF5 1G): POST /painelUsuario/tags. As demais são
-// fallbacks para tribunais que possam usar variação do path.
-const ENDPOINT_CRIAR_ETIQUETA: Array<(base: string) => string> = [
-  (b) => `${b}/painelUsuario/tags`,
-  (b) => `${b}/painelUsuario/etiquetas`,
-  (b) => `${b}/painelUsuario/tag`,
-  (b) => `${b}/painelUsuario/etiqueta`
-];
+// Rota de criação de etiqueta — POST /painelUsuario/tags. Confirmada em
+// campo (DevTools TRF5 1G, 2026-07): criar etiqueta nova pela UI dispara
+// este endpoint e ele responde 200 com a entidade criada (id definitivo).
+const ENDPOINT_CRIAR_ETIQUETA = (base: string): string =>
+  `${base}/painelUsuario/tags`;
 
-// Única rota usada para vincular etiquetas a processos — confirmada em
-// campo (DevTools TRF5 1G): POST /painelUsuario/processoTags/inserir com
-// body como array de { id, nomeTag, nomeTagCompleto, idProcesso }. A
-// resposta é o mesmo array, agora com `idProcessoTag` populado.
+// Única rota usada para vincular etiquetas (já existentes) a processos —
+// POST /painelUsuario/processoTags/inserir com body
+// `{ tag: "<nomeTag>", idProcesso: "<id como string>" }` (a etiqueta é
+// identificada pelo NOME; o `/remover` é que usa `idTag`). NÃO cria
+// on-the-fly.
 //
 // Não usamos fallbacks: se o endpoint falhar, é mais seguro surfaçar o
 // erro do que tentar rotas alternativas que possam retornar 200 com
@@ -143,6 +141,9 @@ export async function aplicarEtiquetaEmLote(
   );
 
   // -- Passo 2: criar etiqueta se ainda não existe --
+  // A criação é um POST separado para `/painelUsuario/tags` (a vinculação NÃO
+  // cria on-the-fly — devolve HTTP 500 para nome inexistente). Confirmado em
+  // campo (DevTools TRF5 1G, 2026-07).
   let foiCriada = false;
   if (!etiqueta) {
     progress(`Etiqueta "${nome}" não existe — criando no PJe...`);
@@ -165,9 +166,8 @@ export async function aplicarEtiquetaEmLote(
   }
 
   // -- Passo 2.1: favoritar (opt-in) --
-  // Só faz sentido quando a etiqueta foi criada agora — se o usuário quiser
-  // favoritar uma pré-existente, faz pelo PJe. Falha de favoritar é
-  // degradação graciosa: a pauta segue sendo vinculada normalmente.
+  // Só quando a etiqueta foi criada agora. Falha de favoritar é degradação
+  // graciosa: a pauta segue sendo vinculada normalmente.
   if (input.favoritarAposCriar && foiCriada) {
     progress(`Favoritando etiqueta "${nome}"...`);
     const fav = await favoritarEtiqueta(snap, etiqueta.id);
@@ -182,9 +182,8 @@ export async function aplicarEtiquetaEmLote(
   }
 
   // -- Passo 3: vincular a cada processo --
-  // O primeiro request é marcado como "debug": loga body, headers da
-  // requisição e da resposta. Assim, na primeira falha em campo, temos
-  // material para comparar com uma captura manual no DevTools.
+  // O primeiro request é marcado como "debug": loga body e headers da
+  // requisição/resposta, para comparar com uma captura manual no DevTools.
   const detalhes: AplicarEtiquetasResult['detalhes'] = [];
   let aplicadas = 0;
   for (let i = 0; i < input.idsProcesso.length; i++) {
@@ -201,14 +200,19 @@ export async function aplicarEtiquetaEmLote(
 
   const falhas = detalhes.filter((d) => !d.ok).length;
   if (aplicadas === 0) {
+    // Surfaça o erro real do servidor (o primeiro) em vez de uma mensagem
+    // genérica — é o que permite ver o motivo (ex.: corpo de um HTTP 500)
+    // sem precisar abrir o console.
+    const primeiroErro = detalhes.find((d) => !d.ok)?.error;
     return {
       ok: false,
       aplicadas,
       idEtiqueta: etiqueta.id,
       error:
-        `Nenhum processo vinculado. O endpoint de vinculação pode estar ` +
-        `diferente do assumido — verifique no console os logs com ` +
-        `"[pericias-etiqueta-applier]" para URL e status das tentativas.`,
+        `Nenhum processo vinculado. ` +
+        (primeiroErro
+          ? `Erro do servidor: ${primeiroErro}`
+          : `Verifique no console os logs com "[pericias-etiqueta-applier]".`),
       detalhes
     };
   }
@@ -280,9 +284,8 @@ export async function aplicarEtiquetasNoProcesso(
   );
 
   // Endpoint `/painelUsuario/processoTags/inserir` espera UMA etiqueta por
-  // request: `{ tag: "<nomeTag>", idProcesso: "<id como string>" }`.
-  // Body confirmado via DevTools em vinculação manual (TRF5 1G). Ver
-  // commit que introduziu este laço e docs/ para o protocolo completo.
+  // request: `{ tag: "<nomeTag>", idProcesso: "<id como string>" }` — a
+  // etiqueta é identificada pelo NOME (o `/remover` é que usa `idTag`).
   let aplicadas = 0;
   const erros: string[] = [];
   for (const e of input.etiquetas) {
@@ -326,7 +329,7 @@ export async function aplicarEtiquetasNoProcesso(
 }
 
 // =====================================================================
-// Criar etiqueta
+// Criar etiqueta (POST /painelUsuario/tags)
 // =====================================================================
 
 interface CriarEtiquetaResult {
@@ -340,69 +343,74 @@ async function criarEtiqueta(
   nome: string
 ): Promise<CriarEtiquetaResult> {
   const base = pjeBaseUrl(snap);
-  const headers = montarHeaders(snap, { withJsonBody: true });
-  // Body confirmado em campo via DevTools no PJe TRF5 1G (POST /painelUsuario/tags).
-  // Formato mínimo: { id: null, nomeTag, nomeTagCompleto }. O servidor
-  // devolve a entidade criada com o `id` definitivo.
+  // Page world + `minimalAuth`: a criação é escrita e, do isolated world (ou
+  // com `X-no-sso`/`X-pje-authorization`), o PJe responde 200 sem corpo
+  // (rejeição silenciosa). No page world, com os headers que o Angular usa,
+  // o servidor grava e devolve a entidade.
+  const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
+  // Body confirmado em campo (DevTools TRF5 1G, 2026-07). O PJe atualizado
+  // EXIGE estes campos e rejeita silenciosamente (200 sem corpo) o antigo
+  // `{ id:null, nomeTag, nomeTagCompleto }`. `nomeTagCompleto` = `nomeTag`
+  // para etiqueta de primeiro nível (sem hierarquia).
   const body = JSON.stringify({
-    id: null,
+    marcado: false,
+    possuiFilhos: false,
+    visivelPublicamente: false,
     nomeTag: nome,
     nomeTagCompleto: nome
   });
-  let lastErr = '';
-  for (const buildUrl of ENDPOINT_CRIAR_ETIQUETA) {
-    const url = buildUrl(base);
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers,
-        body,
-        credentials: 'include'
-      });
-      const text = await resp.text().catch(() => '');
-      console.log(
-        `${LOG} POST ${url} -> ${resp.status} (len=${text.length})`
-      );
-      if (resp.ok && text) {
-        try {
-          const json = JSON.parse(text);
-          const id = toNumber(json?.id);
-          if (id > 0) {
-            return {
-              ok: true,
-              etiqueta: {
-                id,
-                nomeTag: typeof json.nomeTag === 'string' ? json.nomeTag : nome,
-                nomeTagCompleto:
-                  typeof json.nomeTagCompleto === 'string'
-                    ? json.nomeTagCompleto
-                    : nome,
-                favorita: Boolean(json.favorita),
-                possuiFilhos: Boolean(json.possuiFilhos),
-                idTagFavorita: toNumberOrNull(json.idTagFavorita)
-              }
-            };
-          }
-        } catch (err) {
-          console.warn(`${LOG} JSON parse falhou em ${url}:`, err, text);
-        }
-      }
-      // 404/405 indica endpoint errado; outros códigos geralmente são
-      // definitivos (403 auth, 400 body) — mesmo assim registramos e
-      // tentamos a próxima rota.
-      lastErr = `HTTP ${resp.status} em ${url}: ${text.slice(0, 200)}`;
-    } catch (err) {
-      lastErr = `${url}: ${errMsg(err)}`;
-      console.warn(`${LOG} exception ao criar etiqueta em ${url}:`, err);
-    }
+  const url = ENDPOINT_CRIAR_ETIQUETA(base);
+  const resp = await fetchVincularEtiquetaNoPageWorld({ url, headers, body });
+  const text = resp.bodyText ?? '';
+  console.log(
+    `${LOG} POST ${url} -> ${resp.status ?? '—'} (len=${text.length}, ct=${resp.contentType ?? ''})`
+  );
+  if (!resp.ok) {
+    console.warn(`${LOG} criação HTTP ${resp.status} em ${url}. Body bruto: ${text}`);
+    return {
+      ok: false,
+      error:
+        `Falha ao criar etiqueta em ${url}: ` +
+        `${resp.error ?? `HTTP ${resp.status} ${text.slice(0, 200)}`}.`
+    };
   }
-  return {
-    ok: false,
-    error:
-      `Todas as tentativas de criar etiqueta falharam. Último erro: ${lastErr}. ` +
-      `Verifique o console para detalhes das rotas testadas e ajuste ` +
-      `ENDPOINT_CRIAR_ETIQUETA em pericias-etiqueta-applier.ts.`
-  };
+  if (!text) {
+    // 200 sem corpo = rejeição silenciosa (body/headers fora do esperado).
+    return {
+      ok: false,
+      error:
+        `Servidor devolveu HTTP ${resp.status} sem corpo ao criar "${nome}" — ` +
+        `criação não confirmada. Verifique o console.`
+    };
+  }
+  try {
+    const json = JSON.parse(text);
+    const id = toNumber(json?.id);
+    if (id > 0) {
+      return {
+        ok: true,
+        etiqueta: {
+          id,
+          nomeTag: typeof json.nomeTag === 'string' ? json.nomeTag : nome,
+          nomeTagCompleto:
+            typeof json.nomeTagCompleto === 'string' ? json.nomeTagCompleto : nome,
+          favorita: Boolean(json.favorita),
+          possuiFilhos: Boolean(json.possuiFilhos),
+          idTagFavorita: toNumberOrNull(json.idTagFavorita)
+        }
+      };
+    }
+    return {
+      ok: false,
+      error: `Resposta de criação sem \`id\` válido em ${url} — corpo: ${text.slice(0, 200)}.`
+    };
+  } catch (err) {
+    console.warn(`${LOG} JSON parse falhou em ${url}:`, err, text);
+    return {
+      ok: false,
+      error: `Resposta de criação não é JSON em ${url}: ${text.slice(0, 200)}.`
+    };
+  }
 }
 
 // =====================================================================
@@ -456,13 +464,10 @@ async function vincularEtiquetaAoProcesso(
 ): Promise<{ ok: boolean; error?: string }> {
   const base = pjeBaseUrl(snap);
   const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
-  // Body confirmado em campo (DevTools TRF5 1G): array de etiquetas
-  // anotadas com `idProcesso`. O servidor devolve a lista com
-  // `idProcessoTag` populado para cada item.
-  // Endpoint `/painelUsuario/processoTags/inserir` espera
-  // `{ tag: "<nomeTag>", idProcesso: "<id como string>" }` — NÃO um array
-  // de entidades como `/painelUsuario/tags` (criar) retorna. Body confirmado
-  // via DevTools em vinculação manual bem-sucedida (TRF5 1G).
+  // Body `{ tag: "<nomeTag>", idProcesso: "<id como string>" }` — o
+  // `/inserir` identifica a etiqueta pelo NOME (`tag`), não pelo id (o
+  // `/remover` é que usa `idTag`). Confirmado pelo tamanho do request manual
+  // (content-length 47 = este shape).
   const body = JSON.stringify({
     tag: etiqueta.nomeTag,
     idProcesso: String(idProcesso)
@@ -484,8 +489,15 @@ async function vincularEtiquetaAoProcesso(
       `${LOG} [debug] response headers:`,
       JSON.stringify(resp.responseHeaders ?? {})
     );
+    console.log(`${LOG} [debug] response body:`, text.slice(0, 600));
   }
   if (!resp.ok) {
+    // Loga o corpo bruto do erro — em HTTP 500 o PJe devolve um JSON curto
+    // com a causa, essencial para diagnosticar (ex.: campo faltando, tag
+    // inválida, conflito). Sem isso o motivo real fica invisível.
+    console.warn(
+      `${LOG} vinculação HTTP ${resp.status} em ${url}. Body bruto: ${text}`
+    );
     return {
       ok: false,
       error:
@@ -519,10 +531,18 @@ function resumoHeaders(h: Record<string, string>): Record<string, string> {
 
 /**
  * Valida o corpo retornado por `/painelUsuario/processoTags/inserir`.
- * Resposta real é um array com `idProcessoTag` populado em cada item —
- * se vier vazio/malformado, o servidor aceitou a chamada (HTTP 200) mas
- * não inseriu a associação (caso clássico de token auxiliar ausente ou
- * duplicidade silenciosa).
+ *
+ * Formatos observados em campo:
+ *   - Antigo: array de objetos, cada um com `idProcessoTag` populado.
+ *   - Novo (PJe 2026-07): a resposta deixou de ser o array antigo — a
+ *     vinculação bem-sucedida devolve um OBJETO (ou array de objetos) com
+ *     shape diferente. Aceitamos ambos.
+ *   - Erro do PJe: array de STRINGS (ex.: `["Erro ao vincular a etiqueta
+ *     ... ao processo"]`), que já vem como HTTP 500, mas defendemos aqui
+ *     também caso venha com 200.
+ *
+ * Proteções mantidas contra "sucesso fantasma": corpo vazio (200 sem body =
+ * rejeição silenciosa) e resposta não-JSON (HTML de login/erro).
  */
 function validarRespostaVinculacao(
   text: string,
@@ -543,28 +563,40 @@ function validarRespostaVinculacao(
       error: 'Resposta não é JSON — servidor pode ter devolvido HTML de login/erro.'
     };
   }
-  if (!Array.isArray(parsed) || parsed.length < minItens) {
-    return {
-      ok: false,
-      error: `Servidor devolveu array ${Array.isArray(parsed) ? `com ${parsed.length} item(ns)` : 'inesperado'} — vinculação não confirmada.`
-    };
+
+  if (Array.isArray(parsed)) {
+    if (parsed.length < minItens) {
+      return {
+        ok: false,
+        error: `Servidor devolveu array vazio — vinculação não confirmada.`
+      };
+    }
+    // Array de strings = mensagem de erro do PJe (assinatura conhecida).
+    if (parsed.every((it) => typeof it === 'string')) {
+      return { ok: false, error: parsed.join(' | ') };
+    }
+    // Array de objetos = associação(ões) criada(s). Aceita.
+    return { ok: true };
   }
-  const semIdProcessoTag = parsed.filter(
-    (it) =>
-      !it ||
-      typeof it !== 'object' ||
-      !Number.isFinite(
-        Number((it as { idProcessoTag?: unknown }).idProcessoTag)
-      ) ||
-      Number((it as { idProcessoTag?: unknown }).idProcessoTag) <= 0
-  ).length;
-  if (semIdProcessoTag > 0) {
-    return {
-      ok: false,
-      error: `${semIdProcessoTag} item(ns) da resposta sem idProcessoTag — vinculação não efetivada.`
-    };
+
+  // Objeto (formato novo). Rejeita só se houver marcador explícito de erro.
+  if (parsed && typeof parsed === 'object') {
+    const o = parsed as Record<string, unknown>;
+    const marcadorErro =
+      (typeof o.erro === 'string' && o.erro) ||
+      (typeof o.mensagemErro === 'string' && o.mensagemErro) ||
+      (typeof o.error === 'string' && o.error);
+    if (marcadorErro) {
+      return { ok: false, error: String(marcadorErro) };
+    }
+    return { ok: true };
   }
-  return { ok: true };
+
+  // Primitivo (string/number/boolean solto) — inesperado.
+  return {
+    ok: false,
+    error: 'Resposta em formato inesperado — vinculação não confirmada.'
+  };
 }
 
 // =====================================================================

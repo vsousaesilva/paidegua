@@ -423,3 +423,180 @@ html, body {
   word-break: break-word;
 }
 
+/* =====================================================================
+   Testador de Modelos de IA (seção admin)
+   ===================================================================== */
+
+#model-tester-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 16px 20px 20px;
+  margin-bottom: 20px;
+}
+
+.diag-tester__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.diag-tester__title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--primary-dark);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.diag-tester__badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  background: rgba(166, 107, 0, 0.14);
+  color: var(--warning);
+  padding: 3px 9px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.diag-btn--primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary-dark);
+}
+
+.diag-btn--primary:hover {
+  background: var(--primary-dark);
+}
+
+.diag-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.diag-tester__progress {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+  font-style: italic;
+}
+
+/* Tabela de resultados */
+.diag-tester-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.diag-tester-table th {
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+.diag-tester-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-tester-table tr:last-child td {
+  border-bottom: none;
+}
+
+.diag-tester-table tr:hover td {
+  background: rgba(19, 81, 180, 0.03);
+}
+
+/* Badges inline dentro das células */
+.diag-tester__badge-cell {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.diag-tester__badge-cell--ok {
+  background: rgba(30, 126, 52, 0.12);
+  color: var(--success);
+}
+
+.diag-tester__badge-cell--error {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--danger);
+}
+
+.diag-tester__badge-cell--warn {
+  background: rgba(166, 107, 0, 0.12);
+  color: var(--warning);
+}
+
+.diag-tester__badge-cell--muted {
+  background: rgba(91, 107, 130, 0.12);
+  color: var(--muted);
+}
+
+.diag-tester__badge-cell--running {
+  background: rgba(19, 81, 180, 0.10);
+  color: var(--primary);
+}
+
+/* =====================================================================
+   Log de Uso Real — Gemini (seção admin)
+   ===================================================================== */
+
+#gemini-usage-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 16px 20px 20px;
+  margin-bottom: 20px;
+}
+
+/* Tabela de stats agregados — leve destaque de fundo */
+.diag-usage-stats tbody tr {
+  background: rgba(244, 247, 252, 0.5);
+}
+
+.diag-usage-stats tbody tr:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* Células coloridas na coluna Sucesso */
+.diag-usage__ok {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.diag-usage__error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Snippet de erro abaixo do badge na tabela de log detalhado */
+.diag-usage__error-detail {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  line-height: 1.4;
+  word-break: break-word;
+  max-width: 300px;
+}
+
