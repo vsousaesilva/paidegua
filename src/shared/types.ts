@@ -1323,6 +1323,200 @@ export interface PericiasDashboardPayload {
 }
 
 // =====================================================================
+// Ordens PREVJUD (Intimações INSS) — perfil Gestão (GES-10)
+// =====================================================================
+
+/**
+ * Uma linha da tabela "Intimações INSS" do menu do processo (PJe v11).
+ * As colunas 6–9 (notificações / prazo) começam vazias e vão sendo
+ * preenchidas conforme o INSS processa a ordem. Ver dicionário completo
+ * em `docs/extracao-ordens-prevjud-pje.md`.
+ */
+export interface OrdemPrevjud {
+  /** Coluna 0 — nº sequencial da ordem na tabela. */
+  ordem: number;
+  /** Coluna 1 — ex.: "Recebida pelo INSS". Eixo de agrupamento principal. */
+  status: string;
+  /** Coluna 2 — ex.: "Conceder Benefício Assistencial ao Idoso". */
+  servico: string;
+  /** Coluna 3 — nº do documento (texto do link). */
+  idDocumento: string | null;
+  /** Coluna 3 — URL REST de download do documento da ordem. */
+  urlDocumento: string | null;
+  /** Coluna 4 — protocolo (UUID) da ordem. */
+  protocolo: string | null;
+  /** Coluna 5 — data de envio ("dd/mm/aaaa hh:mm:ss"). */
+  dataEnvio: string | null;
+  /** Coluna 6 — ID da notificação de envio (frequentemente vazio). */
+  idNotificacaoEnvio: string | null;
+  /** Coluna 7 — ID da notificação de cumprimento. Vazio = ordem pendente. */
+  idNotificacaoCumprimento: string | null;
+  /** Coluna 8 — início do prazo de cumprimento. */
+  inicioPrazo: string | null;
+  /** Coluna 9 — final do prazo — eixo de vencidos/a vencer. */
+  finalPrazo: string | null;
+}
+
+/** Processo com ao menos uma ordem PREVJUD (processos sem ordem são descartados). */
+export interface ProcessoOrdensPrevjud {
+  idProcesso: number;
+  numeroProcesso: string | null;
+  /** idTaskInstance da tarefa corrente — habilita o botão "Abrir tarefa". */
+  idTaskInstance: number | null;
+  classeJudicial: string | null;
+  assuntoPrincipal: string | null;
+  poloAtivo: string | null;
+  etiquetas: string[];
+  /** URL dos autos digitais (resolvida on-demand pelo coletor). */
+  urlAutos: string | null;
+  ordens: OrdemPrevjud[];
+}
+
+/**
+ * Linha crua devolvida pela raspagem em main world, antes da normalização.
+ * `celulas[i]` é o texto de cada `td.rich-table-cell` por índice de coluna
+ * 0–9 (robusto aos `j_id…` voláteis do RichFaces).
+ */
+export interface RawPrevjudRow {
+  celulas: string[];
+  urlDocumento: string | null;
+}
+
+/**
+ * Resultado da coleta de UM processo (canal `PREVJUD_COLETAR_PROCESSO`).
+ * `vazio: true` = o processo não tem ordens (tabela renderizada sem linhas).
+ */
+export interface PrevjudColetaProcessoResult {
+  ok: boolean;
+  vazio?: boolean;
+  linhas?: RawPrevjudRow[];
+  error?: string;
+  duracaoMs?: number;
+}
+
+/**
+ * Resultado da coleta de UM processo via API PREVJUD do gateway PDPJ
+ * (canal `PREVJUD_COLETAR_PROCESSO_API` — Rota A). As ordens já vêm
+ * normalizadas (`normalizarOrdemApi`). `authRejeitada: true` indica
+ * 401/403 (ou token/CPF indisponível) — o coletor cai para a Rota B.
+ */
+export interface PrevjudColetaApiResult {
+  ok: boolean;
+  vazio?: boolean;
+  ordens?: OrdemPrevjud[];
+  authRejeitada?: boolean;
+  error?: string;
+  duracaoMs?: number;
+}
+
+/** Configuração da coleta escolhida pelo usuário na aba-painel. */
+export interface PrevjudColetaConfig {
+  /** Tarefa(s) do PJe cujo universo será varrido. */
+  nomesTarefas: string[];
+  /**
+   * Etiquetas de filtro ESCOLHIDAS pelo usuário. Lista vazia = sem filtro
+   * (abre aba para todos os processos das tarefas — não recomendado em
+   * varas grandes). A vara costuma etiquetar com "INSS intimado em…".
+   */
+  etiquetasFiltro: string[];
+  /**
+   * Como casar as etiquetas de filtro: `qualquer` (o processo entra se
+   * tiver ao menos UMA) ou `todas` (precisa ter TODAS). Default `qualquer`.
+   */
+  etiquetaModo?: 'qualquer' | 'todas';
+  /**
+   * Quando `true`, ordens já cumpridas não entram no relatório (processo
+   * sem ordens pendentes é descartado). A contagem de cumpridas ignoradas
+   * é reportada no diagnóstico.
+   */
+  ignorarCumpridas?: boolean;
+}
+
+/** Estado da aba-painel de Ordens PREVJUD (lido de `chrome.storage.session`). */
+export interface PrevjudPainelState {
+  requestId: string;
+  tarefas: { nome: string; quantidade: number | null }[];
+  hostnamePJe: string;
+  legacyOrigin: string;
+  abertoEm: string;
+}
+
+/** Um processo no pedido de aplicação de etiqueta de status (item 4). */
+export interface PrevjudAplicarEtiquetasProcesso {
+  idProcesso: number;
+  numeroProcesso: string | null;
+  /** Status representativo do processo (sem o prefixo "Prevjud - "). */
+  statusEtiqueta: string;
+  /** Etiquetas atuais do processo — para remover as "Prevjud - *" antigas. */
+  etiquetasAtuais: string[];
+}
+
+/** Resultado consolidado da aplicação de etiquetas de status em lote. */
+export interface PrevjudAplicarEtiquetasResult {
+  ok: boolean;
+  /** Vínculos de etiqueta criados/confirmados. */
+  vinculadas: number;
+  /** Etiquetas "Prevjud - *" antigas removidas. */
+  removidas: number;
+  /** Nº de grupos de status distintos aplicados. */
+  gruposAplicados: number;
+  error?: string;
+  /** Diagnóstico da execução (para depurar 0/0). */
+  diag?: {
+    recebidos: number;
+    jaComEtiqueta: number;
+    aAplicar: number;
+    aRemover: number;
+    gruposDistintos: number;
+    exemploTarget?: string;
+    exemploAtuais?: string[];
+  };
+}
+
+/** Payload do dashboard de Ordens PREVJUD (via `chrome.storage.session`). */
+export interface PrevjudDashboardPayload {
+  requestId: string;
+  geradoEm: string;
+  hostnamePJe: string;
+  tarefasVarridas: string[];
+  etiquetasFiltro: string[];
+  /**
+   * Estado da coleta em streaming: `running` enquanto o dashboard vai sendo
+   * populado, `done` ao final. Ausente = payload completo (cache/legado).
+   */
+  status?: 'running' | 'done';
+  /** Progresso da coleta enquanto `status: 'running'`. */
+  progress?: { feitos: number; total: number };
+  /** Sequência monotônica — descarta patches de slot fora de ordem. */
+  seq?: number;
+  totais: {
+    /** Processos candidatos após o filtro de etiqueta. */
+    processosVarridos: number;
+    /** Candidatos que de fato tinham ordem PREVJUD. */
+    processosComOrdem: number;
+    totalOrdens: number;
+    /** Ordens sem notificação de cumprimento. */
+    ordensPendentes: number;
+  };
+  processos: ProcessoOrdensPrevjud[];
+  diagnostico: {
+    /** Total de processos nas tarefas antes do filtro de etiqueta. */
+    processosNaTarefa: number;
+    /** Candidatos após o filtro (= processos efetivamente coletados). */
+    filtradosPorEtiqueta: number;
+    /** Ordens cumpridas excluídas do relatório (quando "Ignorar cumpridas"). */
+    ordensCumpridasIgnoradas?: number;
+    /**
+     * Rota efetiva da coleta: `api` (gateway PDPJ), `ssr` (fetch + POST A4J
+     * replicado, sem aba), `aba` (aba invisível + A4J) ou `mista` (mais de
+     * um mecanismo na mesma varredura). Ausente em payloads antigos (cache).
+     */
+    rotaColeta?: 'api' | 'ssr' | 'aba' | 'mista';
+    falhas: { idProcesso: number; numeroProcesso: string | null; erro: string }[];
+  };
+}
+
+// =====================================================================
 // Central de Comunicação — perfil Secretaria
 // =====================================================================
 

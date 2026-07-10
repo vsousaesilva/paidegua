@@ -44,6 +44,7 @@ import type {
   ChatStartPayload,
   ComunicacaoSettings,
   PericiaPerito,
+  PrevjudAplicarEtiquetasProcesso,
   PJeApiProcesso,
   PJeDetection,
   PAIdeguaSettings,
@@ -97,6 +98,7 @@ import {
 } from './ui/tarefa-contextual-toast';
 import { abrirPrazosFitaPainel } from './gestao/prazos-fita-painel-coordinator';
 import { abrirPericiasPainel } from './pericias/pericias-coordinator';
+import { abrirPrevjudPainel } from './prevjud/prevjud-coordinator';
 import { abrirComunicacaoPainel } from './comunicacao/comunicacao-coordinator';
 import { coletarComunicacao } from './comunicacao/comunicacao-coletor';
 import { abrirAudienciaPainel } from './audiencia/audiencia-coordinator';
@@ -124,6 +126,8 @@ import { abrirSigcrim } from './criminal/criminal-coordinator';
 import { varrerCriminalPorTarefas } from './criminal/pje-criminal-fetcher';
 import { enriquecerPessoaFisicaPorCpf } from './criminal/pje-pessoa-fisica-fetcher';
 import { coletarPautasPorPeritos } from './pericias/pericias-coletor';
+import { coletarOrdensPrevjud } from './prevjud/prevjud-coletor';
+import { atualizarEtiquetasStatus } from './prevjud/prevjud-etiqueta-orquestrador';
 import {
   aplicarEtiquetaEmLoteComBridge,
   aplicarEtiquetasNoProcessoComBridge,
@@ -2649,6 +2653,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     void handlePrazosFita();
   });
 
+  els.ordensPrevjudButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleAbrirPrevjud();
+  });
+
   els.metasCnjButton.addEventListener('click', (event) => {
     event.preventDefault();
     void handleMetasCnj();
@@ -2765,6 +2774,37 @@ async function handleAbrirPericias(): Promise<void> {
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAbrirPericias falhou:`, err);
     notice(`Falha em "Perícias pAIdegua": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do botão "Ordens PREVJUD pAIdegua" (perfil Gestão): abre a aba
+ * dedicada onde o usuário escolhe as tarefas e as etiquetas de filtro. A
+ * coleta das ordens (tabela "Intimações INSS") e o dashboard acontecem
+ * naquela aba. Mesmo padrão do Painel Gerencial / Perícias.
+ */
+async function handleAbrirPrevjud(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo "Ordens PREVJUD" em nova aba...');
+  try {
+    const result = await abrirPrevjudPainel({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir "Ordens PREVJUD".', 'error');
+      return;
+    }
+    notice(
+      `"Ordens PREVJUD" aberto em nova aba (${result.totalTarefas} tarefa(s) disponíveis).`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAbrirPrevjud falhou:`, err);
+    notice(`Falha em "Ordens PREVJUD": ${errorMessage(err)}`, 'error');
   }
 }
 
@@ -3987,6 +4027,97 @@ async function handlePericiasRunColeta(
   }
 }
 
+const prevjudEmCurso = new Set<string>();
+
+/**
+ * Handler do `PREVJUD_RUN_COLETA` — roda no top frame do PJe legacy.
+ * Varre as tarefas escolhidas, filtra pelos processos com as etiquetas
+ * indicadas pelo usuário, coleta as ordens PREVJUD de cada um (aba inativa
+ * + A4J) e monta o payload do dashboard. Progresso via
+ * `PREVJUD_COLETA_PROG`; resultado via `PREVJUD_COLETA_DONE` ou `_FAIL`.
+ */
+async function handlePrevjudRunColeta(payload: {
+  requestId: string;
+  config: {
+    nomesTarefas: string[];
+    etiquetasFiltro: string[];
+    etiquetaModo?: 'qualquer' | 'todas';
+    ignorarCumpridas?: boolean;
+  };
+}): Promise<void> {
+  const { requestId, config } = payload;
+  if (prevjudEmCurso.has(requestId)) {
+    console.warn(
+      `${LOG_PREFIX} handlePrevjudRunColeta: requestId ${requestId} já em curso — ignorando disparo duplicado.`
+    );
+    return;
+  }
+  prevjudEmCurso.add(requestId);
+  try {
+    const postProg = (msg: string): void => {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PREVJUD_COLETA_PROG,
+          payload: { requestId, msg }
+        })
+        .catch(() => { /* aba-painel pode ter fechado */ });
+    };
+
+    postProg('Varredura iniciada. Pode levar alguns instantes.');
+    const hostnamePJe = new URL(window.location.origin).hostname;
+    const legacyOrigin = window.location.origin;
+
+    const { ok, payload: dashboardPayload, error } = await coletarOrdensPrevjud({
+      requestId,
+      hostnamePJe,
+      legacyOrigin,
+      config,
+      onProgress: postProg
+    });
+    if (!ok || !dashboardPayload) {
+      await chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL,
+          payload: { requestId, error: error ?? 'Falha ao coletar ordens PREVJUD.' }
+        })
+        .catch(() => { /* aba-painel pode ter fechado */ });
+      return;
+    }
+
+    postProg(
+      `Concluído: ${dashboardPayload.totais.processosComOrdem} processo(s) com ordem, ` +
+        `${dashboardPayload.totais.totalOrdens} ordem(ns).`
+    );
+
+    const resp = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.PREVJUD_COLETA_DONE,
+      payload: { requestId, dashboardPayload }
+    });
+    if (!resp?.ok) {
+      const msg = resp?.error ?? 'Falha desconhecida ao gravar o relatório.';
+      await chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL,
+          payload: { requestId, error: msg }
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
+  } catch (err) {
+    if (isExtensionContextInvalidated(err)) return;
+    console.warn(`${LOG_PREFIX} handlePrevjudRunColeta falhou:`, err);
+    try {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL,
+        payload: { requestId, error: errorMessage(err) }
+      });
+    } catch {
+      /* aba-painel pode ter sido fechada */
+    }
+  } finally {
+    prevjudEmCurso.delete(requestId);
+  }
+}
+
 function mountUI(detection: PJeDetection, adapter: BaseAdapter): void {
   memory.adapter = adapter;
   memory.detection = detection;
@@ -4394,6 +4525,69 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     sendResponse({ ok: true });
     void handlePericiasRunColeta(payload);
+    return false;
+  }
+
+  // Ordens PREVJUD: aplica/atualiza a etiqueta "Prevjud - [status]" em lote.
+  // Só o top frame (o orquestrador delega as escritas ao iframe do painel).
+  if (message.channel === MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      processos: PrevjudAplicarEtiquetasProcesso[];
+    };
+    if (!payload || !Array.isArray(payload.processos)) {
+      sendResponse({
+        ok: false,
+        vinculadas: 0,
+        removidas: 0,
+        gruposAplicados: 0,
+        error: 'Payload de aplicação de etiquetas PREVJUD inválido.'
+      });
+      return false;
+    }
+    void (async () => {
+      try {
+        const r = await atualizarEtiquetasStatus({ processos: payload.processos });
+        sendResponse(r);
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          vinculadas: 0,
+          removidas: 0,
+          gruposAplicados: 0,
+          error: errorMessage(err)
+        });
+      }
+    })();
+    return true;
+  }
+
+  // Ordens PREVJUD: varre tarefas, filtra por etiqueta e coleta a tabela
+  // "Intimações INSS" de cada processo. Só o top frame da aba PJe roda.
+  if (message.channel === MESSAGE_CHANNELS.PREVJUD_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      requestId: string;
+      config: {
+        nomesTarefas: string[];
+        etiquetasFiltro: string[];
+        etiquetaModo?: 'qualquer' | 'todas';
+        ignorarCumpridas?: boolean;
+      };
+    };
+    if (
+      !payload ||
+      !payload.requestId ||
+      !payload.config ||
+      !Array.isArray(payload.config.nomesTarefas)
+    ) {
+      sendResponse({ ok: false, error: 'Payload de coleta PREVJUD inválido.' });
+      return false;
+    }
+    sendResponse({ ok: true });
+    void handlePrevjudRunColeta(payload);
     return false;
   }
 

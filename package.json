@@ -1,6 +1,6 @@
 {
   "name": "pjeia",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Extensão Chrome pAIdegua — plataforma de apoio à atividade e à gestão judicial no PJe.",
   "private": true,
   "scripts": {

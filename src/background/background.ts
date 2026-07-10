@@ -78,6 +78,10 @@ import {
 } from '../shared/etiquetas-matcher';
 import type { SaveTemplatePayload } from '../shared/templates-save';
 import { addRegistro as addComunicacaoRegistro } from '../shared/comunicacao-store';
+import {
+  normalizarOrdemApi,
+  type IntimacaoApiRaw
+} from '../shared/prevjud-parser';
 import type {
   AnaliseProcessoResult,
   ChatMessage,
@@ -96,6 +100,7 @@ import type {
   PericiaPerito,
   PericiaTarefaInfo,
   PericiasDashboardPayload,
+  PrevjudDashboardPayload,
   RegistroCobranca,
   PJeAuthSnapshot,
   PrazosFitaDashboardPayload,
@@ -1183,6 +1188,132 @@ function dispatchMessage(
       case MESSAGE_CHANNELS.PRAZOS_FITA_COLETAR_PROCESSO:
         void handlePrazosFitaColetarProcesso(
           message.payload as { url: string; timeoutMs?: number },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_COLETAR_PROCESSO:
+        void handlePrevjudColetarProcesso(
+          message.payload as { url: string; timeoutMs?: number },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_COLETAR_PROCESSO_API:
+        void handlePrevjudColetarProcessoApi(
+          message.payload as { numeroProcesso: string; timeoutMs?: number },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS:
+        void (async () => {
+          try {
+            const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+            const tab = tabs.find((t) => typeof t.id === 'number');
+            if (!tab || tab.id == null) {
+              sendResponse({
+                ok: false,
+                vinculadas: 0,
+                removidas: 0,
+                gruposAplicados: 0,
+                error:
+                  'Nenhuma aba do PJe aberta. Mantenha o Painel do Usuário do ' +
+                  'PJe aberto para aplicar as etiquetas.'
+              });
+              return;
+            }
+            const resp = await chrome.tabs.sendMessage(tab.id, {
+              channel: MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS,
+              payload: message.payload
+            });
+            sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
+          } catch (err) {
+            sendResponse({
+              ok: false,
+              vinculadas: 0,
+              removidas: 0,
+              gruposAplicados: 0,
+              error: errorMessage(err)
+            });
+          }
+        })();
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_OPEN_PAINEL:
+        void handleOpenPrevjudPainel(
+          message.payload as {
+            tarefas: { nome: string; quantidade: number | null }[];
+            hostnamePJe: string;
+            legacyOrigin: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_START_COLETA:
+        void handlePrevjudStartColeta(
+          message.payload as {
+            requestId: string;
+            nomesTarefas: string[];
+            etiquetasFiltro: string[];
+            etiquetaModo?: 'qualquer' | 'todas';
+            ignorarCumpridas?: boolean;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_COLETA_PROG:
+        void handlePrevjudColetaProg(
+          message.payload as { requestId: string; msg: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_SKELETON_READY:
+        void handlePrevjudSkeletonReady(
+          message.payload as {
+            requestId: string;
+            hostnamePJe: string;
+            tarefasVarridas: string[];
+            etiquetasFiltro: string[];
+            total: number;
+            processosNaTarefa: number;
+            filtradosPorEtiqueta: number;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_SLOT_PATCH:
+        void handlePrevjudSlotPatch(
+          message.payload as {
+            requestId: string;
+            seq: number;
+            feitos: number;
+            total: number;
+            processos: PrevjudDashboardPayload['processos'];
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_COLETA_DONE:
+        void handlePrevjudColetaDone(
+          message.payload as {
+            requestId: string;
+            dashboardPayload: PrevjudDashboardPayload;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL:
+        void handlePrevjudColetaFail(
+          message.payload as { requestId: string; error: string },
           sendResponse
         );
         return true;
@@ -5272,6 +5403,335 @@ async function handlePericiasColetaFail(
 }
 
 // =====================================================================
+// Painel de Ordens PREVJUD (perfil Gestão — GES-10)
+// =====================================================================
+
+function gerarPrevjudRequestId(): string {
+  return `prevjud-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Config da coleta enviada pela aba-painel ao confirmar. */
+interface PrevjudColetaConfigMsg {
+  nomesTarefas: string[];
+  etiquetasFiltro: string[];
+  etiquetaModo?: 'qualquer' | 'todas';
+  ignorarCumpridas?: boolean;
+}
+
+async function handleOpenPrevjudPainel(
+  payload: {
+    tarefas: { nome: string; quantidade: number | null }[];
+    hostnamePJe: string;
+    legacyOrigin: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou Ordens PREVJUD.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload de abertura de PREVJUD inválido.' });
+      return;
+    }
+
+    const requestId = gerarPrevjudRequestId();
+    const stateKey = `${STORAGE_KEYS.PREVJUD_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        hostnamePJe: payload.hostnamePJe ?? '',
+        legacyOrigin: payload.legacyOrigin ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('prevjud-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({
+        ok: false,
+        error: 'Chrome não atribuiu ID à aba de Ordens PREVJUD.'
+      });
+      return;
+    }
+    // Reutiliza setRota/getRota (prefixo GESTAO) — sem colisão porque o
+    // requestId inclui o prefixo "prevjud-".
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenPrevjudPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePrevjudStartColeta(
+  payload: { requestId: string } & PrevjudColetaConfigMsg,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error:
+          'Sessão de Ordens PREVJUD expirou. Volte ao PJe e abra a feature novamente.'
+      });
+      return;
+    }
+    if (!Array.isArray(payload.nomesTarefas) || payload.nomesTarefas.length === 0) {
+      sendResponse({ ok: false, error: 'Nenhuma tarefa selecionada.' });
+      return;
+    }
+    const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.PREVJUD_RUN_COLETA,
+      payload: {
+        requestId: payload.requestId,
+        config: {
+          nomesTarefas: payload.nomesTarefas,
+          etiquetasFiltro: Array.isArray(payload.etiquetasFiltro)
+            ? payload.etiquetasFiltro
+            : [],
+          etiquetaModo: payload.etiquetaModo ?? 'qualquer',
+          ignorarCumpridas: payload.ignorarCumpridas === true
+        }
+      }
+    });
+    if (!ack?.ok) {
+      sendResponse({
+        ok: false,
+        error:
+          ack?.error ??
+          'A aba do PJe não aceitou iniciar a coleta. Confirme que ela continua aberta.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrevjudStartColeta falhou:`, error);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(error) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handlePrevjudColetaProg(
+  payload: { requestId: string; msg: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PREVJUD_COLETA_PROG,
+        payload
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrevjudColetaProg falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePrevjudColetaDone(
+  payload: { requestId: string; dashboardPayload: PrevjudDashboardPayload },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    if (
+      !payload.dashboardPayload ||
+      !Array.isArray(payload.dashboardPayload.processos)
+    ) {
+      sendResponse({ ok: false, error: 'Payload do relatório PREVJUD inválido.' });
+      return;
+    }
+
+    // Streaming: a aba-painel já navegou para o dashboard no SKELETON_READY.
+    // Aqui apenas sobrescrevemos com o payload FINAL (status 'done' +
+    // diagnóstico completo). O dashboard reage via storage.onChanged.
+    const dashKey =
+      `${STORAGE_KEYS.PREVJUD_DASHBOARD_PAYLOAD_PREFIX}${payload.requestId}`;
+    const final: PrevjudDashboardPayload = {
+      ...payload.dashboardPayload,
+      status: 'done',
+      progress: {
+        feitos: payload.dashboardPayload.diagnostico?.filtradosPorEtiqueta ?? 0,
+        total: payload.dashboardPayload.diagnostico?.filtradosPorEtiqueta ?? 0
+      }
+    };
+    await chrome.storage.session.set({ [dashKey]: final });
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.PREVJUD_PAINEL_STATE_PREFIX}${payload.requestId}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrevjudColetaDone falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/** Fila de escrita por requestId — serializa os read-modify-write de patch. */
+const prevjudPatchLocks = new Map<string, Promise<void>>();
+
+async function handlePrevjudSkeletonReady(
+  payload: {
+    requestId: string;
+    hostnamePJe: string;
+    tarefasVarridas: string[];
+    etiquetasFiltro: string[];
+    total: number;
+    processosNaTarefa: number;
+    filtradosPorEtiqueta: number;
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    const dashKey =
+      `${STORAGE_KEYS.PREVJUD_DASHBOARD_PAYLOAD_PREFIX}${payload.requestId}`;
+    const skeleton: PrevjudDashboardPayload = {
+      requestId: payload.requestId,
+      geradoEm: new Date().toISOString(),
+      hostnamePJe: payload.hostnamePJe ?? '',
+      tarefasVarridas: payload.tarefasVarridas ?? [],
+      etiquetasFiltro: payload.etiquetasFiltro ?? [],
+      status: 'running',
+      progress: { feitos: 0, total: payload.total ?? 0 },
+      seq: 0,
+      totais: {
+        processosVarridos: payload.filtradosPorEtiqueta ?? 0,
+        processosComOrdem: 0,
+        totalOrdens: 0,
+        ordensPendentes: 0
+      },
+      processos: [],
+      diagnostico: {
+        processosNaTarefa: payload.processosNaTarefa ?? 0,
+        filtradosPorEtiqueta: payload.filtradosPorEtiqueta ?? 0,
+        falhas: []
+      }
+    };
+    await chrome.storage.session.set({ [dashKey]: skeleton });
+    // Agora sim manda a aba-painel abrir o dashboard.
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PREVJUD_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrevjudSkeletonReady falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePrevjudSlotPatch(
+  payload: {
+    requestId: string;
+    seq: number;
+    feitos: number;
+    total: number;
+    processos: PrevjudDashboardPayload['processos'];
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const rid = payload?.requestId ?? '';
+  if (!rid) {
+    sendResponse({ ok: false, error: 'requestId ausente.' });
+    return;
+  }
+  const dashKey = `${STORAGE_KEYS.PREVJUD_DASHBOARD_PAYLOAD_PREFIX}${rid}`;
+  // Serializa: encadeia neste requestId para evitar read-modify-write
+  // concorrente (os workers do coletor emitem em paralelo).
+  const anterior = prevjudPatchLocks.get(rid) ?? Promise.resolve();
+  const atual = anterior
+    .catch(() => { /* ignora erro anterior */ })
+    .then(async () => {
+      const got = await chrome.storage.session.get(dashKey);
+      const atualPayload = got[dashKey] as PrevjudDashboardPayload | undefined;
+      if (!atualPayload || atualPayload.status !== 'running') return;
+      // Descarta patch fora de ordem.
+      if ((atualPayload.seq ?? 0) >= payload.seq) return;
+      const processos = Array.isArray(payload.processos) ? payload.processos : [];
+      const totalOrdens = processos.reduce((a, pr) => a + pr.ordens.length, 0);
+      const ordensPendentes = processos.reduce(
+        (a, pr) => a + pr.ordens.filter((o) => !o.idNotificacaoCumprimento).length,
+        0
+      );
+      const novo: PrevjudDashboardPayload = {
+        ...atualPayload,
+        seq: payload.seq,
+        progress: { feitos: payload.feitos, total: payload.total },
+        processos,
+        totais: {
+          ...atualPayload.totais,
+          processosComOrdem: processos.length,
+          totalOrdens,
+          ordensPendentes
+        }
+      };
+      await chrome.storage.session.set({ [dashKey]: novo });
+    });
+  prevjudPatchLocks.set(rid, atual);
+  await atual;
+  sendResponse({ ok: true });
+}
+
+async function handlePrevjudColetaFail(
+  payload: { requestId: string; error: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL,
+          payload
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.PREVJUD_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePrevjudColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// =====================================================================
 // Central de Comunicação (perfil Secretaria)
 // =====================================================================
 
@@ -6858,6 +7318,383 @@ async function handlePrazosFitaColetarProcesso(
     if (tabId != null) {
       chrome.tabs.remove(tabId).catch(() => { /* aba já fechada */ });
     }
+  }
+}
+
+// =====================================================================
+// Ordens PREVJUD (Intimações INSS) — coleta por A4J em aba inativa (GES-10)
+// =====================================================================
+
+/** Shape do retorno da raspagem PREVJUD em main world. */
+interface ColetarPrevjudOutput {
+  ok: boolean;
+  /** `true` quando a tabela renderizou sem linhas (processo sem ordem). */
+  vazio?: boolean;
+  /** Linhas cruas (células por índice 0–9 + URL do documento). */
+  linhas?: { celulas: string[]; urlDocumento: string | null }[];
+  error?: string;
+}
+
+/**
+ * Coleta as ordens PREVJUD de UM processo. Abre `listAutosDigitais.seam` em
+ * aba inativa, aguarda o render, aciona o A4J "Verificar ordens PREVJUD" em
+ * main world (`coletarOrdensPrevjudNoFrame`) e devolve as linhas cruas da
+ * tabela "Intimações INSS". A normalização (índice→campos) fica no coletor
+ * via `normalizarOrdemPrevjud`. Fecha a aba ao final.
+ *
+ * Não há endpoint REST — ver `docs/extracao-ordens-prevjud-pje.md`.
+ */
+async function handlePrevjudColetarProcesso(
+  payload: { url: string; timeoutMs?: number },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const inicio = Date.now();
+  const url = payload?.url ?? '';
+  if (!url || typeof url !== 'string') {
+    sendResponse({ ok: false, error: 'URL ausente ou inválida.', duracaoMs: 0 });
+    return;
+  }
+  const timeoutMs = payload.timeoutMs ?? 45_000;
+
+  let tabId: number | null = null;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    if (tab.id == null) {
+      sendResponse({
+        ok: false,
+        error: 'chrome.tabs.create não retornou tabId.',
+        duracaoMs: Date.now() - inicio
+      });
+      return;
+    }
+    tabId = tab.id;
+
+    await waitTabComplete(tabId, timeoutMs);
+    // Respiro curto: o RichFaces inicializa em setTimeout(0) e o link do
+    // menu pode ainda não estar acionável quando o status vira 'complete'.
+    await new Promise<void>((r) => setTimeout(r, 500));
+
+    const [inj] = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: false },
+      world: 'MAIN',
+      func: coletarOrdensPrevjudNoFrame
+    });
+
+    const raw = inj?.result as ColetarPrevjudOutput | undefined;
+    if (!raw) {
+      sendResponse({
+        ok: false,
+        error: 'Injeção main-world não retornou resultado.',
+        duracaoMs: Date.now() - inicio
+      });
+      return;
+    }
+    sendResponse({ ...raw, duracaoMs: Date.now() - inicio });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handlePrevjudColetarProcesso:`, err);
+    sendResponse({
+      ok: false,
+      error: errorMessage(err),
+      duracaoMs: Date.now() - inicio
+    });
+  } finally {
+    if (tabId != null) {
+      chrome.tabs.remove(tabId).catch(() => { /* aba já fechada */ });
+    }
+  }
+}
+
+/**
+ * Executada em MAIN world na aba recém-aberta dos autos digitais.
+ *
+ * Fluxo:
+ *   1. Localiza o link `navbar:linkVerificarIntimacoesInss` e dispara seu
+ *      onclick (A4J.AJAX.Submit → re-render parcial da página).
+ *   2. Faz polling até `#divListaIntimacaoInss table.rich-table` aparecer.
+ *   3. Raspa `tbody tr.rich-table-row`, lendo `td.rich-table-cell` por
+ *      índice 0–9 (robusto aos `j_id…` voláteis) e extraindo a URL de
+ *      download do `onclick` do link do documento.
+ *
+ * Tudo (inclusive erro) volta pelo `resolve` — `executeScript` aceita Promise.
+ */
+function coletarOrdensPrevjudNoFrame(): Promise<ColetarPrevjudOutput> {
+  return new Promise((resolve) => {
+    const DEADLINE_MS = 20_000;
+    const inicio = Date.now();
+
+    const link = document.querySelector<HTMLAnchorElement>(
+      'a[id="navbar:linkVerificarIntimacoesInss"]'
+    );
+    if (!link) {
+      resolve({
+        ok: false,
+        error:
+          'Link "Verificar ordens PREVJUD" não encontrado — o menu do processo não carregou ou a sessão expirou.'
+      });
+      return;
+    }
+
+    try {
+      link.click();
+    } catch (err) {
+      resolve({
+        ok: false,
+        error:
+          'Falha ao acionar o link PREVJUD: ' +
+          (err instanceof Error ? err.message : String(err))
+      });
+      return;
+    }
+
+    const extrair = (): ColetarPrevjudOutput | null => {
+      const container = document.getElementById('divListaIntimacaoInss');
+      if (!container) return null;
+      const tabela = container.querySelector('table.rich-table');
+      if (!tabela) return null;
+      const linhas = Array.from(
+        tabela.querySelectorAll('tbody tr.rich-table-row')
+      );
+      if (linhas.length === 0) {
+        // Container presente mas sem linhas ⇒ processo sem ordem PREVJUD.
+        return { ok: true, vazio: true, linhas: [] };
+      }
+      const out = linhas.map((tr) => {
+        const tds = Array.from(
+          tr.querySelectorAll('td.rich-table-cell')
+        );
+        const celulas = tds.map((td) =>
+          (td.textContent ?? '').replace(/\s+/g, ' ').trim()
+        );
+        let urlDocumento: string | null = null;
+        const a = tr.querySelector('a.link-processo-documento');
+        if (a) {
+          const onclick = a.getAttribute('onclick') ?? '';
+          const m = onclick.match(/window\.open\('([^']+)'/);
+          if (m) urlDocumento = m[1];
+        }
+        return { celulas, urlDocumento };
+      });
+      return { ok: true, linhas: out };
+    };
+
+    const poll = (): void => {
+      const r = extrair();
+      if (r) {
+        resolve(r);
+        return;
+      }
+      if (Date.now() - inicio > DEADLINE_MS) {
+        resolve({
+          ok: false,
+          error:
+            'Tabela "Intimações INSS" não apareceu no prazo (A4J não retornou).'
+        });
+        return;
+      }
+      setTimeout(poll, 400);
+    };
+    // Primeiro tick após um respiro — o A4J precisa submeter e re-renderizar.
+    setTimeout(poll, 500);
+  });
+}
+
+// =====================================================================
+// Ordens PREVJUD — Rota A: API oficial no gateway PDPJ (GES-10)
+// =====================================================================
+
+/**
+ * Base da API de intimações judiciais do PREVJUD na PDPJ. Spec pública em
+ * `{base}/../../v2/api-docs`; descoberta documentada em
+ * `docs/extracao-ordens-prevjud-pje.md` §2.2. O host é `*.jus.br`, já
+ * coberto por `host_permissions` — o fetch do service worker não sofre CORS.
+ */
+const PREVJUD_API_BASE =
+  'https://gateway.cloud.pje.jus.br/prevjud-intimacao-judicial/api/v2/intimacao-judicial';
+
+/**
+ * Extrai o CPF do operador do payload do JWT (claims `cpf`,
+ * `preferred_username` ou `sub` — nos tokens do SSO PDPJ o
+ * preferred_username costuma ser o próprio CPF). Necessário para o header
+ * obrigatório `X-PDPJ-CPF-USUARIO-OPERADOR` do gateway.
+ */
+function extrairCpfDoJwt(authorization: string): string | null {
+  try {
+    const token = authorization.replace(/^Bearer\s+/i, '').trim();
+    const partes = token.split('.');
+    if (partes.length < 2) return null;
+    const b64 = partes[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(b64)) as Record<string, unknown>;
+    for (const chave of ['cpf', 'preferred_username', 'sub']) {
+      const v = claims[chave];
+      if (typeof v === 'string') {
+        const digitos = v.replace(/\D/g, '');
+        if (digitos.length === 11) return digitos;
+      }
+    }
+  } catch {
+    /* token ilegível — devolve null e o caller cai para a Rota B */
+  }
+  return null;
+}
+
+/**
+ * Rota A da coleta PREVJUD: consulta as intimações de UM processo na API
+ * do gateway PDPJ, autenticando com o Bearer capturado pelo interceptor.
+ * `authRejeitada: true` sinaliza ao coletor para cair na Rota B (aba
+ * invisível): cobre 401/403 do gateway e também os pré-requisitos ausentes
+ * (sem snapshot / sem CPF no token). 204/404 = processo sem intimações.
+ */
+async function handlePrevjudColetarProcessoApi(
+  payload: { numeroProcesso: string; timeoutMs?: number },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const inicio = Date.now();
+  const fim = (r: Record<string, unknown>): void => {
+    sendResponse({ ...r, duracaoMs: Date.now() - inicio });
+  };
+  const numero = (payload?.numeroProcesso ?? '').trim();
+  if (!numero) {
+    fim({ ok: false, error: 'numeroProcesso ausente.' });
+    return;
+  }
+  try {
+    const got = await chrome.storage.session.get(STORAGE_KEYS.PJE_AUTH_SNAPSHOT);
+    const snap = got?.[STORAGE_KEYS.PJE_AUTH_SNAPSHOT] as
+      | { authorization?: string }
+      | undefined;
+    const authorization = snap?.authorization;
+    if (!authorization) {
+      fim({
+        ok: false,
+        authRejeitada: true,
+        error: 'Sem snapshot de auth do PJe para chamar o gateway PDPJ.'
+      });
+      return;
+    }
+    const cpf = extrairCpfDoJwt(authorization);
+    if (!cpf) {
+      fim({
+        ok: false,
+        authRejeitada: true,
+        error: 'CPF do operador não localizado no token do PJe.'
+      });
+      return;
+    }
+
+    // `GET obter-intimacao-numero-processo/{n}`: único endpoint de consulta
+    // que passa da autorização com o token do PJe no TRF5 — o
+    // `POST /pesquisar` responde 403 (RBAC por rota no gateway). Estado
+    // atual (jul/2026): este GET responde HTTP 500 MESMO para processo com
+    // ordem real — causa em investigação (formato do número? claim/perfil
+    // ausente no token? provisioning do CPF no PREVJUD?). O 500 é tratado
+    // como erro comum: o processo cai para a Rota B e a sonda nunca valida
+    // a API enquanto o gateway se comportar assim.
+    const url =
+      `${PREVJUD_API_BASE}/obter-intimacao-numero-processo/` +
+      encodeURIComponent(numero);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), payload.timeoutMs ?? 20_000);
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: authorization,
+          'X-PDPJ-CPF-USUARIO-OPERADOR': cpf,
+          Accept: 'application/json'
+        },
+        signal: ctrl.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (resp.status === 401 || resp.status === 403) {
+      fim({
+        ok: false,
+        authRejeitada: true,
+        error: `HTTP ${resp.status} no gateway PDPJ (token não aceito).`
+      });
+      return;
+    }
+    if (resp.status === 204 || resp.status === 404) {
+      fim({ ok: true, vazio: true, ordens: [] });
+      return;
+    }
+    if (!resp.ok) {
+      // Trecho do corpo ajuda a diagnosticar 400/422/500 (mensagem do
+      // gateway, sem PII — é erro estrutural, não dado de processo).
+      let corpo = '';
+      try {
+        corpo = (await resp.text()).slice(0, 200);
+      } catch {
+        /* corpo ilegível */
+      }
+      console.warn(
+        `${LOG_PREFIX} PREVJUD API HTTP ${resp.status}:`,
+        corpo || '(sem corpo)'
+      );
+      fim({
+        ok: false,
+        error:
+          `HTTP ${resp.status} no gateway PDPJ` +
+          (corpo ? ` — ${corpo}` : '.')
+      });
+      return;
+    }
+    const texto = await resp.text();
+    if (!texto.trim()) {
+      fim({ ok: true, vazio: true, ordens: [] });
+      return;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(texto);
+    } catch {
+      // 200 com corpo não-JSON: tipicamente HTML de proxy/SSO no meio do
+      // caminho — tratar como indisponibilidade, não como "sem ordens".
+      console.warn(
+        `${LOG_PREFIX} PREVJUD API respondeu 200 não-JSON:`,
+        texto.slice(0, 200)
+      );
+      fim({
+        ok: false,
+        error: `Resposta 200 não-JSON do gateway (${texto.slice(0, 120)}...)`
+      });
+      return;
+    }
+    // A busca devolve um Page do Spring ({content:[...], totalElements,...});
+    // tolera também array puro (caso o gateway mude o envelope).
+    const lista: unknown[] | null = Array.isArray(json)
+      ? json
+      : json &&
+          typeof json === 'object' &&
+          Array.isArray((json as { content?: unknown }).content)
+        ? ((json as { content: unknown[] }).content)
+        : null;
+    if (!lista) {
+      console.warn(
+        `${LOG_PREFIX} PREVJUD API shape inesperado:`,
+        texto.slice(0, 200)
+      );
+      fim({ ok: false, error: 'Resposta do gateway em formato inesperado.' });
+      return;
+    }
+    // Defesa: mantém apenas itens do processo pedido (se o filtro do
+    // servidor for ignorado, não contaminamos o relatório).
+    const doProcesso = lista.filter((raw) => {
+      const np = (raw as IntimacaoApiRaw | null)?.numeroProcesso;
+      return typeof np !== 'string' || !np.trim() || np.trim() === numero;
+    });
+    const ordens = doProcesso.map((raw, i) =>
+      normalizarOrdemApi(raw as IntimacaoApiRaw, i)
+    );
+    fim({ ok: true, vazio: ordens.length === 0, ordens });
+  } catch (err) {
+    // Falha de rede/timeout — em intranet pode indicar bloqueio de proxy
+    // para gateway.cloud.pje.jus.br a partir do navegador.
+    console.warn(`${LOG_PREFIX} PREVJUD API fetch falhou:`, err);
+    fim({ ok: false, error: `Falha de rede no gateway PDPJ: ${errorMessage(err)}` });
   }
 }
 

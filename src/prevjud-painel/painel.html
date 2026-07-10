@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ordens PREVJUD pAIdegua</title>
+  <link rel="stylesheet" href="painel.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <span class="header__logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6.6" y="4.08" width="2.88" height="17.04" rx="1.2" fill="currentColor"/>
+          <circle cx="14.28" cy="10.32" r="4.62" fill="none" stroke="currentColor" stroke-width="2.52"/>
+          <circle cx="14.28" cy="10.32" r="2.04" fill="#FFCD07"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Ordens PREVJUD pAIdegua</h1>
+        <p class="header__subtitle">pAIdegua &mdash; Perfil Gestão</p>
+      </div>
+    </div>
+    <div class="header__meta" id="meta"></div>
+  </header>
+
+  <main class="main">
+    <section id="estado-carregando" class="card estado">
+      <p class="loading">Preparando coleta das ordens PREVJUD...</p>
+    </section>
+
+    <section id="estado-erro" class="card estado" hidden>
+      <h2>Não foi possível iniciar</h2>
+      <p id="erro-msg" class="erro-msg"></p>
+      <div class="toolbar">
+        <button id="btn-fechar" class="btn">Fechar esta aba</button>
+      </div>
+    </section>
+
+    <section id="estado-seletor" class="card" hidden>
+      <div id="cache-aviso" class="cache-aviso" hidden>
+        <span id="cache-aviso-texto"></span>
+        <button id="btn-reabrir" class="btn">Reabrir último relatório</button>
+      </div>
+
+      <h2>Coletar ordens PREVJUD</h2>
+      <p class="hint">
+        Escolha as tarefas do painel a varrer e as etiquetas de filtro. O
+        pAIdegua abre cada processo que casar com as etiquetas, lê a tabela
+        <strong>Intimações INSS</strong> e monta o painel de acompanhamento.
+        Processos sem ordem são descartados.
+      </p>
+
+      <h3>Tarefas do painel</h3>
+      <div class="toolbar toolbar--start">
+        <button id="btn-tarefas-todas" class="btn">Selecionar todas</button>
+        <button id="btn-tarefas-limpar" class="btn">Limpar</button>
+        <span class="count" id="contador-tarefas"></span>
+      </div>
+      <ul id="lista-tarefas" class="lista"></ul>
+
+      <h3>Etiquetas de filtro</h3>
+      <p class="hint">
+        Marque as etiquetas cujos processos entram na varredura. Deixe
+        <strong>tudo desmarcado</strong> para varrer todos os processos das
+        tarefas. A seleção fica salva para a próxima vez.
+      </p>
+      <div class="toolbar toolbar--start">
+        <label for="input-etiquetas-busca" class="sr-only">Buscar etiqueta</label>
+        <input
+          type="search"
+          id="input-etiquetas-busca"
+          class="input etiquetas-busca"
+          placeholder="Buscar etiqueta..."
+          autocomplete="off"
+        />
+        <button id="btn-etiquetas-limpar" class="btn">Limpar seleção</button>
+        <button id="btn-etiquetas-recarregar" class="btn" title="Rebusca o catálogo de etiquetas no PJe">Recarregar catálogo</button>
+        <span class="count" id="contador-etiquetas"></span>
+      </div>
+      <ul id="lista-etiquetas" class="lista lista--etiquetas"></ul>
+      <div id="etiquetas-selecionadas" class="chips" hidden></div>
+
+      <p class="hint" style="margin-top: 14px;">
+        <strong>Ao marcar mais de uma etiqueta</strong>, como o processo deve casar:
+      </p>
+      <div class="toolbar toolbar--start">
+        <span class="radio-group">
+          <label><input type="radio" name="etiqueta-modo" value="qualquer" checked /> Basta ter <strong>uma</strong> das marcadas</label>
+          <label><input type="radio" name="etiqueta-modo" value="todas" /> Precisa ter <strong>todas</strong> as marcadas</label>
+        </span>
+      </div>
+      <p class="hint" style="font-size: 12px;">
+        Exemplo — marcando "LOAS Idoso" e "INSS intimado em 02/07/2026":
+        <em>uma das marcadas</em> traz processos que tenham qualquer uma delas;
+        <em>todas as marcadas</em> traz só os que têm as duas ao mesmo tempo.
+      </p>
+
+      <h3>Opções</h3>
+      <div class="toolbar toolbar--start">
+        <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="chk-ignorar-cumpridas" />
+          <span>Ignorar ordens já cumpridas (não trazer para o relatório)</span>
+        </label>
+      </div>
+
+      <div class="toolbar toolbar--end">
+        <button id="btn-cancelar" class="btn">Cancelar</button>
+        <button id="btn-confirmar" class="btn primary" disabled>
+          Coletar ordens
+        </button>
+      </div>
+    </section>
+
+    <section id="estado-progresso" class="card" hidden>
+      <h2>Coletando ordens PREVJUD...</h2>
+      <p class="hint" id="progresso-resumo">
+        Não feche esta aba enquanto a coleta estiver em andamento. Ela carrega
+        o painel automaticamente ao final.
+      </p>
+
+      <div class="progress">
+        <div class="progress__bar"><div class="progress__fill" id="bar-fill"></div></div>
+        <div class="progress__label" id="bar-label">Preparando...</div>
+      </div>
+
+      <h3 class="log-title">Registro</h3>
+      <ul class="log" id="log"></ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    pAIdegua — Justiça Federal no Ceará
+  </footer>
+
+  <script src="painel.js"></script>
+</body>
+</html>

@@ -19,10 +19,13 @@ import { LOG_PREFIX } from '../../shared/constants';
 import {
   aplicarEtiquetaEmLote,
   aplicarEtiquetasNoProcesso,
+  removerEtiquetaEmLote,
   type AplicarEtiquetasInput,
   type AplicarEtiquetasResult,
   type AplicarEtiquetasNoProcessoInput,
-  type AplicarEtiquetasNoProcessoResult
+  type AplicarEtiquetasNoProcessoResult,
+  type RemoverEtiquetasInput,
+  type RemoverEtiquetasResult
 } from './pericias-etiqueta-applier';
 
 const MSG_APLICAR_LOTE_REQ = 'paidegua/etiqueta-aplicar-lote-req';
@@ -31,6 +34,9 @@ const MSG_APLICAR_LOTE_RESP = 'paidegua/etiqueta-aplicar-lote-resp';
 
 const MSG_APLICAR_PROC_REQ = 'paidegua/etiqueta-aplicar-processo-req';
 const MSG_APLICAR_PROC_RESP = 'paidegua/etiqueta-aplicar-processo-resp';
+
+const MSG_REMOVER_LOTE_REQ = 'paidegua/etiqueta-remover-lote-req';
+const MSG_REMOVER_LOTE_RESP = 'paidegua/etiqueta-remover-lote-resp';
 
 interface MsgAplicarLoteReq {
   type: typeof MSG_APLICAR_LOTE_REQ;
@@ -66,12 +72,25 @@ interface MsgAplicarProcResp {
   result: AplicarEtiquetasNoProcessoResult;
 }
 
+interface MsgRemoverLoteReq {
+  type: typeof MSG_REMOVER_LOTE_REQ;
+  requestId: string;
+  payload: { remocoes: RemoverEtiquetasInput['remocoes'] };
+}
+interface MsgRemoverLoteResp {
+  type: typeof MSG_REMOVER_LOTE_RESP;
+  requestId: string;
+  result: RemoverEtiquetasResult;
+}
+
 type AnyMsg =
   | MsgAplicarLoteReq
   | MsgAplicarLoteProg
   | MsgAplicarLoteResp
   | MsgAplicarProcReq
-  | MsgAplicarProcResp;
+  | MsgAplicarProcResp
+  | MsgRemoverLoteReq
+  | MsgRemoverLoteResp;
 
 function isAnyMsg(x: unknown): x is AnyMsg {
   if (!x || typeof x !== 'object') return false;
@@ -81,7 +100,9 @@ function isAnyMsg(x: unknown): x is AnyMsg {
     t === MSG_APLICAR_LOTE_PROG ||
     t === MSG_APLICAR_LOTE_RESP ||
     t === MSG_APLICAR_PROC_REQ ||
-    t === MSG_APLICAR_PROC_RESP
+    t === MSG_APLICAR_PROC_RESP ||
+    t === MSG_REMOVER_LOTE_REQ ||
+    t === MSG_REMOVER_LOTE_RESP
   );
 }
 
@@ -171,6 +192,34 @@ export function instalarListenerEtiquetaNoIframe(): void {
       })();
       return;
     }
+
+    if (data.type === MSG_REMOVER_LOTE_REQ) {
+      const { requestId, payload } = data;
+      void (async () => {
+        let result: RemoverEtiquetasResult;
+        try {
+          result = await removerEtiquetaEmLote({ remocoes: payload.remocoes });
+        } catch (err) {
+          result = {
+            ok: false,
+            removidas: 0,
+            detalhes: [],
+            error: err instanceof Error ? err.message : String(err)
+          };
+        }
+        const m: MsgRemoverLoteResp = {
+          type: MSG_REMOVER_LOTE_RESP,
+          requestId,
+          result
+        };
+        try {
+          sender.postMessage(m, origin);
+        } catch (err) {
+          console.warn(`${LOG_PREFIX} etiqueta-bridge resultado (remover) postMessage falhou:`, err);
+        }
+      })();
+      return;
+    }
   });
   console.log(`${LOG_PREFIX} etiqueta-bridge: listener iframe instalado.`);
 }
@@ -228,6 +277,42 @@ export async function aplicarEtiquetaEmLoteComBridge(
         idsProcesso: input.idsProcesso,
         favoritarAposCriar: input.favoritarAposCriar
       }
+    };
+    iframeWin.postMessage(m, '*');
+  });
+}
+
+/**
+ * Versão "top" de `removerEtiquetaEmLote`: delega ao iframe do painel (mesmo
+ * motivo de Origin do /inserir). Usada pelo dashboard PREVJUD para tirar as
+ * etiquetas "Prevjud - *" antigas antes de aplicar a nova.
+ */
+export async function removerEtiquetaEmLoteComBridge(
+  input: RemoverEtiquetasInput
+): Promise<RemoverEtiquetasResult> {
+  const iframeWin = localizarIframePainel();
+  if (!iframeWin) {
+    console.warn(
+      `${LOG_PREFIX} etiqueta-bridge: iframe do painel não encontrado — removendo no top frame (pode falhar por Origin).`
+    );
+    return removerEtiquetaEmLote(input);
+  }
+  const requestId = `etq-rem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise<RemoverEtiquetasResult>((resolve) => {
+    const handler = (ev: MessageEvent): void => {
+      const data = ev.data;
+      if (!isAnyMsg(data)) return;
+      if (!('requestId' in data) || data.requestId !== requestId) return;
+      if (data.type === MSG_REMOVER_LOTE_RESP) {
+        window.removeEventListener('message', handler);
+        resolve(data.result);
+      }
+    };
+    window.addEventListener('message', handler);
+    const m: MsgRemoverLoteReq = {
+      type: MSG_REMOVER_LOTE_REQ,
+      requestId,
+      payload: { remocoes: input.remocoes }
     };
     iframeWin.postMessage(m, '*');
   });

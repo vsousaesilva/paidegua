@@ -329,6 +329,83 @@ export async function aplicarEtiquetasNoProcesso(
 }
 
 // =====================================================================
+// Remover (desvincular) etiquetas de processos em lote
+// =====================================================================
+
+// POST /painelUsuario/processoTags/remover com body `{ idTag, idProcesso }`
+// — a remoção identifica a etiqueta pelo ID (diferente do /inserir, que usa
+// o nome). Documentado em docs/migracao-etiquetas-pje-v11.md.
+const ENDPOINT_REMOVER_ETIQUETA = (base: string): string =>
+  `${base}/painelUsuario/processoTags/remover`;
+
+export interface RemoverEtiquetasInput {
+  remocoes: Array<{ idProcesso: number; idTag: number; nomeTag?: string }>;
+  onProgress?: (msg: string) => void;
+}
+
+export interface RemoverEtiquetasResult {
+  ok: boolean;
+  removidas: number;
+  detalhes: Array<{ idProcesso: number; idTag: number; ok: boolean; error?: string }>;
+  error?: string;
+}
+
+/**
+ * Desvincula etiquetas de processos em lote (uma chamada por par
+ * idProcesso×idTag). Roda no page world do iframe (mesmo motivo de Origin
+ * do /inserir). A remoção é tolerante: HTTP 2xx conta como sucesso — o pior
+ * caso é uma etiqueta antiga sobreviver, sem corromper o relatório.
+ */
+export async function removerEtiquetaEmLote(
+  input: RemoverEtiquetasInput
+): Promise<RemoverEtiquetasResult> {
+  const progress = input.onProgress ?? (() => {});
+  const detalhes: RemoverEtiquetasResult['detalhes'] = [];
+  if (input.remocoes.length === 0) return { ok: true, removidas: 0, detalhes };
+
+  const snap = await obterSnapshot();
+  if (!snap) {
+    return {
+      ok: false,
+      removidas: 0,
+      detalhes,
+      error: 'Sem snapshot de auth para remover etiquetas.'
+    };
+  }
+  const base = pjeBaseUrl(snap);
+  const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
+  const url = ENDPOINT_REMOVER_ETIQUETA(base);
+
+  let removidas = 0;
+  for (let i = 0; i < input.remocoes.length; i++) {
+    const r = input.remocoes[i];
+    progress(`Removendo etiqueta antiga ${i + 1}/${input.remocoes.length}...`);
+    const body = JSON.stringify({
+      idTag: r.idTag,
+      idProcesso: String(r.idProcesso)
+    });
+    const resp = await fetchVincularEtiquetaNoPageWorld({ url, headers, body });
+    const text = resp.bodyText ?? '';
+    console.log(
+      `${LOG} POST ${url} [remover idTag=${r.idTag} de ${r.idProcesso}] -> ` +
+        `${resp.status ?? '—'} (len=${text.length})`
+    );
+    if (!resp.ok) {
+      detalhes.push({
+        idProcesso: r.idProcesso,
+        idTag: r.idTag,
+        ok: false,
+        error: resp.error ?? `HTTP ${resp.status} ${text.slice(0, 120)}`
+      });
+      continue;
+    }
+    removidas += 1;
+    detalhes.push({ idProcesso: r.idProcesso, idTag: r.idTag, ok: true });
+  }
+  return { ok: removidas > 0, removidas, detalhes };
+}
+
+// =====================================================================
 // Criar etiqueta (POST /painelUsuario/tags)
 // =====================================================================
 

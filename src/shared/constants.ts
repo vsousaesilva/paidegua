@@ -719,7 +719,69 @@ export const MESSAGE_CHANNELS = {
   /** Ranking parcial em tempo real — content → page (broadcast via runtime). */
   RANKING_PROGRESSO: 'paidegua/ranking/progresso',
   /** Cancelamento da coleta — page → background → content. */
-  RANKING_CANCELAR: 'paidegua/ranking/cancelar'
+  RANKING_CANCELAR: 'paidegua/ranking/cancelar',
+
+  /**
+   * Canais do "Painel de Ordens PREVJUD" (perfil Gestão — GES-10). Mesma
+   * topologia do Painel Gerencial / Perícias: o content da aba PJe abre a
+   * aba-painel (seletor de tarefas + etiquetas de filtro escolhidas pelo
+   * usuário) e, ao confirmar, o background dispara a coleta no content da
+   * aba PJe. Progresso via `PREVJUD_COLETA_PROG`; conclusão via
+   * `PREVJUD_COLETA_DONE`/`FAIL`; a aba navega ao dashboard no `READY`.
+   *
+   * A coleta de cada processo (`PREVJUD_COLETAR_PROCESSO`) é feita pelo
+   * background abrindo `listAutosDigitais.seam` em aba inativa, acionando o
+   * A4J "Verificar ordens PREVJUD" em main world e raspando a tabela
+   * "Intimações INSS" — não há endpoint REST (ver
+   * `docs/extracao-ordens-prevjud-pje.md`).
+   */
+  PREVJUD_OPEN_PAINEL: 'paidegua/prevjud/open-painel',
+  PREVJUD_START_COLETA: 'paidegua/prevjud/start-coleta',
+  PREVJUD_RUN_COLETA: 'paidegua/prevjud/run-coleta',
+  PREVJUD_COLETA_PROG: 'paidegua/prevjud/coleta-prog',
+  /**
+   * Coletor → background: esqueleto pronto (tarefas listadas + filtradas,
+   * total de candidatos conhecido). O background grava um payload
+   * `status: 'running'` em storage.session e manda a aba-painel navegar para
+   * o dashboard imediatamente (streaming — abre cedo e vai populando, como no
+   * Prazos na Fita).
+   */
+  PREVJUD_SKELETON_READY: 'paidegua/prevjud/skeleton-ready',
+  /**
+   * Coletor → background: um lote acumulado de processos coletados. O
+   * background atualiza o payload em storage.session (guarda de `seq` contra
+   * patches fora de ordem); o dashboard reage via storage.onChanged.
+   */
+  PREVJUD_SLOT_PATCH: 'paidegua/prevjud/slot-patch',
+  PREVJUD_COLETA_DONE: 'paidegua/prevjud/coleta-done',
+  PREVJUD_COLETA_READY: 'paidegua/prevjud/coleta-ready',
+  PREVJUD_COLETA_FAIL: 'paidegua/prevjud/coleta-fail',
+  /**
+   * Coletor (content da aba PJe) → background: abre a URL dos autos em aba
+   * inativa, aciona o A4J PREVJUD em main world, raspa a tabela e devolve
+   * `PrevjudColetaProcessoResult`. Fecha a aba ao final. Rota B (fallback).
+   */
+  PREVJUD_COLETAR_PROCESSO: 'paidegua/prevjud/coletar-processo',
+  /**
+   * Coletor → background: Rota A — consulta as intimações do processo na
+   * API oficial PREVJUD do gateway PDPJ
+   * (`prevjud-intimacao-judicial/api/v2/intimacao-judicial/pesquisar` com
+   * filtro `{numeroProcesso}` — o GET `obter-intimacao-numero-processo`
+   * responde 500 para processo sem registro no TRF5), usando o Bearer
+   * capturado pelo interceptor + CPF do operador extraído do próprio JWT.
+   * Sem aba e sem `ca` (~0,2s/processo). Resposta `PrevjudColetaApiResult`;
+   * `authRejeitada: true` (401/403) aciona o fallback para a Rota B.
+   * Ver docs/extracao-ordens-prevjud-pje.md §2.2.
+   */
+  PREVJUD_COLETAR_PROCESSO_API: 'paidegua/prevjud/coletar-processo-api',
+  /**
+   * Dashboard PREVJUD → background → aba PJe: aplica/atualiza em lote a
+   * etiqueta "Prevjud - [status]" nos processos do relatório, removendo as
+   * etiquetas "Prevjud - *" anteriores de cada processo. Reusa o aplicador
+   * de etiquetas das Perícias (escrita no iframe frontend-prd). Resposta
+   * `PrevjudAplicarEtiquetasResult`.
+   */
+  PREVJUD_APLICAR_ETIQUETAS: 'paidegua/prevjud/aplicar-etiquetas'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
@@ -1020,7 +1082,38 @@ export const STORAGE_KEYS = {
    * atualizar a label do modal em tempo real (extraindo N/M, OCR k/n).
    * A chave é apagada após a resposta final para evitar lixo.
    */
-  AUDIENCIA_RESUMO_COLETA_PROGRESS_PREFIX: 'paidegua.audiencia-resumo.coletaProgress.'
+  AUDIENCIA_RESUMO_COLETA_PROGRESS_PREFIX: 'paidegua.audiencia-resumo.coletaProgress.',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o estado da aba-painel
+   * de Ordens PREVJUD (lista de tarefas detectadas + catálogo de etiquetas
+   * para o filtro). A aba lê de `${PREFIX}${requestId}` ao carregar.
+   */
+  PREVJUD_PAINEL_STATE_PREFIX: 'paidegua.prevjud.painelState.',
+  /**
+   * Prefixo em `chrome.storage.session` com o roteamento
+   * `requestId → {painelTabId, pjeTabId}` da aba de Ordens PREVJUD. Mesmo
+   * racional dos demais painéis (reidratar rota após suspensão do SW).
+   */
+  PREVJUD_PAINEL_ROUTE_PREFIX: 'paidegua.prevjud.painelRoute.',
+  /**
+   * Prefixo em `chrome.storage.session` (volátil) com o payload do dashboard
+   * de Ordens PREVJUD, entregue à aba do dashboard e apagado ao fechá-la.
+   */
+  PREVJUD_DASHBOARD_PAYLOAD_PREFIX: 'paidegua.prevjud.dashboardPayload.',
+  /**
+   * Chave em `chrome.storage.local` com a última seleção de tarefas e
+   * etiquetas de filtro do Painel de Ordens PREVJUD (apenas nomes — não é
+   * PII). Pré-marca os controles do seletor ao reabrir. Conteúdo:
+   * `{ nomesTarefas: string[], etiquetasFiltro: string[], etiquetaModo }`.
+   */
+  PREVJUD_SELECAO: 'paidegua.prevjud.selecao',
+  /**
+   * Chave em `chrome.storage.local` com o ÚLTIMO relatório de Ordens
+   * PREVJUD gerado (payload completo + timestamp). Permite "Reabrir último
+   * relatório" sem refazer a coleta (que abre uma aba por processo).
+   * Sobrescrito a cada nova coleta — guarda apenas um relatório.
+   */
+  PREVJUD_ULTIMO_RELATORIO: 'paidegua.prevjud.ultimoRelatorio'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */
