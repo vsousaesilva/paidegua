@@ -6897,7 +6897,7 @@
       "descricao": "Dashboard consolidado das ordens PREVJUD (tabela 'Intimações INSS' do menu Outras ações do processo, novidade do PJe v11 TRF5) para cobrança de cumprimento pelo INSS e controle de prazos.\n\nFase 0 (descoberta) concluída em 08/07/2026, documentada em docs/extracao-ordens-prevjud-pje.md:\n- NÃO há endpoint REST: 'Verificar ordens PREVJUD' faz POST em listAutosDigitais.seam e volta text/xml (partial-render RichFaces A4J), com a tabela embutida como HTML. Só o download de cada documento é REST (/rest/pje-legacy/documento/download/TRF5/1g/{idProcesso}/{idDocumento}).\n- Coleta adotada: aba invisível + main world (padrão do Encerrar expedientes), raspando #divListaIntimacaoInss table.rich-table tbody tr.rich-table-row por índice de coluna 0-9 (os j_id... são voláteis; divListaIntimacaoInss é âncora estável).\n- Universo: tarefa(s) do PJe via listarProcessosDaTarefa. Pré-filtro por ETIQUETAS ESCOLHIDAS PELO USUÁRIO (a vara já etiqueta com 'INSS intimado em DD/MM/AAAA'); as etiquetas de filtro são configuráveis, não fixas. Abre aba só para processos com as etiquetas escolhidas, reduzindo o volume de milhares para dezenas.\n\n10 colunas: Ordem, Status ('Recebida pelo INSS'), Serviço, ID Documento (link REST), Protocolo (UUID), Data de Envio, ID Notif. Envio, ID Notif. Cumprimento, Início do Prazo, Final do Prazo. Regra de negócio: ordem pendente enquanto ID Notif. Cumprimento vazio; envelhecimento = hoje - Data de Envio; prazo vencido/a vencer por Final do Prazo.\n\nEntrega prevista: tipos OrdemPrevjud/ProcessoOrdensPrevjud (types.ts); parser da tabela (shared); canal PREVJUD_COLETAR_PROCESSO no background (aba invisível); coletor src/content/prevjud/prevjud-coletor.ts (tarefa -> filtro etiquetas do usuário -> coleta -> descarta vazios); painel dedicado src/prevjud-painel/ (molde pericias-painel; payload via chrome.storage.session) com visões por Status, Serviço, envelhecimento e prazos vencidos/a vencer; export Excel; cache do último relatório; diagnóstico de coleta.",
       "categoria": "gestao",
       "prioridade": "P1",
-      "coluna": "dev",
+      "coluna": "lancado",
       "origem": "Pedido do owner em 08/07/2026 (PJe v11 incorporou controle de ordens PREVJUD ao menu do processo)",
       "tags": ["prevjud", "inss", "previdenciario", "painel", "gestao", "pje-v11", "cumprimento", "prazos"],
       "esforco": "L",
@@ -6916,8 +6916,8 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-07-08T00:00:00.000Z",
-      "atualizadoEm": "2026-07-08T00:00:00.000Z",
-      "atualizadoPor": "claude-code/sessao-2026-07-08",
+      "atualizadoEm": "2026-07-10T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-10",
       "historico": [
         {
           "tipo": "criado",
@@ -6932,6 +6932,60 @@
           "autor": "claude-code/sessao-2026-07-08",
           "data": "2026-07-08T00:00:00.000Z",
           "comando": "Fase 0 documentada em docs/extracao-ordens-prevjud-pje.md (desfecho: sem REST, A4J; dicionário das 10 colunas; âncora estável divListaIntimacaoInss). Iniciando implementação da Fase 1."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-10",
+          "data": "2026-07-10T00:00:00.000Z",
+          "comando": "Implementação concluída e validada em produção pelo owner. Evoluções sobre o plano: (1) desempenho — a aba invisível (~2-3s/proc) era lenta em 600+ processos; virou fallback. Coleta primária passou a SSR (fetch da página + POST A4J replicado com AJAXREQUEST=_viewRoot, sem abrir aba, ~0,5s/proc, parse só do fragmento #divListaIntimacaoInss, concorrência 8). (2) Rota A investigada — API oficial PREVJUD no gateway PDPJ (prevjud-intimacao-judicial): token do PJe v11 é aceito, mas obter-intimacao-numero-processo dá HTTP 500 e /pesquisar dá 403 (RBAC); sonda auto-ativa se o gateway normalizar. Cadeia de rotas: api -> ssr -> aba. (3) Dashboard reescrito no layout do 'Analisar tarefas' (unidade variável no header) com copiar nº, abrir tarefa, copiar lista, Excel e ordenação; alerta de envelhecimento (pendentes 30+ dias) e cache do último relatório. (4) Aba-painel: etiquetas em lista suspensa pesquisável (padrão do cadastro de perito) com chips e persistência; modos 'uma/todas' com legenda; checkbox 'Ignorar ordens cumpridas' (contado no diagnóstico). (5) Streaming do dashboard (como Prazos na Fita): abre no esqueleto e popula via storage.onChanged. (6) Aplicar etiqueta 'Prevjud - [status]' em lote (reusa aplicador de Perícias + nova remoção /processoTags/remover; status canonizado p/ evitar duplicata->HTTP 500)."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-10",
+          "data": "2026-07-10T00:00:00.000Z",
+          "comando": "Empacotada na REL-1.8.0 (bump 1.7.0->1.8.0), aprovada pela CWS em 10/07/2026. Smoke do owner OK (versão 1.8.0, coleta em streaming, painel funcional). Pilotos comunicados via broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-10",
+          "data": "2026-07-10T00:00:00.000Z",
+          "comando": "Card movido para lançado após aprovação CWS da v1.8.0 e smoke OK."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.8.0",
+      "titulo": "Release v1.8.0 — Painel de Ordens PREVJUD (GES-10)",
+      "descricao": "Release da feature GES-10 (Painel de Ordens PREVJUD, perfil Gestão). Bump 1.7.0 -> 1.8.0.\n\nEscopo: nova aba-painel (src/prevjud-painel/) e dashboard (src/prevjud-dashboard/) para acompanhar as ordens/intimações INSS (PREVJUD) dos processos, com filtro por tarefa e etiquetas (lista suspensa + chips + persistência), coleta rápida em 3 rotas (API PDPJ -> SSR/A4J replicado -> aba invisível), streaming do dashboard (abre no esqueleto e popula via storage.onChanged), exportação Excel, copiar nº/lista + abrir tarefa, ordenação, alerta de envelhecimento, cache do último relatório, opção 'Ignorar ordens cumpridas' e aplicação de etiqueta 'Prevjud - [status]' em lote (reusa aplicador de Perícias + nova remoção /processoTags/remover).\n\nArquivos novos: src/content/prevjud/{prevjud-coletor,prevjud-coordinator,prevjud-ssr,prevjud-etiqueta-orquestrador}.ts, src/shared/prevjud-parser.ts, src/prevjud-painel/*, src/prevjud-dashboard/*, docs/extracao-ordens-prevjud-pje.md. Alterados: background.ts, content.ts, sidebar.ts, constants.ts, types.ts, webpack.config.js, pericias-etiqueta-{applier,bridge}.ts.\n\nSem novas permissões nem hosts (gateway PDPJ é *.jus.br, já coberto). Commit a2f0597 em origin/main. Aprovação CWS em 10/07/2026; smoke do owner OK; pilotos comunicados via broadcast Resend; tag git v1.8.0 + GitHub Release.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "lancado",
+      "origem": "skill release-extensao — sessão 10/07/2026",
+      "tags": ["release", "extensao", "cws", "prevjud", "gestao"],
+      "esforco": "XS",
+      "depende": ["GES-10"],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-10T00:00:00.000Z",
+      "atualizadoEm": "2026-07-10T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-10",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-10",
+          "data": "2026-07-10T00:00:00.000Z",
+          "comando": "Bundle da GES-10. Bump 1.7.0->1.8.0, build local + zip + upload manual à CWS, commit a2f0597 pushed em origin/main, sync seed.json->KV."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-10",
+          "data": "2026-07-10T00:00:00.000Z",
+          "comando": "Aprovada pela CWS em 10/07/2026. Smoke OK. Pilotos comunicados. Tag v1.8.0 + Release no GitHub."
         }
       ]
     },
