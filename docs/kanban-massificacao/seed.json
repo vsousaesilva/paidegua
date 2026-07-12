@@ -6963,7 +6963,7 @@
       "descricao": "Hotfix da aplicação de etiquetas 'Prevjud - [status]' em lote no dashboard de Ordens PREVJUD (GES-10), que estava quebrada para TODOS os pilotos ('Receiving end does not exist') e falhando com HTTP 500 na máquina do owner. Bump 1.8.0 -> 1.8.1.\n\nCausas-raiz e correções (jornada completa em docs/correcao-etiquetas-lote-prevjud-2026-07.md):\n- Mensageria (todos os pilotos): o handler PREVJUD_APLICAR_ETIQUETAS mirava a 1a aba *.jus.br qualquer -> 'Receiving end does not exist'. Passa a mirar rota.pjeTabId (aba que abriu a feature), fallback so p/ abas /pje/ tentando ate uma responder; dashboard envia requestId.\n- Localizacao (HTTP 500 na escrita): a escrita de etiqueta e escopada por localizacao/perfil; o snapshot global (last-writer-wins) refletia outro perfil aberto. Localizacao capturada na coleta -> rota.localizacaoEtiqueta -> override explicito no applier; snapshot preserva ultima localizacao nao-nula. Dinamica por usuario/lotacao, nunca fixa.\n- Idempotencia: revincular etiqueta existente da HTTP 500; o dashboard passa a atualizar as etiquetas por processo apos aplicar (memoria+storage) e mostra 'Tudo ja estava atualizado'.\n- /remover usava idProcesso como string; contrato exige numero -> corrigido (falha de remocao tambem deixou de ser silenciosa e cita o CNJ).\n\nArquivos alterados: background.ts, pje-api-client.ts, prevjud-coletor.ts, prevjud-etiqueta-orquestrador.ts, content.ts, pericias-etiqueta-{applier,bridge}.ts, prevjud-dashboard.ts, types.ts. Docs: docs/correcao-etiquetas-lote-prevjud-2026-07.md (novo), docs/migracao-etiquetas-pje-v11.md (nota /remover). Sem novas permissoes nem hosts.\n\nValidado em campo pelo owner (4 cenarios: aplicacao do zero 426 aplicadas + 1 removida; reaplicacao idempotente x3). Build local + zip + upload manual a CWS. Aprovacao CWS PENDENTE.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "skill release-extensao — sessão 12/07/2026",
       "tags": ["release", "extensao", "cws", "prevjud", "etiquetas", "hotfix"],
       "esforco": "XS",
@@ -6979,7 +6979,7 @@
       ],
       "owner": "vsousaesilva@jfce.jus.br",
       "dataCriacao": "2026-07-12T00:00:00.000Z",
-      "atualizadoEm": "2026-07-12T00:00:00.000Z",
+      "atualizadoEm": "2026-07-12T12:00:00.000Z",
       "atualizadoPor": "claude-code/sessao-2026-07-12",
       "historico": [
         {
@@ -6987,6 +6987,14 @@
           "autor": "claude-code/sessao-2026-07-12",
           "data": "2026-07-12T00:00:00.000Z",
           "comando": "Hotfix das etiquetas em lote do PREVJUD. Bump 1.8.0->1.8.1, build local validado (dist/manifest.json 1.8.1, BACKEND_URL preservada), zip empacotado, upload manual à CWS (em revisão). Aguardando aprovação CWS."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-12",
+          "data": "2026-07-12T12:00:00.000Z",
+          "comando": "Aprovada pela CWS em 12/07/2026. Smoke do owner OK (versão 1.8.1 ativa; aplicar etiquetas no painel PREVJUD funcionando, sem 'Receiving end' nem 500). Pilotos comunicados via broadcast Resend. Tag v1.8.1 + Release no GitHub."
         }
       ]
     },
