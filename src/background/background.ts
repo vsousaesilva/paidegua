@@ -1207,37 +1207,13 @@ function dispatchMessage(
         return true;
 
       case MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS:
-        void (async () => {
-          try {
-            const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
-            const tab = tabs.find((t) => typeof t.id === 'number');
-            if (!tab || tab.id == null) {
-              sendResponse({
-                ok: false,
-                vinculadas: 0,
-                removidas: 0,
-                gruposAplicados: 0,
-                error:
-                  'Nenhuma aba do PJe aberta. Mantenha o Painel do Usuário do ' +
-                  'PJe aberto para aplicar as etiquetas.'
-              });
-              return;
-            }
-            const resp = await chrome.tabs.sendMessage(tab.id, {
-              channel: MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS,
-              payload: message.payload
-            });
-            sendResponse(resp ?? { ok: false, error: 'Aba do PJe não respondeu.' });
-          } catch (err) {
-            sendResponse({
-              ok: false,
-              vinculadas: 0,
-              removidas: 0,
-              gruposAplicados: 0,
-              error: errorMessage(err)
-            });
-          }
-        })();
+        void handlePrevjudAplicarEtiquetas(
+          message.payload as {
+            processos: unknown[];
+            requestId?: string;
+          },
+          sendResponse
+        );
         return true;
 
       case MESSAGE_CHANNELS.PREVJUD_OPEN_PAINEL:
@@ -3616,6 +3592,13 @@ async function handleOpenGestaoDashboard(
 interface GestaoPainelRota {
   painelTabId: number;
   pjeTabId: number;
+  /**
+   * Localização (lotação) capturada na coleta PREVJUD, sob o perfil que possui
+   * os processos. Usada como `X-pje-usuario-localizacao` explícito na escrita
+   * de etiquetas — evita o HTTP 500 do snapshot global apontando outro perfil.
+   * Só o fluxo PREVJUD preenche; ausente no Painel Gerencial.
+   */
+  localizacaoEtiqueta?: string | null;
 }
 
 function rotaKey(requestId: string): string {
@@ -3632,7 +3615,14 @@ async function getRota(requestId: string): Promise<GestaoPainelRota | null> {
     typeof val.painelTabId === 'number' &&
     typeof val.pjeTabId === 'number'
   ) {
-    return { painelTabId: val.painelTabId, pjeTabId: val.pjeTabId };
+    return {
+      painelTabId: val.painelTabId,
+      pjeTabId: val.pjeTabId,
+      localizacaoEtiqueta:
+        typeof val.localizacaoEtiqueta === 'string'
+          ? val.localizacaoEtiqueta
+          : null
+    };
   }
   return null;
 }
@@ -5598,6 +5588,90 @@ async function handlePrevjudColetaDone(
 /** Fila de escrita por requestId — serializa os read-modify-write de patch. */
 const prevjudPatchLocks = new Map<string, Promise<void>>();
 
+/**
+ * Aplica/atualiza as etiquetas "Prevjud - [status]" em lote. Mira a aba do PJe
+ * CERTA — a que abriu a feature (`rota.pjeTabId`, com o Painel/iframe) — em vez
+ * de uma aba `*.jus.br` qualquer (que pode não ter o content script e devolver
+ * "Receiving end does not exist"). Repassa a localização capturada na coleta
+ * (perfil dono dos processos) como contexto explícito da escrita.
+ */
+async function handlePrevjudAplicarEtiquetas(
+  payload: { processos: unknown[]; requestId?: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const falha = (error: string): void =>
+    sendResponse({
+      ok: false,
+      vinculadas: 0,
+      removidas: 0,
+      gruposAplicados: 0,
+      error
+    });
+  try {
+    if (!payload || !Array.isArray(payload.processos)) {
+      falha('Payload de aplicação de etiquetas inválido.');
+      return;
+    }
+    const rota = payload.requestId ? await getRota(payload.requestId) : null;
+    const localizacao = rota?.localizacaoEtiqueta ?? null;
+
+    // Candidatos: a aba da rota primeiro; depois abas do PJe legacy abertas
+    // (URL com `/pje/`). NUNCA uma `*.jus.br` qualquer — SEI, consulta pública,
+    // PDPJ etc. não têm o content script (→ "Receiving end does not exist").
+    const candidatos: number[] = [];
+    if (rota?.pjeTabId != null) candidatos.push(rota.pjeTabId);
+    try {
+      const tabs = await chrome.tabs.query({ url: 'https://*.jus.br/*' });
+      for (const t of tabs) {
+        if (
+          typeof t.id === 'number' &&
+          !candidatos.includes(t.id) &&
+          /\/pje\//i.test(t.url ?? '')
+        ) {
+          candidatos.push(t.id);
+        }
+      }
+    } catch {
+      /* segue só com a aba da rota, se houver */
+    }
+    if (candidatos.length === 0) {
+      falha(
+        'Nenhuma aba do PJe aberta. Mantenha o Painel do Usuário do seu perfil ' +
+          'no PJe aberto para aplicar as etiquetas.'
+      );
+      return;
+    }
+
+    const msgPayload = { processos: payload.processos, localizacao };
+    let ultimoErro = '';
+    for (const tabId of candidatos) {
+      try {
+        const resp = await chrome.tabs.sendMessage(tabId, {
+          channel: MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS,
+          payload: msgPayload
+        });
+        // Resposta com corpo = a aba tratou (mesmo que ok:false, é o resultado
+        // real e autoritativo). Vazio = frame não-alvo; tenta o próximo.
+        if (resp) {
+          sendResponse(resp);
+          return;
+        }
+      } catch (err) {
+        // "Receiving end does not exist" / "message port closed" = aba sem o
+        // content script (aba antiga ou não-PJe). Tenta o próximo candidato.
+        ultimoErro = errorMessage(err);
+      }
+    }
+    falha(
+      'Não consegui falar com a aba do PJe. Abra/recarregue o Painel do ' +
+        'Usuário do seu perfil e tente novamente.' +
+        (ultimoErro ? ` (${ultimoErro})` : '')
+    );
+  } catch (err) {
+    falha(errorMessage(err));
+  }
+}
+
 async function handlePrevjudSkeletonReady(
   payload: {
     requestId: string;
@@ -5607,6 +5681,7 @@ async function handlePrevjudSkeletonReady(
     total: number;
     processosNaTarefa: number;
     filtradosPorEtiqueta: number;
+    localizacaoEtiqueta?: string | null;
   },
   sendResponse: (response: unknown) => void
 ): Promise<void> {
@@ -5615,6 +5690,16 @@ async function handlePrevjudSkeletonReady(
     if (!rota) {
       sendResponse({ ok: false, error: 'Rota não encontrada.' });
       return;
+    }
+    // Guarda na rota a localização capturada na coleta (perfil correto), para
+    // a escrita de etiquetas usá-la como `X-pje-usuario-localizacao` explícito.
+    const localizacaoEtiqueta =
+      typeof payload.localizacaoEtiqueta === 'string' &&
+      payload.localizacaoEtiqueta.trim()
+        ? payload.localizacaoEtiqueta.trim()
+        : rota.localizacaoEtiqueta ?? null;
+    if (localizacaoEtiqueta !== (rota.localizacaoEtiqueta ?? null)) {
+      await setRota(payload.requestId, { ...rota, localizacaoEtiqueta });
     }
     const dashKey =
       `${STORAGE_KEYS.PREVJUD_DASHBOARD_PAYLOAD_PREFIX}${payload.requestId}`;

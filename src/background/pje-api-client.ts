@@ -14,8 +14,29 @@ import type { PJeAuthSnapshot } from '../shared/types';
 
 export async function gravarAuthSnapshot(snap: PJeAuthSnapshot): Promise<void> {
   try {
+    // Preserva a última localização (lotação) conhecida. O interceptor grava
+    // um snapshot a cada request `/pje-legacy/`, e nem todos carregam o header
+    // `X-pje-usuario-localizacao` (alguns trazem só o Bearer). Sobrescrever
+    // uma localização válida com `null` faz a ESCRITA de etiqueta — que é
+    // escopada por localização/perfil no PJe — perder o contexto e o servidor
+    // responder HTTP 500 ("Erro ao vincular ... ao processo "). Só trocamos a
+    // localização quando a nova é não-vazia; caso contrário, mantemos a última
+    // boa. É a lotação dinâmica do próprio usuário — nunca um valor fixo.
+    let aGravar = snap;
+    if (!snap.pjeUsuarioLocalizacao) {
+      const got = await chrome.storage.session.get(STORAGE_KEYS.PJE_AUTH_SNAPSHOT);
+      const anterior = got?.[STORAGE_KEYS.PJE_AUTH_SNAPSHOT] as
+        | PJeAuthSnapshot
+        | undefined;
+      if (anterior?.pjeUsuarioLocalizacao) {
+        aGravar = {
+          ...snap,
+          pjeUsuarioLocalizacao: anterior.pjeUsuarioLocalizacao
+        };
+      }
+    }
     await chrome.storage.session.set({
-      [STORAGE_KEYS.PJE_AUTH_SNAPSHOT]: snap
+      [STORAGE_KEYS.PJE_AUTH_SNAPSHOT]: aGravar
     });
   } catch (err) {
     console.warn(`${LOG_PREFIX} pje-api-client: falha gravando snapshot:`, err);

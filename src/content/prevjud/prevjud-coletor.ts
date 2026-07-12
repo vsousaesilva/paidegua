@@ -18,10 +18,11 @@
  * `docs/extracao-ordens-prevjud-pje.md`.
  */
 
-import { LOG_PREFIX, MESSAGE_CHANNELS } from '../../shared/constants';
+import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../../shared/constants';
 import type {
   OrdemPrevjud,
   PJeApiProcesso,
+  PJeAuthSnapshot,
   PrevjudColetaApiResult,
   PrevjudColetaConfig,
   PrevjudColetaProcessoResult,
@@ -51,6 +52,23 @@ export interface ColetorPrevjudResult {
 
 function norm(s: string | null | undefined): string {
   return (s ?? '').trim().toLowerCase();
+}
+
+/**
+ * Lê a localização (lotação) do snapshot de auth capturado sob o perfil em que
+ * o usuário abriu a feature. Vira o `X-pje-usuario-localizacao` EXPLÍCITO da
+ * escrita de etiquetas (via rota), imune à poluição posterior do snapshot
+ * global por outro perfil aberto. Ver `docs/migracao-etiquetas-pje-v11.md`.
+ */
+async function lerLocalizacaoSnapshot(): Promise<string | null> {
+  try {
+    const r = await chrome.storage.session.get(STORAGE_KEYS.PJE_AUTH_SNAPSHOT);
+    const snap = r?.[STORAGE_KEYS.PJE_AUTH_SNAPSHOT] as PJeAuthSnapshot | undefined;
+    const loc = snap?.pjeUsuarioLocalizacao;
+    return typeof loc === 'string' && loc.trim() ? loc.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -131,6 +149,11 @@ export async function coletarOrdensPrevjud(
       '.'
   );
 
+  // Localização (lotação) do perfil sob o qual os processos foram listados —
+  // capturada AGORA (contexto certo), enviada ao background para virar o
+  // `X-pje-usuario-localizacao` explícito da escrita de etiquetas.
+  const localizacaoEtiqueta = await lerLocalizacaoSnapshot();
+
   // Esqueleto pronto: o dashboard já pode abrir e ir populando (streaming).
   await chrome.runtime
     .sendMessage({
@@ -142,7 +165,8 @@ export async function coletarOrdensPrevjud(
         etiquetasFiltro: [...(config.etiquetasFiltro ?? [])],
         total: candidatos.length,
         processosNaTarefa,
-        filtradosPorEtiqueta: candidatos.length
+        filtradosPorEtiqueta: candidatos.length,
+        localizacaoEtiqueta
       }
     })
     .catch(() => { /* aba-painel pode ter fechado */ });

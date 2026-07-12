@@ -1461,6 +1461,14 @@ export interface PrevjudAplicarEtiquetasResult {
   /** Nº de grupos de status distintos aplicados. */
   gruposAplicados: number;
   error?: string;
+  /**
+   * Vínculos confirmados (idProcesso → etiqueta) — o dashboard usa para
+   * atualizar o estado local e evitar reaplicar (o PJe dá HTTP 500 ao
+   * revincular etiqueta que o processo já tem).
+   */
+  aplicadasProcessos?: Array<{ idProcesso: number; etiqueta: string }>;
+  /** Remoções confirmadas (idProcesso → etiqueta), para o mesmo fim. */
+  removidasProcessos?: Array<{ idProcesso: number; etiqueta: string }>;
   /** Diagnóstico da execução (para depurar 0/0). */
   diag?: {
     recebidos: number;

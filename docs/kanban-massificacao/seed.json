@@ -6958,6 +6958,39 @@
       ]
     },
     {
+      "id": "REL-1.8.1",
+      "titulo": "Release v1.8.1 — Correção da aplicação de etiquetas em lote (Ordens PREVJUD)",
+      "descricao": "Hotfix da aplicação de etiquetas 'Prevjud - [status]' em lote no dashboard de Ordens PREVJUD (GES-10), que estava quebrada para TODOS os pilotos ('Receiving end does not exist') e falhando com HTTP 500 na máquina do owner. Bump 1.8.0 -> 1.8.1.\n\nCausas-raiz e correções (jornada completa em docs/correcao-etiquetas-lote-prevjud-2026-07.md):\n- Mensageria (todos os pilotos): o handler PREVJUD_APLICAR_ETIQUETAS mirava a 1a aba *.jus.br qualquer -> 'Receiving end does not exist'. Passa a mirar rota.pjeTabId (aba que abriu a feature), fallback so p/ abas /pje/ tentando ate uma responder; dashboard envia requestId.\n- Localizacao (HTTP 500 na escrita): a escrita de etiqueta e escopada por localizacao/perfil; o snapshot global (last-writer-wins) refletia outro perfil aberto. Localizacao capturada na coleta -> rota.localizacaoEtiqueta -> override explicito no applier; snapshot preserva ultima localizacao nao-nula. Dinamica por usuario/lotacao, nunca fixa.\n- Idempotencia: revincular etiqueta existente da HTTP 500; o dashboard passa a atualizar as etiquetas por processo apos aplicar (memoria+storage) e mostra 'Tudo ja estava atualizado'.\n- /remover usava idProcesso como string; contrato exige numero -> corrigido (falha de remocao tambem deixou de ser silenciosa e cita o CNJ).\n\nArquivos alterados: background.ts, pje-api-client.ts, prevjud-coletor.ts, prevjud-etiqueta-orquestrador.ts, content.ts, pericias-etiqueta-{applier,bridge}.ts, prevjud-dashboard.ts, types.ts. Docs: docs/correcao-etiquetas-lote-prevjud-2026-07.md (novo), docs/migracao-etiquetas-pje-v11.md (nota /remover). Sem novas permissoes nem hosts.\n\nValidado em campo pelo owner (4 cenarios: aplicacao do zero 426 aplicadas + 1 removida; reaplicacao idempotente x3). Build local + zip + upload manual a CWS. Aprovacao CWS PENDENTE.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "skill release-extensao — sessão 12/07/2026",
+      "tags": ["release", "extensao", "cws", "prevjud", "etiquetas", "hotfix"],
+      "esforco": "XS",
+      "depende": ["REL-1.8.0", "GES-10"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.8.1; dist/manifest.json em 1.8.1",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist com a lógica corrigida (localizacaoEtiqueta; processoTags/remover com idProcesso número; 'Tudo já estava atualizado')",
+        "zip versoes/dist v1.8.1.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados → mover para lancado",
+        "Tag git v1.8.1 + Release no GitHub criada"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-12T00:00:00.000Z",
+      "atualizadoEm": "2026-07-12T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-12",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-12",
+          "data": "2026-07-12T00:00:00.000Z",
+          "comando": "Hotfix das etiquetas em lote do PREVJUD. Bump 1.8.0->1.8.1, build local validado (dist/manifest.json 1.8.1, BACKEND_URL preservada), zip empacotado, upload manual à CWS (em revisão). Aguardando aprovação CWS."
+        }
+      ]
+    },
+    {
       "id": "REL-1.8.0",
       "titulo": "Release v1.8.0 — Painel de Ordens PREVJUD (GES-10)",
       "descricao": "Release da feature GES-10 (Painel de Ordens PREVJUD, perfil Gestão). Bump 1.7.0 -> 1.8.0.\n\nEscopo: nova aba-painel (src/prevjud-painel/) e dashboard (src/prevjud-dashboard/) para acompanhar as ordens/intimações INSS (PREVJUD) dos processos, com filtro por tarefa e etiquetas (lista suspensa + chips + persistência), coleta rápida em 3 rotas (API PDPJ -> SSR/A4J replicado -> aba invisível), streaming do dashboard (abre no esqueleto e popula via storage.onChanged), exportação Excel, copiar nº/lista + abrir tarefa, ordenação, alerta de envelhecimento, cache do último relatório, opção 'Ignorar ordens cumpridas' e aplicação de etiqueta 'Prevjud - [status]' em lote (reusa aplicador de Perícias + nova remoção /processoTags/remover).\n\nArquivos novos: src/content/prevjud/{prevjud-coletor,prevjud-coordinator,prevjud-ssr,prevjud-etiqueta-orquestrador}.ts, src/shared/prevjud-parser.ts, src/prevjud-painel/*, src/prevjud-dashboard/*, docs/extracao-ordens-prevjud-pje.md. Alterados: background.ts, content.ts, sidebar.ts, constants.ts, types.ts, webpack.config.js, pericias-etiqueta-{applier,bridge}.ts.\n\nSem novas permissões nem hosts (gateway PDPJ é *.jus.br, já coberto). Commit a2f0597 em origin/main. Aprovação CWS em 10/07/2026; smoke do owner OK; pilotos comunicados via broadcast Resend; tag git v1.8.0 + GitHub Release.",

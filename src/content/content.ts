@@ -4535,6 +4535,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!isPJeHost(window.location.hostname)) return false;
     const payload = message.payload as {
       processos: PrevjudAplicarEtiquetasProcesso[];
+      localizacao?: string | null;
     };
     if (!payload || !Array.isArray(payload.processos)) {
       sendResponse({
@@ -4548,7 +4549,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     void (async () => {
       try {
-        const r = await atualizarEtiquetasStatus({ processos: payload.processos });
+        const r = await atualizarEtiquetasStatus({
+          processos: payload.processos,
+          localizacao: payload.localizacao
+        });
         sendResponse(r);
       } catch (err) {
         sendResponse({

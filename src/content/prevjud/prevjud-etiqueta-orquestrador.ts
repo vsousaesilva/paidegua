@@ -31,9 +31,17 @@ const PREFIXO_STATUS = 'prevjud -';
 
 export async function atualizarEtiquetasStatus(input: {
   processos: PrevjudAplicarEtiquetasProcesso[];
+  /**
+   * Localização (lotação) capturada no contexto da coleta — usada como
+   * `X-pje-usuario-localizacao` na escrita, em vez do snapshot global volátil
+   * (que pode refletir outro perfil aberto e causar HTTP 500). Ver
+   * `docs/migracao-etiquetas-pje-v11.md`.
+   */
+  localizacao?: string | null;
   onProgress?: (msg: string) => void;
 }): Promise<PrevjudAplicarEtiquetasResult> {
   const progress = input.onProgress ?? ((): void => {});
+  const localizacao = (input.localizacao ?? '').trim() || null;
   const procs = (input.processos ?? []).filter(
     (p) => p.idProcesso > 0 && (p.statusEtiqueta ?? '').trim().length > 0
   );
@@ -107,28 +115,75 @@ export async function atualizarEtiquetasStatus(input: {
   };
   console.log(`${LOG_PREFIX} [prevjud-etiquetas] diag`, diag);
 
-  // -- Remoção das etiquetas de status antigas --
+  // Processos efetivamente escritos — devolvidos ao dashboard para atualizar o
+  // estado local (evita reaplicar: o PJe dá 500 ao revincular etiqueta que o
+  // processo já tem).
+  const aplicadasProcessos: Array<{ idProcesso: number; etiqueta: string }> = [];
+  const removidasProcessos: Array<{ idProcesso: number; etiqueta: string }> = [];
+
+  const erros: string[] = [];
+  // Mapa id→número do processo, para as mensagens de erro citarem o CNJ (o
+  // idProcesso interno não é localizável pelo usuário).
+  const numeroPorId = new Map<number, string>();
+  for (const p of procs) {
+    if (p.numeroProcesso) numeroPorId.set(p.idProcesso, p.numeroProcesso);
+  }
+
+  // -- Remoção das etiquetas de status antigas (troca de status) --
   let removidas = 0;
   if (remocoes.length > 0) {
     progress(`Removendo ${remocoes.length} etiqueta(s) Prevjud antiga(s)...`);
-    const r = await removerEtiquetaEmLoteComBridge({ remocoes, onProgress: progress });
+    const r = await removerEtiquetaEmLoteComBridge({
+      remocoes,
+      localizacaoOverride: localizacao,
+      onProgress: progress
+    });
     removidas = r.removidas;
+    for (const d of r.detalhes) {
+      if (!d.ok) continue;
+      const orig = remocoes.find(
+        (x) => x.idProcesso === d.idProcesso && x.idTag === d.idTag
+      );
+      if (orig?.nomeTag) {
+        removidasProcessos.push({ idProcesso: d.idProcesso, etiqueta: orig.nomeTag });
+      }
+    }
+    // Falha de remoção NÃO é mais silenciosa: se a etiqueta antiga não sai, o
+    // processo fica com a antiga + a nova. Surfaça (o pior caso continua sendo
+    // uma etiqueta antiga sobrevivendo, mas agora visível).
+    const remFalhas = r.detalhes.filter((d) => !d.ok);
+    if (remFalhas.length > 0) {
+      const ex = remFalhas[0];
+      const orig = remocoes.find(
+        (x) => x.idProcesso === ex.idProcesso && x.idTag === ex.idTag
+      );
+      const numero = numeroPorId.get(ex.idProcesso) ?? `id ${ex.idProcesso}`;
+      const tag = orig?.nomeTag ? ` (etiqueta "${orig.nomeTag}")` : '';
+      erros.push(
+        `Remoção: ${remFalhas.length}/${remocoes.length} etiqueta(s) antiga(s) ` +
+          `não removida(s) — o processo pode ficar com a etiqueta antiga e a nova. ` +
+          `Ex.: processo ${numero}${tag}: ${ex.error ?? 'erro'}.`
+      );
+    }
   }
 
   // -- Aplicação da etiqueta-alvo, agrupada por status --
   let vinculadas = 0;
   let gruposAplicados = 0;
-  const erros: string[] = [];
   for (const [target, ids] of grupos) {
     progress(`Aplicando "${target}" em ${ids.length} processo(s)...`);
     const r = await aplicarEtiquetaEmLoteComBridge({
       etiquetaPauta: target,
       idsProcesso: ids,
       favoritarAposCriar: false,
+      localizacaoOverride: localizacao,
       onProgress: progress
     });
     vinculadas += r.aplicadas;
     gruposAplicados += 1;
+    for (const d of r.detalhes) {
+      if (d.ok) aplicadasProcessos.push({ idProcesso: d.idProcesso, etiqueta: target });
+    }
     if (r.aplicadas === 0 && r.error) erros.push(`${target}: ${r.error}`);
   }
 
@@ -142,6 +197,8 @@ export async function atualizarEtiquetasStatus(input: {
     vinculadas,
     removidas,
     gruposAplicados,
+    aplicadasProcessos,
+    removidasProcessos,
     error: erros.length > 0 ? erros.join(' | ') : undefined,
     diag
   };

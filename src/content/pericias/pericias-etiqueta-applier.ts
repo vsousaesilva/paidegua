@@ -35,6 +35,23 @@ import { fetchVincularEtiquetaNoPageWorld } from './pericias-etiqueta-page-bridg
 
 const LOG = `${LOG_PREFIX} [pericias-etiqueta-applier]`;
 
+const MSG_SEM_LOCALIZACAO =
+  'Sem localização (lotação) do usuário para escrever a etiqueta. Abra/atualize ' +
+  'o Painel do Usuário do seu perfil no PJe e tente novamente.';
+
+/**
+ * Resolve a localização efetiva do header `X-pje-usuario-localizacao`: o
+ * override (contexto de coleta do PREVJUD) tem precedência sobre a do snapshot
+ * global. Vazia = a escrita será rejeitada com HTTP 500 (endpoint escopado por
+ * perfil) — os chamadores abortam antes com `MSG_SEM_LOCALIZACAO`.
+ */
+function resolverLocalizacao(
+  override: string | null | undefined,
+  snap: PJeAuthSnapshot
+): string {
+  return (override ?? snap.pjeUsuarioLocalizacao ?? '').trim();
+}
+
 export interface AplicarEtiquetasInput {
   /** Nome da etiqueta-pauta (ex.: "DR FULANO 20.04.26"). */
   etiquetaPauta: string;
@@ -46,6 +63,16 @@ export interface AplicarEtiquetasInput {
    * favorita do usuário. Falhas ao favoritar não derrubam a vinculação.
    */
   favoritarAposCriar?: boolean;
+  /**
+   * Localização (lotação) do usuário a usar no header
+   * `X-pje-usuario-localizacao`. Quando informada, tem PRECEDÊNCIA sobre a
+   * do snapshot global — a escrita de etiqueta é escopada por perfil no PJe,
+   * e o snapshot global (last-writer-wins) pode refletir OUTRO perfil aberto,
+   * causando HTTP 500. O dashboard PREVJUD passa a localização capturada no
+   * contexto em que os processos foram coletados. `undefined` = usa o
+   * snapshot (comportamento das Perícias/Triagem).
+   */
+  localizacaoOverride?: string | null;
   onProgress?: (msg: string) => void;
 }
 
@@ -124,6 +151,14 @@ export async function aplicarEtiquetaEmLote(
     };
   }
 
+  // Localização (lotação) dinâmica do usuário: override do contexto de coleta
+  // com precedência sobre o snapshot global. Sem ela, o `/inserir` (escopado
+  // por perfil) devolveria HTTP 500 — aborta com mensagem clara.
+  const localizacao = resolverLocalizacao(input.localizacaoOverride, snap);
+  if (!localizacao) {
+    return { ok: false, aplicadas: 0, error: MSG_SEM_LOCALIZACAO, detalhes: [] };
+  }
+
   // -- Passo 1: buscar etiqueta no catálogo --
   progress('Procurando etiqueta no catálogo do PJe...');
   const lista = await listarEtiquetas({ pageSize: 5000 });
@@ -147,7 +182,7 @@ export async function aplicarEtiquetaEmLote(
   let foiCriada = false;
   if (!etiqueta) {
     progress(`Etiqueta "${nome}" não existe — criando no PJe...`);
-    const criada = await criarEtiqueta(snap, nome);
+    const criada = await criarEtiqueta(snap, nome, localizacao);
     if (!criada.ok || !criada.etiqueta) {
       return {
         ok: false,
@@ -189,7 +224,13 @@ export async function aplicarEtiquetaEmLote(
   for (let i = 0; i < input.idsProcesso.length; i++) {
     const idProcesso = input.idsProcesso[i];
     progress(`Vinculando ${i + 1}/${input.idsProcesso.length}...`);
-    const r = await vincularEtiquetaAoProcesso(snap, etiqueta, idProcesso, i === 0);
+    const r = await vincularEtiquetaAoProcesso(
+      snap,
+      etiqueta,
+      idProcesso,
+      localizacao,
+      i === 0
+    );
     if (r.ok) {
       aplicadas += 1;
       detalhes.push({ idProcesso, ok: true });
@@ -203,15 +244,15 @@ export async function aplicarEtiquetaEmLote(
     // Surfaça o erro real do servidor (o primeiro) em vez de uma mensagem
     // genérica — é o que permite ver o motivo (ex.: corpo de um HTTP 500)
     // sem precisar abrir o console.
-    const primeiroErro = detalhes.find((d) => !d.ok)?.error;
+    const primeiro = detalhes.find((d) => !d.ok);
     return {
       ok: false,
       aplicadas,
       idEtiqueta: etiqueta.id,
       error:
-        `Nenhum processo vinculado. ` +
-        (primeiroErro
-          ? `Erro do servidor: ${primeiroErro}`
+        `Nenhum processo vinculado (${falhas}/${detalhes.length} falha(s)). ` +
+        (primeiro
+          ? `Erro do servidor no processo ${primeiro.idProcesso}: ${primeiro.error}`
           : `Verifique no console os logs com "[pericias-etiqueta-applier]".`),
       detalhes
     };
@@ -239,6 +280,8 @@ export interface AplicarEtiquetasNoProcessoInput {
       Partial<Pick<PJeApiEtiqueta, 'favorita' | 'possuiFilhos' | 'idTagFavorita'>>
   >;
   idProcesso: number;
+  /** Ver `AplicarEtiquetasInput.localizacaoOverride`. */
+  localizacaoOverride?: string | null;
 }
 
 export interface AplicarEtiquetasNoProcessoResult {
@@ -275,8 +318,16 @@ export async function aplicarEtiquetasNoProcesso(
         'Sem snapshot de auth — abra uma tarefa no painel do PJe para capturar e tente de novo.'
     };
   }
+  const localizacao = resolverLocalizacao(input.localizacaoOverride, snap);
+  if (!localizacao) {
+    return { ok: false, aplicadas: 0, error: MSG_SEM_LOCALIZACAO };
+  }
   const base = pjeBaseUrl(snap);
-  const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
+  const headers = montarHeaders(snap, {
+    withJsonBody: true,
+    minimalAuth: true,
+    localizacao
+  });
   const url = ENDPOINT_VINCULAR_ETIQUETA(base);
   console.log(
     `${LOG} [vincular-lote] contexto=${window.location.href} headers=`,
@@ -340,6 +391,8 @@ const ENDPOINT_REMOVER_ETIQUETA = (base: string): string =>
 
 export interface RemoverEtiquetasInput {
   remocoes: Array<{ idProcesso: number; idTag: number; nomeTag?: string }>;
+  /** Ver `AplicarEtiquetasInput.localizacaoOverride`. */
+  localizacaoOverride?: string | null;
   onProgress?: (msg: string) => void;
 }
 
@@ -372,17 +425,29 @@ export async function removerEtiquetaEmLote(
       error: 'Sem snapshot de auth para remover etiquetas.'
     };
   }
+  const localizacao = resolverLocalizacao(input.localizacaoOverride, snap);
+  if (!localizacao) {
+    return { ok: false, removidas: 0, detalhes, error: MSG_SEM_LOCALIZACAO };
+  }
   const base = pjeBaseUrl(snap);
-  const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
+  const headers = montarHeaders(snap, {
+    withJsonBody: true,
+    minimalAuth: true,
+    localizacao
+  });
   const url = ENDPOINT_REMOVER_ETIQUETA(base);
 
   let removidas = 0;
   for (let i = 0; i < input.remocoes.length; i++) {
     const r = input.remocoes[i];
     progress(`Removendo etiqueta antiga ${i + 1}/${input.remocoes.length}...`);
+    // Contrato do `/remover`: `{idTag: <número>, idProcesso: <número>}` — AMBOS
+    // números (docs/migracao-etiquetas-pje-v11.md §4.2/§6). Diferente do
+    // `/inserir`, que usa `idProcesso` como STRING. Enviar `idProcesso` como
+    // string aqui fazia o PJe devolver HTTP 500 (corpo vazio) em TODA remoção.
     const body = JSON.stringify({
       idTag: r.idTag,
-      idProcesso: String(r.idProcesso)
+      idProcesso: r.idProcesso
     });
     const resp = await fetchVincularEtiquetaNoPageWorld({ url, headers, body });
     const text = resp.bodyText ?? '';
@@ -417,14 +482,19 @@ interface CriarEtiquetaResult {
 
 async function criarEtiqueta(
   snap: PJeAuthSnapshot,
-  nome: string
+  nome: string,
+  localizacao: string
 ): Promise<CriarEtiquetaResult> {
   const base = pjeBaseUrl(snap);
   // Page world + `minimalAuth`: a criação é escrita e, do isolated world (ou
   // com `X-no-sso`/`X-pje-authorization`), o PJe responde 200 sem corpo
   // (rejeição silenciosa). No page world, com os headers que o Angular usa,
   // o servidor grava e devolve a entidade.
-  const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
+  const headers = montarHeaders(snap, {
+    withJsonBody: true,
+    minimalAuth: true,
+    localizacao
+  });
   // Body confirmado em campo (DevTools TRF5 1G, 2026-07). O PJe atualizado
   // EXIGE estes campos e rejeita silenciosamente (200 sem corpo) o antigo
   // `{ id:null, nomeTag, nomeTagCompleto }`. `nomeTagCompleto` = `nomeTag`
@@ -537,10 +607,15 @@ async function vincularEtiquetaAoProcesso(
   snap: PJeAuthSnapshot,
   etiqueta: PJeApiEtiqueta,
   idProcesso: number,
+  localizacao: string,
   debug: boolean = false
 ): Promise<{ ok: boolean; error?: string }> {
   const base = pjeBaseUrl(snap);
-  const headers = montarHeaders(snap, { withJsonBody: true, minimalAuth: true });
+  const headers = montarHeaders(snap, {
+    withJsonBody: true,
+    minimalAuth: true,
+    localizacao
+  });
   // Body `{ tag: "<nomeTag>", idProcesso: "<id como string>" }` — o
   // `/inserir` identifica a etiqueta pelo NOME (`tag`), não pelo id (o
   // `/remover` é que usa `idTag`). Confirmado pelo tamanho do request manual
@@ -714,6 +789,13 @@ function montarHeaders(
      * silenciosa típica desse endpoint).
      */
     minimalAuth?: boolean;
+    /**
+     * Localização (lotação) a usar no header `X-pje-usuario-localizacao`.
+     * Tem precedência sobre a do snapshot — ver
+     * `AplicarEtiquetasInput.localizacaoOverride`. `undefined`/vazio = usa a
+     * do snapshot.
+     */
+    localizacao?: string | null;
   }
 ): Record<string, string> {
   const h: Record<string, string> = {
@@ -723,8 +805,9 @@ function montarHeaders(
   if (opts?.withJsonBody) h['Content-Type'] = 'application/json';
   if (snap.pjeCookies) h['X-pje-cookies'] = snap.pjeCookies;
   if (snap.pjeLegacyApp) h['X-pje-legacy-app'] = snap.pjeLegacyApp;
-  if (snap.pjeUsuarioLocalizacao)
-    h['X-pje-usuario-localizacao'] = snap.pjeUsuarioLocalizacao;
+  const localizacao =
+    (opts?.localizacao ?? snap.pjeUsuarioLocalizacao ?? '').trim();
+  if (localizacao) h['X-pje-usuario-localizacao'] = localizacao;
   if (!opts?.minimalAuth) {
     if (snap.xNoSso) h['X-no-sso'] = snap.xNoSso;
     if (snap.xPjeAuthorization) h['X-pje-authorization'] = snap.xPjeAuthorization;

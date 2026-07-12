@@ -487,10 +487,21 @@ async function aplicarEtiquetasStatus(btn: HTMLButtonElement): Promise<void> {
   try {
     const r = (await chrome.runtime.sendMessage({
       channel: MESSAGE_CHANNELS.PREVJUD_APLICAR_ETIQUETAS,
-      payload: { processos }
+      payload: { processos, requestId }
     })) as PrevjudAplicarEtiquetasResult | undefined;
     console.log(`${LOG_PREFIX} [aplicar-etiquetas] resposta`, r);
-    if (r?.diag && r.vinculadas === 0 && r.removidas === 0) {
+    // Atualiza o estado local com o que o PJe confirmou ter escrito, para o
+    // próximo clique reconhecer os já-etiquetados (check `jaTem`) e NÃO
+    // reenviar — revincular etiqueta existente devolve HTTP 500 no PJe.
+    if (r) aplicarResultadoNoEstado(r);
+
+    const semAcao = !!r?.diag && r.diag.aAplicar === 0 && r.diag.aRemover === 0;
+    if (r?.ok && semAcao) {
+      mostrarAviso(
+        'Tudo já estava atualizado — nenhuma etiqueta a aplicar ou remover.',
+        'ok'
+      );
+    } else if (r?.diag && r.vinculadas === 0 && r.removidas === 0) {
       const d = r.diag;
       mostrarAviso(
         `Nada aplicado. Recebidos: ${d.recebidos} · já com a etiqueta: ` +
@@ -515,6 +526,49 @@ async function aplicarEtiquetasStatus(btn: HTMLButtonElement): Promise<void> {
   } finally {
     btn.disabled = false;
     btn.textContent = rotulo ?? 'Aplicar etiquetas de status';
+  }
+}
+
+/**
+ * Reflete no `payloadAtual` (memória + storage + cache) as etiquetas que o PJe
+ * confirmou ter escrito/removido. Assim o próximo "Aplicar" enxerga os
+ * já-etiquetados pelo check `jaTem` e não os reenvia (revincular etiqueta
+ * existente devolve HTTP 500 — associação duplicada).
+ */
+function aplicarResultadoNoEstado(r: PrevjudAplicarEtiquetasResult): void {
+  if (!payloadAtual) return;
+  const aplic = r.aplicadasProcessos ?? [];
+  const remov = r.removidasProcessos ?? [];
+  if (aplic.length === 0 && remov.length === 0) return;
+
+  const porId = new Map<number, ProcessoOrdensPrevjud>();
+  for (const p of payloadAtual.processos) porId.set(p.idProcesso, p);
+
+  const igual = (a: string, b: string): boolean =>
+    a.trim().toLowerCase() === b.trim().toLowerCase();
+
+  for (const a of aplic) {
+    const p = porId.get(a.idProcesso);
+    if (!p) continue;
+    if (!Array.isArray(p.etiquetas)) p.etiquetas = [];
+    if (!p.etiquetas.some((t) => igual(t, a.etiqueta))) p.etiquetas.push(a.etiqueta);
+  }
+  for (const rm of remov) {
+    const p = porId.get(rm.idProcesso);
+    if (!p || !Array.isArray(p.etiquetas)) continue;
+    p.etiquetas = p.etiquetas.filter((t) => !igual(t, rm.etiqueta));
+  }
+  void persistirPayloadAtual();
+}
+
+/** Regrava o payload atualizado no storage.session (dispara re-render). */
+async function persistirPayloadAtual(): Promise<void> {
+  if (!payloadAtual || !requestId) return;
+  try {
+    const key = `${STORAGE_KEYS.PREVJUD_DASHBOARD_PAYLOAD_PREFIX}${requestId}`;
+    await chrome.storage.session.set({ [key]: payloadAtual });
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} persistir payload PREVJUD falhou:`, err);
   }
 }
 

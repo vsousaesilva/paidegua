@@ -179,7 +179,7 @@ Execução: **page world** do iframe `frontend-prd.trf5.jus.br`, headers `minima
 | Listar | `POST /painelUsuario/etiquetas` | `{page, maxResults, tagsString, somenteFavoritas}` | `{count, entities[]}` |
 | Criar | `POST /painelUsuario/tags` | `{marcado:false, possuiFilhos:false, visivelPublicamente:false, nomeTag, nomeTagCompleto}` | entidade com `id` |
 | Vincular | `POST /painelUsuario/processoTags/inserir` | `{tag: "<nome>", idProcesso: "<string>"}` | objeto `{id, nomeTag, idUsuario, idProcesso, idProcessoTag}` |
-| Remover *(não usado)* | `POST /painelUsuario/processoTags/remover` | `{idTag: <número>, idProcesso: <número>}` | `<idTag>` (número) |
+| Remover | `POST /painelUsuario/processoTags/remover` | `{idTag: <número>, idProcesso: <número>}` | `<idTag>` (número) |
 | Favoritar | `GET /painelUsuario/tagSessaoUsuario/adicionar/{idEtiqueta}` | — | `204 No Content` |
 
 **Headers (`minimalAuth`):** `Authorization`, `Accept`, `Content-Type`,

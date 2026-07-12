@@ -45,6 +45,7 @@ interface MsgAplicarLoteReq {
     etiquetaPauta: string;
     idsProcesso: number[];
     favoritarAposCriar?: boolean;
+    localizacaoOverride?: string | null;
   };
 }
 interface MsgAplicarLoteProg {
@@ -64,6 +65,7 @@ interface MsgAplicarProcReq {
   payload: {
     etiquetas: AplicarEtiquetasNoProcessoInput['etiquetas'];
     idProcesso: number;
+    localizacaoOverride?: string | null;
   };
 }
 interface MsgAplicarProcResp {
@@ -75,7 +77,10 @@ interface MsgAplicarProcResp {
 interface MsgRemoverLoteReq {
   type: typeof MSG_REMOVER_LOTE_REQ;
   requestId: string;
-  payload: { remocoes: RemoverEtiquetasInput['remocoes'] };
+  payload: {
+    remocoes: RemoverEtiquetasInput['remocoes'];
+    localizacaoOverride?: string | null;
+  };
 }
 interface MsgRemoverLoteResp {
   type: typeof MSG_REMOVER_LOTE_RESP;
@@ -128,6 +133,7 @@ export function instalarListenerEtiquetaNoIframe(): void {
             etiquetaPauta: payload.etiquetaPauta,
             idsProcesso: payload.idsProcesso,
             favoritarAposCriar: payload.favoritarAposCriar,
+            localizacaoOverride: payload.localizacaoOverride,
             onProgress: (msg) => {
               const m: MsgAplicarLoteProg = {
                 type: MSG_APLICAR_LOTE_PROG,
@@ -170,7 +176,8 @@ export function instalarListenerEtiquetaNoIframe(): void {
         try {
           result = await aplicarEtiquetasNoProcesso({
             etiquetas: payload.etiquetas,
-            idProcesso: payload.idProcesso
+            idProcesso: payload.idProcesso,
+            localizacaoOverride: payload.localizacaoOverride
           });
         } catch (err) {
           result = {
@@ -275,7 +282,8 @@ export async function aplicarEtiquetaEmLoteComBridge(
       payload: {
         etiquetaPauta: input.etiquetaPauta,
         idsProcesso: input.idsProcesso,
-        favoritarAposCriar: input.favoritarAposCriar
+        favoritarAposCriar: input.favoritarAposCriar,
+        localizacaoOverride: input.localizacaoOverride
       }
     };
     iframeWin.postMessage(m, '*');
@@ -312,7 +320,10 @@ export async function removerEtiquetaEmLoteComBridge(
     const m: MsgRemoverLoteReq = {
       type: MSG_REMOVER_LOTE_REQ,
       requestId,
-      payload: { remocoes: input.remocoes }
+      payload: {
+        remocoes: input.remocoes,
+        localizacaoOverride: input.localizacaoOverride
+      }
     };
     iframeWin.postMessage(m, '*');
   });
@@ -349,7 +360,8 @@ export async function aplicarEtiquetasNoProcessoComBridge(
       requestId,
       payload: {
         etiquetas: input.etiquetas,
-        idProcesso: input.idProcesso
+        idProcesso: input.idProcesso,
+        localizacaoOverride: input.localizacaoOverride
       }
     };
     iframeWin.postMessage(m, '*');
