@@ -24,6 +24,7 @@
 
 export interface TriagemPanelActions {
   onAnalisarTarefas: () => void;
+  onValidarCadastro: () => void;
   onAnalisarProcesso: () => void;
   onInserirEtiquetas: () => void;
   onAbrirPericias: () => void;
@@ -258,6 +259,12 @@ const ICONS = {
       <path d="M9 17h4"></path>
     </svg>
   `,
+  validacao: `
+    <svg class="paidegua-triagem__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 12l2 2 4-4"></path>
+      <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"></path>
+    </svg>
+  `,
   etiquetas: `
     <svg class="paidegua-triagem__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
@@ -362,6 +369,12 @@ function buildGroups(
       label: 'Analisar tarefas',
       hint: 'Varre o painel e sugere o próximo passo para cada tarefa.',
       onClick: actions.onAnalisarTarefas
+    });
+    triagemActions.push({
+      icon: 'validacao',
+      label: 'Validação de cadastro',
+      hint: 'Confere o cadastro das partes de cada processo das tarefas de triagem.',
+      onClick: actions.onValidarCadastro
     });
   }
   if (options.isProcessoAberto) {

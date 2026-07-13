@@ -7243,6 +7243,127 @@
           "comando": "Movido para lançado após aprovação CWS da v1.7.0."
         }
       ]
+    },
+    {
+      "id": "VALCAD-01",
+      "titulo": "Validação de cadastro (Triagem Inteligente) — motor de regras + relatório + minuta (Fases 1-3)",
+      "descricao": "Nova ação da Triagem Inteligente (perfil Secretaria), ao lado de 'Analisar tarefas'. Varre as mesmas tarefas de triagem, baixa os autos de cada processo e aponta irregularidades no cadastro das partes (polo ativo/passivo/outros interessados) por um motor DETERMINÍSTICO (sem IA).\n\nFase 1 (motor + coleta): src/shared/validacao-cadastro-regras.ts com 12 códigos — MPF ausente p/ autor menor; CNPJ do INSS (29.979.036/0001-40); CEAB (29.979.036/0014-65) como órgão de cumprimento em Outros; órgão público sem procuradoria; CPF do autor ausente; representante legal do menor; advogado vinculado; INSS como terceiro interessado; CEAB fora de Outros/sem procuradoria/CNPJ errado; polo passivo vazio; valor da causa ausente. Parser de partes enriquecido (src/content/pje-api/pje-api-partes.ts: grupoId/ehPrincipal/ehOrgaoPublico, valor da causa, procuradoria por title=Procuradoria — cobre 'Gerência Jurídica Regional - CEF'). Orquestrador src/content/triagem/validar-cadastro.ts (top frame, REST + pool de 6 baixando autos; reusa a URL com ca já resolvida).\n\nFase 2 (relatório): src/validacao-dashboard/ com métricas, distribuição por tipo, apontamentos (chips por gravidade), regulares (selo 'Cadastro OK') e não-lidos; copiar CNJ, abrir tarefa, Excel e copiar lista. Botão no painel (triagem-panel.ts), canal VALIDACAO_OPEN_DASHBOARD, handler no background.\n\nFase 3 (minuta): src/shared/validacao-minuta.ts monta a sentença de extinção (art. 485 CPC) com [HIPÓTESES VERIFICADAS] preenchido pelas irregularidades; botão 'Minutar sentença' → modal com Copiar (rich HTML, recuo preservado), Inserir no PJe (canal INSERT_IN_PJE_EDITOR, renderForPJe → bd-def-citacao recuado) e Abrir tarefa. ENTES_CANONICOS (INSS/CEAB/MPF) exportado para a minuta citar o cadastro correto.\n\nFase 4 (automação do movimento 459 + transição de tarefa) fica para versão futura — ver VALCAD-02.",
+      "categoria": "secretaria",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Solicitação do owner — sessão 2026-07-13 (Fases 1 a 3 implementadas e validadas: typecheck + build OK, calibrado contra fixture real INSS/CEAB)",
+      "tags": ["triagem", "secretaria", "validacao-cadastro", "minuta", "pje"],
+      "esforco": "XL",
+      "depende": [],
+      "aceitacao": [
+        "Motor determinístico com 12 códigos de irregularidade (módulo puro validacao-cadastro-regras.ts)",
+        "Parser de partes enriquecido (grupo, órgão público, valor da causa, procuradoria por title) sem regressão em Audiência/Ranking",
+        "Relatório dedicado com apontamentos/regulares/não-lidos + copiar CNJ/abrir tarefa/Excel/copiar lista",
+        "Botão 'Minutar sentença' insere a minuta no editor do PJe com a citação do art. 1º recuada (bd-def-citacao) e cópia rica preserva o recuo",
+        "typecheck + build OK; processo-referência regular (INSS/CEAB) sai como Cadastro OK",
+        "Após aprovação CWS da v1.9.0 → mover para lancado"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-13T00:00:00.000Z",
+      "atualizadoEm": "2026-07-13T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-13",
+      "evidencias": ["src/shared/validacao-cadastro-regras.ts", "src/shared/validacao-minuta.ts", "src/content/triagem/validar-cadastro.ts", "src/validacao-dashboard/validacao-dashboard.ts", "src/content/pje-api/pje-api-partes.ts"],
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Feature especificada e implementada nas Fases 1-3 na sessão 2026-07-13 (motor de regras, relatório, minuta). Decisões do owner: automatizar mov. 459 na Fase 4; regra 'assunto x pedido' sob demanda."
+        },
+        {
+          "tipo": "movido",
+          "de": "triagem",
+          "para": "dev",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Codificação das Fases 1-3."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "typecheck + build OK, calibrado contra fixture real. Entra no bundle da release v1.9.0; aguarda aprovação CWS + smoke."
+        }
+      ]
+    },
+    {
+      "id": "VALCAD-02",
+      "titulo": "Validação de cadastro — Fase 4: automação do movimento 459 + transição para 'minutar sentença'",
+      "descricao": "Evolução da Validação de cadastro (VALCAD-01): a partir do relatório, encaminhar o processo irregular para a tarefa 'minutar sentença', inserir a minuta e lançar o movimento 459 automaticamente.\n\nAbordagem definida (não implementada): dirigir a UI real do PJe em main-world (padrão já usado em 'Prazos na Fita' / PRAZOS_ENCERRAR_RUN — abre movimentar.seam e aciona os controles reais), em vez de replicar o postback JSF/RichFaces por rede (frágil, ViewState volátil). Novo par de canais VALIDACAO_ENCAMINHAR_RUN/RESULT; background abre movimentar.seam da tarefa com marcador no #hash; coordinator reconhece e executa transição -> inserir minuta (reusa INSERT_IN_PJE_EDITOR) -> lançar 459.\n\nGuardrails: confirmação explícita antes de escrever, 1 processo por vez (lote depois), log de auditoria sem PII, fallback que degrada para 'abre a tarefa + insere a minuta' (Fase 3) se a automação falhar.\n\nPendências de discovery (spike 4a): captura do owner (gravação de tela + HAR do Network + HTML do movimentar.seam) para responder: (1) o 459 é automático na transição ou lançamento separado? (2) no PJe v11 o movimentar.seam ainda é JSF legado ou virou fluxo Angular?",
+      "categoria": "secretaria",
+      "prioridade": "P2",
+      "coluna": "discovery",
+      "origem": "Decisão do owner (2026-07-13): postergar automação do 459 como evolução após lançar as Fases 1-3",
+      "tags": ["triagem", "secretaria", "validacao-cadastro", "movimento-459", "jsf", "automacao-escrita", "pje-v11"],
+      "esforco": "L",
+      "depende": ["VALCAD-01"],
+      "aceitacao": [
+        "Spike read-only mapeia os controles do movimentar.seam (transição 'minutar sentença', lançar movimento 459) sem clicar",
+        "Confirmado se o 459 é automático na transição ou ação separada",
+        "Automação de 1 processo com confirmação explícita (nunca silenciosa)",
+        "Fallback para o comportamento da Fase 3 quando a automação falhar",
+        "Log de auditoria local sem PII"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-13T00:00:00.000Z",
+      "atualizadoEm": "2026-07-13T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-13",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Fase 4 registrada como evolução futura. Abordagem (dirigir UI em main-world, padrão PRAZOS_ENCERRAR_RUN) e guardrails definidos. Aguarda captura do owner para o spike 4a."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.9.0",
+      "titulo": "Release v1.9.0 — Validação de cadastro (Triagem Inteligente): motor de regras + relatório + minuta",
+      "descricao": "Bundle da release v1.9.0:\n\n- VALCAD-01: nova ação 'Validação de cadastro' na Triagem Inteligente (Secretaria). Motor de regras determinístico sobre o cadastro das partes, relatório dedicado (apontamentos/regulares/não-lidos, copiar CNJ/abrir tarefa/Excel/copiar lista) e geração de minuta de sentença de extinção (art. 485 CPC) com inserção no editor do PJe e cópia com recuo.\n\nBump 1.8.1 -> 1.9.0 (minor). Sem novas permissões, sem novos hosts. Nova página validacao-dashboard/ registrada no webpack. Fase 4 (automação do movimento 459) fica para versão futura (VALCAD-02).",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "skill release-extensao — sessão 2026-07-13",
+      "tags": ["release", "extensao", "cws", "validacao-cadastro", "triagem"],
+      "esforco": "XS",
+      "depende": ["VALCAD-01"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.9.0; dist/manifest.json em 1.9.0",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/validacao-dashboard/validacao-dashboard.{html,css,js} presentes no dist",
+        "zip versoes/dist v1.9.0.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados -> mover para lancado",
+        "Tag git v1.9.0 + Release no GitHub criada"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-13T00:00:00.000Z",
+      "atualizadoEm": "2026-07-13T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-13",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Card aberto na skill release-extensao. Bump 1.8.1 -> 1.9.0 confirmado. Bundle: VALCAD-01 (Validação de cadastro, Fases 1-3). Aguarda build local + validação do dist + upload à CWS."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Versões bumpadas (1.9.0). Aguarda build, empacotamento, upload à CWS + aprovação + smoke + broadcast + tag."
+        }
+      ]
     }
   ]
 }

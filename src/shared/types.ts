@@ -9,6 +9,7 @@ import type {
   TriagemCriterioId,
   TriagemCriterioSetting
 } from './constants';
+import type { IrregularidadeCadastro } from './validacao-cadastro-regras';
 
 /**
  * Estado de autenticacao persistido em `chrome.storage.local` sob a chave
@@ -405,6 +406,56 @@ export interface TriagemSugestao {
   detalhe: string;
   /** Prioridade percebida pelo modelo. */
   prioridade: 'alta' | 'media' | 'baixa';
+}
+
+// =====================================================================
+// "Validação de cadastro" — item da Triagem Inteligente (Secretaria)
+// =====================================================================
+
+/**
+ * Resultado da validação de cadastro de UM processo, pronto para o
+ * relatório. Reúne os dados de identificação (para os botões copiar CNJ /
+ * abrir tarefa / Excel) e o veredito das regras determinísticas.
+ *
+ * IMPORTANTE: contém dados sensíveis (nomes/documentos das partes ficam nos
+ * `detalhe` das irregularidades). Não enviar a APIs externas sem sanitizar.
+ */
+export interface ValidacaoCadastroProcesso {
+  idProcesso: string;
+  idTaskInstance: string | null;
+  numeroProcesso: string;
+  assunto: string;
+  orgao: string;
+  /** Texto do valor da causa (ex.: "R$ 20.309,00"), `null` se ausente. */
+  valorCausaTexto: string | null;
+  /** URL dos autos (pode chegar vazia e ser hidratada depois). */
+  url: string;
+  /** Nome da tarefa de origem no painel. */
+  tarefaNome: string;
+  /**
+   * `ok` = cadastro regular; `irregular` = há apontamentos; `erro` = não foi
+   * possível ler os autos do processo (a linha aparece no relatório com o
+   * motivo, sem veredito).
+   */
+  status: 'ok' | 'irregular' | 'erro';
+  irregularidades: IrregularidadeCadastro[];
+  /** Mensagem de erro quando `status === 'erro'`. */
+  erro?: string | null;
+}
+
+/** Payload do dashboard "Validação de cadastro" (gravado em storage.session). */
+export interface ValidacaoCadastroDashboardPayload {
+  geradoEm: string;
+  hostnamePJe: string;
+  /** Origin do PJe legacy — usado na hidratação progressiva de URLs. */
+  legacyOrigin?: string;
+  /** Sufixo da chave de hidratação de URLs em `storage.session`. */
+  urlHydrationScanId?: string;
+  processos: ValidacaoCadastroProcesso[];
+  totalProcessos: number;
+  totalOk: number;
+  totalIrregular: number;
+  totalErro: number;
 }
 
 // =====================================================================

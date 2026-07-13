@@ -112,7 +112,8 @@ import type {
   TranscribeAudioPayload,
   TriagemDashboardPayload,
   TriagemInsightsLLM,
-  TriagemSugestao
+  TriagemSugestao,
+  ValidacaoCadastroDashboardPayload
 } from '../shared/types';
 import {
   clearGestaoPayloads,
@@ -750,6 +751,13 @@ function dispatchMessage(
       case MESSAGE_CHANNELS.TRIAGEM_OPEN_DASHBOARD:
         void handleOpenTriagemDashboard(
           message.payload as TriagemDashboardPayload,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.VALIDACAO_OPEN_DASHBOARD:
+        void handleOpenValidacaoDashboard(
+          message.payload as ValidacaoCadastroDashboardPayload,
           sendResponse
         );
         return true;
@@ -3327,6 +3335,33 @@ async function handleOpenTriagemDashboard(
     sendResponse({ ok: true });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handleOpenTriagemDashboard falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/**
+ * Grava o payload da "Validação de cadastro" em `chrome.storage.session` e
+ * abre a página estática do relatório. Mesma postura do dashboard de
+ * Triagem: o conteúdo com PII não sai da máquina (não há etapa de LLM nesta
+ * feature — as regras são determinísticas).
+ */
+async function handleOpenValidacaoDashboard(
+  payload: ValidacaoCadastroDashboardPayload,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!payload || !Array.isArray(payload.processos)) {
+      sendResponse({ ok: false, error: 'Payload de validação inválido.' });
+      return;
+    }
+    await chrome.storage.session.set({
+      [STORAGE_KEYS.VALIDACAO_CADASTRO_DASHBOARD_PAYLOAD]: payload
+    });
+    const url = chrome.runtime.getURL('validacao-dashboard/validacao-dashboard.html');
+    await chrome.tabs.create({ url });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenValidacaoDashboard falhou:`, error);
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }

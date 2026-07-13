@@ -43,7 +43,12 @@ export type TipoParte =
 /** Polo onde a parte foi encontrada no HTML. */
 export type PoloParte = 'ATIVO' | 'PASSIVO' | 'OUTROS' | 'DESCONHECIDO';
 
-export interface ParteExtraida {
+/**
+ * Campos textuais de uma linha de parte, antes de qualquer informação de
+ * agrupamento/estrutura. É o que `parsearLinhaBase` sabe produzir a partir
+ * do texto puro de uma linha.
+ */
+interface ParteLinhaBase {
   /** Texto bruto da linha (útil para debug). */
   textoBruto: string;
   /** Nome (ou denominação) da parte. */
@@ -59,11 +64,56 @@ export interface ParteExtraida {
   oabNumero: string | null;
 }
 
-const cachePartes = new Map<number, ParteExtraida[]>();
+export interface ParteExtraida extends ParteLinhaBase {
+  /**
+   * Identificador do grupo (parte principal + seus vínculos) no HTML dos
+   * autos. Todas as linhas do mesmo `<td>` — a parte principal e os seus
+   * advogados/representantes/procuradoria em `<small>` — compartilham o
+   * mesmo `grupoId`. Permite associar cada vínculo à parte a que pertence
+   * (ex.: "todo órgão público precisa de procuradoria vinculada"). Vale
+   * `-1` quando a linha foi produzida fora do parser de bloco (ex.: chamada
+   * direta a `parsearLinha`).
+   */
+  grupoId: number;
+  /**
+   * `true` para a parte principal do grupo (autor, réu, órgão de
+   * cumprimento etc.); `false` para os vínculos (advogado, representante,
+   * procuradoria) listados em `<small>` abaixo dela.
+   */
+  ehPrincipal: boolean;
+  /**
+   * Heurística: `true` quando o nome sugere ente/órgão público (INSS,
+   * União, autarquias, CEAB etc.). Usado pela validação de cadastro
+   * ("órgão público deve ter procuradoria vinculada"). Não é um campo
+   * declarado pelo PJe — é inferido do nome; refinar com fixture real do
+   * HTML se o servidor expuser o "tipo de pessoa" de forma estável.
+   */
+  ehOrgaoPublico: boolean;
+}
+
+interface AutosCacheEntry {
+  partes: ParteExtraida[];
+  valorCausaTexto: string | null;
+  url: string;
+}
+
+const cacheAutos = new Map<number, AutosCacheEntry>();
 
 export interface ObterPartesResult {
   ok: boolean;
   partes?: ParteExtraida[];
+  /**
+   * Texto do valor da causa como aparece nos autos (ex.: "R$ 20.309,00").
+   * `null` quando o bloco não foi localizado no HTML. Usado pela regra
+   * "protocolo sem cadastro do valor da causa".
+   */
+  valorCausaTexto?: string | null;
+  /**
+   * URL autenticada dos autos digitais (`listAutosDigitais.seam?...&ca=...`)
+   * já resolvida para baixar o HTML. Devolvida para o chamador reaproveitar
+   * como link "abrir processo" sem uma segunda resolução de `ca`.
+   */
+  url?: string;
   error?: string;
 }
 
@@ -80,8 +130,15 @@ export async function obterPartesDoProcesso(opts: {
   forcar?: boolean;
 }): Promise<ObterPartesResult> {
   if (!opts.forcar) {
-    const cached = cachePartes.get(opts.idProcesso);
-    if (cached) return { ok: true, partes: cached };
+    const cached = cacheAutos.get(opts.idProcesso);
+    if (cached) {
+      return {
+        ok: true,
+        partes: cached.partes,
+        valorCausaTexto: cached.valorCausaTexto,
+        url: cached.url
+      };
+    }
   }
 
   const r = await montarUrlAutos({
@@ -121,8 +178,9 @@ export async function obterPartesDoProcesso(opts: {
   }
 
   const partes = parsearPartesDoHtml(html);
-  cachePartes.set(opts.idProcesso, partes);
-  return { ok: true, partes };
+  const valorCausaTexto = parsearValorCausaDoHtml(html);
+  cacheAutos.set(opts.idProcesso, { partes, valorCausaTexto, url: r.url });
+  return { ok: true, partes, valorCausaTexto, url: r.url };
 }
 
 /**
@@ -130,7 +188,7 @@ export async function obterPartesDoProcesso(opts: {
  * refetch (rarely used; o `forcar: true` por chamada cobre o caso normal).
  */
 export function limparCachePartes(): void {
-  cachePartes.clear();
+  cacheAutos.clear();
 }
 
 /**
@@ -159,30 +217,95 @@ export function parsearPartesDoHtml(html: string): ParteExtraida[] {
     { id: 'outrosInteressados', polo: 'OUTROS' }
   ];
 
+  // Sequência global de grupos: cada `<td>` (uma parte principal + seus
+  // vínculos) recebe um id único e crescente ao longo dos três blocos.
+  let grupoSeq = 0;
+
   for (const { id, polo } of blocos) {
     const wrap = doc.getElementById(id);
     if (!wrap) continue;
 
     const tds = wrap.querySelectorAll('td');
     for (const td of Array.from(tds)) {
+      const grupoId = grupoSeq++;
+
       // Linha principal: o primeiro <span> de texto direto dentro do <td>.
       // Estrutura observada: <td><span class=""><span class="">TEXTO</span></span> <div...></div></td>
       const principal = td.querySelector(':scope > span');
       if (principal) {
         const txt = obterTextoDireto(principal);
-        if (txt) partes.push(parsearLinha(txt, polo));
+        if (txt) {
+          partes.push({ ...parsearLinha(txt, polo), grupoId, ehPrincipal: true });
+        }
       }
 
-      // Sub-itens: representantes/advogados em <small class="text-muted">.
+      // Sub-itens: representantes/advogados/procuradoria em
+      // <small class="text-muted">. Pertencem ao mesmo grupo da principal.
       const smalls = td.querySelectorAll('small.text-muted');
       for (const small of Array.from(smalls)) {
         const txt = obterTextoLimpo(small);
-        if (txt) partes.push(parsearLinha(txt, polo));
+        if (!txt) continue;
+        const parte: ParteExtraida = {
+          ...parsearLinha(txt, polo),
+          grupoId,
+          ehPrincipal: false
+        };
+        // Sinal estrutural do PJe: o vínculo de procuradoria traz
+        // `title="Procuradoria"` no ícone/`<span>`, mesmo quando o nome NÃO
+        // começa por "Procuradoria" (ex.: "Gerência Jurídica Regional - CEF",
+        // a procuradoria da Caixa). Só sobrescrevemos quando a linha caiu em
+        // OUTRO — nunca rebaixamos um ADVOGADO/REPRESENTANTE explícito.
+        if (parte.tipo === 'OUTRO' && temTituloProcuradoria(small)) {
+          parte.tipo = 'PROCURADORIA';
+          parte.ehOrgaoPublico = true;
+        }
+        partes.push(parte);
       }
     }
   }
 
   return partes;
+}
+
+/**
+ * Extrai o texto do valor da causa do HTML dos autos digitais. O PJe TRF5
+ * expõe esse dado no dropdown "mais-detalhes" da navbar, na forma
+ * "Valor da causa" seguido do valor em reais. Como a marcação exata varia
+ * entre versões, usamos uma busca tolerante: localizamos o rótulo e
+ * capturamos o primeiro valor monetário `R$ ...` na sequência.
+ *
+ * Retorna o texto normalizado (ex.: "R$ 20.309,00") ou `null` se não
+ * encontrado — o que, para a validação, significa "valor da causa ausente".
+ */
+export function parsearValorCausaDoHtml(html: string): string | null {
+  if (!html) return null;
+  let texto: string;
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    texto = (doc.body?.textContent ?? '').replace(/\s+/g, ' ');
+  } catch {
+    texto = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  }
+  // Ancorado no rótulo, tolerando ":" opcional e espaços. O valor pode vir
+  // com ou sem "R$".
+  const m = texto.match(
+    /valor\s+da\s+causa\s*:?\s*(R\$\s*[\d.]+,\d{2}|[\d.]+,\d{2})/i
+  );
+  if (!m) return null;
+  const bruto = m[1].trim();
+  return /^R\$/i.test(bruto) ? bruto.replace(/\s+/g, ' ') : `R$ ${bruto}`;
+}
+
+/**
+ * `true` quando algum elemento dentro do `<small>` (ícone ou span) carrega
+ * `title="Procuradoria"` — sinal do PJe de que o vínculo é uma procuradoria,
+ * usado para reconhecer procuradorias com nome não-padrão (ex.: "Gerência
+ * Jurídica Regional - CEF").
+ */
+function temTituloProcuradoria(small: Element): boolean {
+  return Array.from(small.querySelectorAll('[title]')).some((el) =>
+    /procuradoria/i.test(el.getAttribute('title') ?? '')
+  );
 }
 
 /**
@@ -219,6 +342,38 @@ function obterTextoLimpo(el: Element): string {
  *   - "TEXTO QUALQUER (TIPO)"                (cai em OUTRO)
  */
 export function parsearLinha(texto: string, polo: PoloParte): ParteExtraida {
+  const base = parsearLinhaBase(texto, polo);
+  return {
+    ...base,
+    grupoId: -1,
+    ehPrincipal: true,
+    ehOrgaoPublico: ehNomeOrgaoPublico(base.nome, base.tipo)
+  };
+}
+
+/**
+ * Nomes que caracterizam ente/órgão público para fins da validação de
+ * cadastro. Heurística sobre o nome da parte — o PJe não expõe o "tipo de
+ * pessoa" (física/jurídica/órgão público) de forma estável no HTML dos
+ * autos. Cobre os réus mais comuns no JEF previdenciário/assistencial e os
+ * entes federais recorrentes.
+ */
+const RE_ORGAO_PUBLICO =
+  /(instituto nacional do seguro social|\bINSS\b|\bUNI[AÃ]O\b|fazenda nacional|\bINCRA\b|\bIBAMA\b|\bDNIT\b|\bANEEL\b|\bANATEL\b|\bANS\b|\bANVISA\b|\bFUNAI\b|ag[êe]ncia nacional|autarquia|funda[çc][ãa]o p[úu]blica|universidade federal|instituto federal|\bCEAB\b|\bCEF\b|caixa econ[ôo]mica|conselho (federal|regional)|munic[íi]pio d[eo]|\bestado d[eo]\b|distrito federal|advocacia[- ]geral|procuradoria)/i;
+
+/**
+ * Regra do heurístico: qualquer PROCURADORIA/ÓRGÃO DE CUMPRIMENTO é público
+ * por definição; para os demais, decide pelo nome. ADVOGADO e REPRESENTANTE
+ * (pessoas físicas vinculadas) nunca são tratados como órgão público, mesmo
+ * que o nome case por acaso.
+ */
+function ehNomeOrgaoPublico(nome: string, tipo: TipoParte): boolean {
+  if (tipo === 'PROCURADORIA' || tipo === 'ORGAO_DE_CUMPRIMENTO') return true;
+  if (tipo === 'ADVOGADO' || tipo === 'REPRESENTANTE') return false;
+  return RE_ORGAO_PUBLICO.test(nome);
+}
+
+function parsearLinhaBase(texto: string, polo: PoloParte): ParteLinhaBase {
   const tipoMatch = texto.match(/\(([^()]+)\)\s*$/);
   let tipo: TipoParte = 'OUTRO';
   if (tipoMatch) {
@@ -230,7 +385,11 @@ export function parsearLinha(texto: string, polo: PoloParte): ParteExtraida {
     else if (t.includes('CUMPRIMENTO')) tipo = 'ORGAO_DE_CUMPRIMENTO';
     else tipo = 'OUTRO';
   }
-  if (tipo === 'OUTRO' && /procuradoria/i.test(texto)) {
+  // Procuradorias em geral começam por "Procuradoria...", mas algumas
+  // assumem nome próprio — ex.: a da Caixa é "Gerência Jurídica Regional -
+  // CEF". O sinal por `title="Procuradoria"` (no parser de bloco) cobre o
+  // caso estrutural; aqui fica o fallback por nome.
+  if (tipo === 'OUTRO' && /procuradoria|ger[êe]ncia\s+jur[íi]dica/i.test(texto)) {
     tipo = 'PROCURADORIA';
   }
 

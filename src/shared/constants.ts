@@ -224,6 +224,14 @@ export const MESSAGE_CHANNELS = {
    */
   TRIAGEM_INSIGHTS: 'paidegua/triagem/insights',
   /**
+   * Content → background: abre a página do relatório "Validação de cadastro"
+   * (item da Triagem Inteligente). O payload (`ValidacaoCadastroDashboardPayload`,
+   * com nomes/documentos preservados para exibição local) é gravado em
+   * `chrome.storage.session` antes de a aba ser aberta. Mesma postura do
+   * `TRIAGEM_OPEN_DASHBOARD`.
+   */
+  VALIDACAO_OPEN_DASHBOARD: 'paidegua/validacao/open-dashboard',
+  /**
    * Content → background: análise do processo em curso contra os critérios
    * de triagem configurados pelo magistrado. Devolve veredito por critério
    * e (quando algum não é atendido) providências sugeridas para emenda.
@@ -826,6 +834,13 @@ export const STORAGE_KEYS = {
    * `storage.local`.
    */
   TRIAGEM_DASHBOARD_PAYLOAD: 'paidegua.triagem.dashboardPayload',
+  /**
+   * Chave em `chrome.storage.session` (volátil) para entregar o payload do
+   * relatório "Validação de cadastro" à aba que será aberta. Mesmo racional
+   * do `TRIAGEM_DASHBOARD_PAYLOAD`: os dados sensíveis (nomes/documentos nos
+   * detalhes das irregularidades) permanecem apenas localmente.
+   */
+  VALIDACAO_CADASTRO_DASHBOARD_PAYLOAD: 'paidegua.validacao.dashboardPayload',
   /**
    * Chave em `chrome.storage.session` (volátil) usada para entregar o
    * HTML da minuta para a página "Salvar como modelo". Conteúdo de

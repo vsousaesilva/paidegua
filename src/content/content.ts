@@ -79,6 +79,7 @@ import {
   instalarListenerTriagemNoIframe
 } from './triagem/triagem-bridge';
 import { executarAnalisarProcesso } from './triagem/analisar-processo';
+import { executarValidacaoCadastro } from './triagem/validar-cadastro';
 import { executarSugerirEtiquetas } from './triagem/sugerir-etiquetas';
 import {
   coletarTarefasSelecionadas,
@@ -2705,6 +2706,9 @@ function handleTriagemInteligente(focusGroup?: 'triagem' | 'pericias'): void {
       onAnalisarTarefas: () => {
         void handleAnalisarTarefas(notice);
       },
+      onValidarCadastro: () => {
+        void handleValidarCadastro(notice);
+      },
       onAnalisarProcesso: () => {
         void handleAnalisarProcesso(notice);
       },
@@ -3449,6 +3453,51 @@ async function handleAnalisarTarefas(
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAnalisarTarefas falhou:`, err);
     notice(`Falha ao analisar tarefas: ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do botão "Validação de cadastro" (Triagem Inteligente): varre as
+ * mesmas tarefas de triagem, baixa os autos de cada processo, roda o motor
+ * de regras determinístico e abre o relatório em nova aba. Sem IA — o
+ * veredito é 100% client-side.
+ */
+async function handleValidarCadastro(
+  notice: (msg: string, kind?: 'info' | 'error') => void
+): Promise<void> {
+  notice(
+    'Validando o cadastro dos processos — pode levar alguns minutos. ' +
+      'Aguarde sem fechar a aba. O painel ficará indisponível durante a varredura.'
+  );
+  try {
+    const result = await executarValidacaoCadastro({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok || !result.payload) {
+      notice(result.error ?? 'Falha ao validar o cadastro.', 'error');
+      return;
+    }
+    notice('Abrindo relatório de validação...');
+    const resp = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.VALIDACAO_OPEN_DASHBOARD,
+      payload: result.payload
+    });
+    if (!resp?.ok) {
+      notice(
+        `Não foi possível abrir o relatório${resp?.error ? `: ${resp.error}` : '.'}`,
+        'error'
+      );
+      return;
+    }
+    const p = result.payload;
+    notice(
+      `Relatório aberto: ${p.totalProcessos} processo(s) — ` +
+        `${p.totalOk} regular(es), ${p.totalIrregular} com apontamentos.`
+    );
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleValidarCadastro falhou:`, err);
+    notice(`Falha ao validar o cadastro: ${errorMessage(err)}`, 'error');
   }
 }
 
