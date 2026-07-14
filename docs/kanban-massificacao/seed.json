@@ -7246,11 +7246,12 @@
     },
     {
       "id": "VALCAD-01",
+      "dataConclusao": "2026-07-13T00:00:00.000Z",
       "titulo": "Validação de cadastro (Triagem Inteligente) — motor de regras + relatório + minuta (Fases 1-3)",
       "descricao": "Nova ação da Triagem Inteligente (perfil Secretaria), ao lado de 'Analisar tarefas'. Varre as mesmas tarefas de triagem, baixa os autos de cada processo e aponta irregularidades no cadastro das partes (polo ativo/passivo/outros interessados) por um motor DETERMINÍSTICO (sem IA).\n\nFase 1 (motor + coleta): src/shared/validacao-cadastro-regras.ts com 12 códigos — MPF ausente p/ autor menor; CNPJ do INSS (29.979.036/0001-40); CEAB (29.979.036/0014-65) como órgão de cumprimento em Outros; órgão público sem procuradoria; CPF do autor ausente; representante legal do menor; advogado vinculado; INSS como terceiro interessado; CEAB fora de Outros/sem procuradoria/CNPJ errado; polo passivo vazio; valor da causa ausente. Parser de partes enriquecido (src/content/pje-api/pje-api-partes.ts: grupoId/ehPrincipal/ehOrgaoPublico, valor da causa, procuradoria por title=Procuradoria — cobre 'Gerência Jurídica Regional - CEF'). Orquestrador src/content/triagem/validar-cadastro.ts (top frame, REST + pool de 6 baixando autos; reusa a URL com ca já resolvida).\n\nFase 2 (relatório): src/validacao-dashboard/ com métricas, distribuição por tipo, apontamentos (chips por gravidade), regulares (selo 'Cadastro OK') e não-lidos; copiar CNJ, abrir tarefa, Excel e copiar lista. Botão no painel (triagem-panel.ts), canal VALIDACAO_OPEN_DASHBOARD, handler no background.\n\nFase 3 (minuta): src/shared/validacao-minuta.ts monta a sentença de extinção (art. 485 CPC) com [HIPÓTESES VERIFICADAS] preenchido pelas irregularidades; botão 'Minutar sentença' → modal com Copiar (rich HTML, recuo preservado), Inserir no PJe (canal INSERT_IN_PJE_EDITOR, renderForPJe → bd-def-citacao recuado) e Abrir tarefa. ENTES_CANONICOS (INSS/CEAB/MPF) exportado para a minuta citar o cadastro correto.\n\nFase 4 (automação do movimento 459 + transição de tarefa) fica para versão futura — ver VALCAD-02.",
       "categoria": "secretaria",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "Solicitação do owner — sessão 2026-07-13 (Fases 1 a 3 implementadas e validadas: typecheck + build OK, calibrado contra fixture real INSS/CEAB)",
       "tags": ["triagem", "secretaria", "validacao-cadastro", "minuta", "pje"],
       "esforco": "XL",
@@ -7290,6 +7291,20 @@
           "autor": "claude-code/sessao-2026-07-13",
           "data": "2026-07-13T00:00:00.000Z",
           "comando": "typecheck + build OK, calibrado contra fixture real. Entra no bundle da release v1.9.0; aguarda aprovação CWS + smoke."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Bundle v1.9.0 aprovado pela CWS e em produção em 2026-07-13. Smoke test do owner OK (versão 1.9.0, botão Validação de cadastro, Cadastro OK no processo-referência, minuta inserida com recuo)."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Movido para lançado após aprovação CWS da v1.9.0 e smoke test."
         }
       ]
     },
@@ -7326,11 +7341,12 @@
     },
     {
       "id": "REL-1.9.0",
+      "dataConclusao": "2026-07-13T00:00:00.000Z",
       "titulo": "Release v1.9.0 — Validação de cadastro (Triagem Inteligente): motor de regras + relatório + minuta",
       "descricao": "Bundle da release v1.9.0:\n\n- VALCAD-01: nova ação 'Validação de cadastro' na Triagem Inteligente (Secretaria). Motor de regras determinístico sobre o cadastro das partes, relatório dedicado (apontamentos/regulares/não-lidos, copiar CNJ/abrir tarefa/Excel/copiar lista) e geração de minuta de sentença de extinção (art. 485 CPC) com inserção no editor do PJe e cópia com recuo.\n\nBump 1.8.1 -> 1.9.0 (minor). Sem novas permissões, sem novos hosts. Nova página validacao-dashboard/ registrada no webpack. Fase 4 (automação do movimento 459) fica para versão futura (VALCAD-02).",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
       "origem": "skill release-extensao — sessão 2026-07-13",
       "tags": ["release", "extensao", "cws", "validacao-cadastro", "triagem"],
       "esforco": "XS",
@@ -7362,6 +7378,20 @@
           "autor": "claude-code/sessao-2026-07-13",
           "data": "2026-07-13T00:00:00.000Z",
           "comando": "Versões bumpadas (1.9.0). Aguarda build, empacotamento, upload à CWS + aprovação + smoke + broadcast + tag."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Bundle v1.9.0 (VALCAD-01) aprovado pela CWS e em produção em 2026-07-13. Build local + validação do dist + upload manual + commit/push em main + sync KV feitos. Smoke test do owner OK."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-13",
+          "data": "2026-07-13T00:00:00.000Z",
+          "comando": "Movido para lançado após aprovação CWS da v1.9.0. Tag git v1.9.0 + Release no GitHub a seguir."
         }
       ]
     }
