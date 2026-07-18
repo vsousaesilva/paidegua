@@ -29,7 +29,7 @@ Elabore o ato de emenda à inicial reproduzindo INTEGRALMENTE o gabarito abaixo,
 
 IMPORTANTE:
 - Mantenha o restante do gabarito EXATAMENTE como está (mesma redação, mesma ordem dos parágrafos, mesma fórmula final).
-- Substitua "[município sede do juízo]" pelo município da vara/seção judiciária responsável pelo processo, identificado a partir dos documentos dos autos (ex.: "Maracanaú/CE", "Fortaleza/CE"). NÃO mantenha o marcador entre colchetes na peça final.
+- Substitua "[município sede do juízo]" conforme a regra 5 das REGRAS DE FORMATO abaixo, que já traz a sede do juízo verificada. NÃO mantenha o marcador "[município sede do juízo]" na peça final e NÃO deduza a cidade a partir dos documentos dos autos.
 - O bloco de providências deve ser apresentado em forma de tópicos numerados (1., 2., 3., ...), um tópico por providência, redigidos no IMPERATIVO formal e iniciados por verbo (ex.: "Apresentar...", "Juntar...", "Esclarecer..."). Cada tópico em um parágrafo separado, terminando em ponto-final.
 - NÃO acrescente cabeçalho, número do processo, identificação das partes nem assinatura — esses elementos são preenchidos automaticamente pelo editor do PJe.
 

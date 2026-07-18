@@ -976,6 +976,34 @@ export interface PJeApiResolveCaResponse {
 }
 
 /**
+ * Resumo leve de um processo devolvido por
+ * `GET {base}/processos/{idProcesso}` (~302 bytes JSON).
+ * Usado para resolver `idProcesso -> orgaoJulgador` no Painel de Perícias
+ * (o relatório PautaPericia é amplo por jurisdição e não expõe a vara na
+ * grade). Só os campos que consumimos; o servidor devolve mais.
+ */
+export interface PJeProcessoResumo {
+  idProcesso: number;
+  numeroProcesso: string | null;
+  classeJudicial: string | null;
+  /** Nome da vara, ex.: "26ª Vara Federal CE" — eixo do filtro por unidade. */
+  orgaoJulgador: string | null;
+  /** Ex.: "CE / Fortaleza". */
+  jurisdicao: string | null;
+  /** Código de status do processo (ex.: "D"). */
+  status: string | null;
+  /** Data de distribuição em epoch ms (quando presente). */
+  dataDistribuicao: number | null;
+}
+
+/** Resposta de `obterResumoProcesso`. */
+export interface PJeProcessoResumoResponse {
+  ok: boolean;
+  resumo?: PJeProcessoResumo;
+  error?: string;
+}
+
+/**
  * Shape bruto de uma etiqueta na resposta de
  * `POST /painelUsuario/etiquetas`. Parsing tolera campos ausentes — só
  * `id` e `nomeTag` são obrigatórios para formar um `EtiquetaRecord`.
@@ -1476,11 +1504,11 @@ export interface PrevjudColetaConfig {
    */
   etiquetaModo?: 'qualquer' | 'todas';
   /**
-   * Quando `true`, ordens já cumpridas não entram no relatório (processo
-   * sem ordens pendentes é descartado). A contagem de cumpridas ignoradas
-   * é reportada no diagnóstico.
+   * Status (rótulos canônicos) que o usuário quer IGNORAR no relatório.
+   * Ordem cujo status casar é descartada; processo que ficar sem ordem sai
+   * do relatório. Vazio/ausente = traz todas.
    */
-  ignorarCumpridas?: boolean;
+  statusIgnorar?: string[];
 }
 
 /** Estado da aba-painel de Ordens PREVJUD (lido de `chrome.storage.session`). */
@@ -1563,8 +1591,10 @@ export interface PrevjudDashboardPayload {
     processosNaTarefa: number;
     /** Candidatos após o filtro (= processos efetivamente coletados). */
     filtradosPorEtiqueta: number;
-    /** Ordens cumpridas excluídas do relatório (quando "Ignorar cumpridas"). */
-    ordensCumpridasIgnoradas?: number;
+    /** Ordens excluídas do relatório pelo filtro de status a ignorar. */
+    ordensIgnoradas?: number;
+    /** Status escolhidos para ignorar (para exibir no diagnóstico). */
+    statusIgnorados?: string[];
     /**
      * Rota efetiva da coleta: `api` (gateway PDPJ), `ssr` (fetch + POST A4J
      * replicado, sem aba), `aba` (aba invisível + A4J) ou `mista` (mais de

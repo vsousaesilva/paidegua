@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Ordens PREVJUD pAIdegua</title>
+  <title>Painel de Perícias pAIdegua</title>
   <link rel="stylesheet" href="painel.css" />
 </head>
 <body>
@@ -16,7 +16,7 @@
         </svg>
       </span>
       <div>
-        <h1>Ordens PREVJUD pAIdegua</h1>
+        <h1>Painel de Perícias pAIdegua</h1>
         <p class="header__subtitle">pAIdegua &mdash; Perfil Gestão</p>
       </div>
     </div>
@@ -25,7 +25,7 @@
 
   <main class="main">
     <section id="estado-carregando" class="card estado">
-      <p class="loading">Preparando coleta das ordens PREVJUD...</p>
+      <p class="loading">Preparando o Painel de Perícias...</p>
     </section>
 
     <section id="estado-erro" class="card estado" hidden>
@@ -42,12 +42,12 @@
         <button id="btn-reabrir" class="btn">Reabrir último relatório</button>
       </div>
 
-      <h2>Coletar ordens PREVJUD</h2>
+      <h2>Coletar perícias</h2>
       <p class="hint">
         Escolha as tarefas do painel a varrer e as etiquetas de filtro. O
-        pAIdegua abre cada processo que casar com as etiquetas, lê a tabela
-        <strong>Intimações INSS</strong> e monta o painel de acompanhamento.
-        Processos sem ordem são descartados.
+        pAIdegua abre cada processo que casar com as etiquetas, lê a
+        <strong>tabela de perícia</strong> do processo e monta o painel.
+        Processos sem perícia são descartados.
       </p>
 
       <h3>Tarefas do painel</h3>
@@ -66,13 +66,7 @@
       </p>
       <div class="toolbar toolbar--start">
         <label for="input-etiquetas-busca" class="sr-only">Buscar etiqueta</label>
-        <input
-          type="search"
-          id="input-etiquetas-busca"
-          class="input etiquetas-busca"
-          placeholder="Buscar etiqueta..."
-          autocomplete="off"
-        />
+        <input type="search" id="input-etiquetas-busca" class="input etiquetas-busca" placeholder="Buscar etiqueta..." autocomplete="off" />
         <button id="btn-etiquetas-limpar" class="btn">Limpar seleção</button>
         <button id="btn-etiquetas-recarregar" class="btn" title="Rebusca o catálogo de etiquetas no PJe">Recarregar catálogo</button>
         <span class="count" id="contador-etiquetas"></span>
@@ -89,45 +83,36 @@
           <label><input type="radio" name="etiqueta-modo" value="todas" /> Precisa ter <strong>todas</strong> as marcadas</label>
         </span>
       </div>
-      <p class="hint" style="font-size: 12px;">
-        Exemplo — marcando "LOAS Idoso" e "INSS intimado em 02/07/2026":
-        <em>uma das marcadas</em> traz processos que tenham qualquer uma delas;
-        <em>todas as marcadas</em> traz só os que têm as duas ao mesmo tempo.
-      </p>
 
       <h3>Situações a ignorar</h3>
       <p class="hint">
-        Marque os status de ordem que <strong>não</strong> devem entrar no
-        relatório (ex.: "Ordem cumprida"). Ordens com esses status são
-        descartadas; processo que ficar sem ordem sai do relatório. Deixe tudo
+        Marque as situações de perícia que <strong>não</strong> devem entrar no
+        relatório (ex.: perícias já pagas). Perícias com essas situações são
+        descartadas; processo que ficar sem perícia sai do relatório. Deixe tudo
         desmarcado para trazer todas.
       </p>
       <div class="toolbar toolbar--start">
-        <button id="btn-status-limpar" class="btn">Limpar seleção</button>
-        <span class="count" id="contador-status"></span>
+        <button id="btn-situacoes-limpar" class="btn">Limpar seleção</button>
+        <span class="count" id="contador-situacoes"></span>
       </div>
-      <ul id="lista-status" class="lista"></ul>
+      <ul id="lista-situacoes" class="lista"></ul>
 
       <div class="toolbar toolbar--end">
         <button id="btn-cancelar" class="btn">Cancelar</button>
-        <button id="btn-confirmar" class="btn primary" disabled>
-          Coletar ordens
-        </button>
+        <button id="btn-confirmar" class="btn primary" disabled>Coletar perícias</button>
       </div>
     </section>
 
     <section id="estado-progresso" class="card" hidden>
-      <h2>Coletando ordens PREVJUD...</h2>
+      <h2>Coletando perícias...</h2>
       <p class="hint" id="progresso-resumo">
-        Não feche esta aba enquanto a coleta estiver em andamento. Ela carrega
-        o painel automaticamente ao final.
+        Não feche esta aba enquanto a coleta estiver em andamento. Ela abre o
+        painel automaticamente ao final.
       </p>
-
       <div class="progress">
         <div class="progress__bar"><div class="progress__fill" id="bar-fill"></div></div>
         <div class="progress__label" id="bar-label">Preparando...</div>
       </div>
-
       <h3 class="log-title">Registro</h3>
       <ul class="log" id="log"></ul>
     </section>

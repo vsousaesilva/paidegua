@@ -14,6 +14,15 @@
  * `viewExpired`. O coletor faz GET → parse → POST → parse, tudo same-origin
  * a partir do content script (cookies do PJe são incluídos automaticamente).
  *
+ * IMPORTANTE — não voltar a escrever o corpo do POST à mão. A versão
+ * original montava os parâmetros com caminhos JSF completos e IDs
+ * `j_idNNN` fixos; a atualização de versão do PJe renumerou esses IDs e a
+ * busca passou a devolver a página sem tabela, o que a UI exibia como
+ * "Nenhum processo encontrado" — falha silenciosa. Hoje o corpo sai da
+ * serialização do form real (`serializarForm`) e os campos são resolvidos
+ * por sufixo estável (`nomePorSufixo`), com `AJAXREQUEST=_viewRoot` e
+ * `X-Requested-With` — mesmo padrão de `prevjud-ssr.ts`.
+ *
  * Sem cache: cada chamada é independente. Magistrado pode pedir várias
  * datas seguidas, e a UI não deve servir lista velha (pauta muda durante
  * o dia conforme cancelamentos/redesignações).
@@ -173,43 +182,61 @@ export async function coletarPautaPorPeriodo(
     return { ok: false, error: 'Sessão do PJe expirada. Faça login novamente.' };
   }
 
-  const viewState = extrairViewState(initialHtml);
+  const docInicial = new DOMParser().parseFromString(initialHtml, 'text/html');
+  const form = localizarFormBusca(docInicial);
+  if (!form) {
+    return {
+      ok: false,
+      error:
+        'Form de pesquisa da pauta não encontrado no HTML inicial — layout do PJe pode ter mudado.'
+    };
+  }
+  const viewState =
+    form.querySelector<HTMLInputElement>('input[name="javax.faces.ViewState"]')
+      ?.value ||
+    docInicial.querySelector<HTMLInputElement>(
+      'input[name="javax.faces.ViewState"]'
+    )?.value ||
+    '';
   if (!viewState) {
     return {
       ok: false,
       error: 'ViewState não encontrado no HTML inicial — layout do PJe pode ter mudado.'
     };
   }
-  const defaultsForm = extrairDefaultsForm(initialHtml);
-  const jurisdicao = input.jurisdicaoId ?? defaultsForm.jurisdicaoId;
-  const orgao = input.orgaoJulgadorId ?? defaultsForm.orgaoJulgadorId;
-  if (!jurisdicao || !orgao) {
-    return {
-      ok: false,
-      error: 'Jurisdição/Órgão julgador não pré-preenchidos pela sessão.'
-    };
-  }
 
   // 2. POST com os filtros do magistrado.
-  const body = montarBodySearch({
+  const montagem = montarBodySearch({
+    form,
     viewState,
-    jurisdicaoId: jurisdicao,
-    orgaoJulgadorId: orgao,
+    jurisdicaoId: input.jurisdicaoId,
+    orgaoJulgadorId: input.orgaoJulgadorId,
     dataDe: input.dataDe,
     dataAte: input.dataAte,
     situacoes: input.situacoes
   });
+  if (!montagem.ok) {
+    return { ok: false, error: montagem.error };
+  }
+
+  const action = form.getAttribute('action');
+  const postUrl = action ? new URL(action, url).toString() : url;
 
   let respHtml: string;
   try {
-    const resp = await fetch(url, {
+    const resp = await fetch(postUrl, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        Accept: '*/*'
+        Accept: '*/*',
+        // Sem este header o filtro AJAX4JSF (RichFaces 3.3.3) não trata a
+        // requisição como Ajax e não dispara o action do botão Pesquisar —
+        // devolve a página do form em branco, sem a tabela de resultados.
+        // Mesma lição já aplicada em prevjud-ssr.ts e pauta-pericia-ssr.ts.
+        'X-Requested-With': 'XMLHttpRequest'
       },
-      body
+      body: montagem.body
     });
     if (!resp.ok) {
       return { ok: false, error: `HTTP ${resp.status} no POST da pesquisa.` };
@@ -228,6 +255,26 @@ export async function coletarPautaPorPeriodo(
   }
 
   const parsed = parsearTabelaPauta(respHtml, input.legacyOrigin);
+
+  // Tabela ausente ≠ pauta vazia. Quando o PJe devolve a resposta sem a
+  // tabela de resultados, o action não disparou (contrato quebrado por
+  // mudança de versão) — reportar como erro, e não como "nenhum processo
+  // encontrado", que foi exatamente o sintoma que mascarou a quebra da v11.
+  if (parsed.tabelaAusente) {
+    const pistas = [
+      `len=${respHtml.length}`,
+      respHtml.includes('javax.faces.ViewState') ? 'temViewState' : 'semViewState',
+      /searchButton/i.test(respHtml) ? 'temBotaoPesquisar' : 'semBotaoPesquisar',
+      /login|autentica|sess[aã]o expir/i.test(respHtml) ? 'PARECE-LOGIN' : ''
+    ]
+      .filter(Boolean)
+      .join(' ');
+    console.warn(`${LOG} resposta do POST sem tabela de resultados (${pistas}).`);
+    return {
+      ok: false,
+      error: `O PJe respondeu sem a tabela de resultados (${pistas}). O layout da Pauta de audiência pode ter mudado.`
+    };
+  }
 
   // Enriquecimento: resolver `idTaskInstance` por processo varrendo em
   // paralelo todas as tarefas que contenham "Audiência" no nome. Se a
@@ -317,44 +364,59 @@ async function resolverIdTaskInstancePorProcesso(
   return mapa;
 }
 
-function extrairViewState(html: string): string | null {
-  const m = html.match(
-    /<input[^>]+name="javax\.faces\.ViewState"[^>]+value="([^"]+)"/i
+/**
+ * Localiza o form de pesquisa da pauta. O `id` canônico é
+ * `processoAudienciaSearchForm`, mas versões do PJe já mudaram prefixos de
+ * naming container — por isso há dois fallbacks: `id` parcial e, por último,
+ * qualquer form que contenha o campo de data inicial da pauta.
+ */
+function localizarFormBusca(doc: Document): HTMLFormElement | null {
+  const exato = doc.querySelector<HTMLFormElement>(
+    'form[id="processoAudienciaSearchForm"]'
   );
-  return m ? m[1] : null;
-}
-
-interface DefaultsForm {
-  jurisdicaoId: number | null;
-  orgaoJulgadorId: number | null;
-}
-
-function extrairDefaultsForm(html: string): DefaultsForm {
-  return {
-    jurisdicaoId: extrairOptionSelected(
-      html,
-      'processoAudienciaSearchForm:jurisdicaoDecoration:jurisdicao'
-    ),
-    orgaoJulgadorId: extrairOptionSelected(
-      html,
-      'processoAudienciaSearchForm:orgaoJulgadorDecoration:orgaoJulgador'
-    )
-  };
-}
-
-function extrairOptionSelected(html: string, selectId: string): number | null {
-  const idEsc = selectId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const reSelect = new RegExp(
-    `<select[^>]+id="${idEsc}"[^>]*>([\\s\\S]*?)<\\/select>`,
-    'i'
+  if (exato) return exato;
+  const parcial = doc.querySelector<HTMLFormElement>(
+    'form[id*="processoAudienciaSearchForm"]'
   );
-  const block = html.match(reSelect);
-  if (!block) return null;
-  const reOption = /<option[^>]+value="(\d+)"[^>]*selected="selected"/i;
-  const opt = block[1].match(reOption);
-  if (!opt) return null;
-  const n = Number.parseInt(opt[1], 10);
-  return Number.isFinite(n) ? n : null;
+  if (parcial) return parcial;
+  const campoData = doc.querySelector('[name$=":dtInicioFromFormInputDate"]');
+  return campoData?.closest('form') ?? null;
+}
+
+/**
+ * Resolve o `name` completo de um campo pelo sufixo estável. Os IDs JSF são
+ * caminhos de naming container (`form:decoration:campo`) cujos segmentos
+ * `j_idNNN` são renumerados a cada versão do PJe — só o sufixo final é
+ * contrato. Nunca escreva o caminho completo à mão aqui.
+ */
+function nomePorSufixo(form: Element, sufixo: string): string | null {
+  const el = form.querySelector<HTMLElement>(`[name$="${sufixo}"]`);
+  return el?.getAttribute('name') ?? null;
+}
+
+/**
+ * Serializa os campos do form como o `A4J.AJAX.Submit` faria: todos os
+ * inputs/selects/textareas com `name`, pulando checkboxes/radios
+ * desmarcados e botões. Preserva automaticamente os hidden voláteis
+ * (`j_id*`) e os defaults de jurisdição/órgão julgador já selecionados
+ * pela sessão do magistrado — que antes eram raspados por regex.
+ */
+function serializarForm(form: Element): URLSearchParams {
+  const params = new URLSearchParams();
+  const campos = form.querySelectorAll<
+    HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+  >('input[name], select[name], textarea[name]');
+  for (const el of Array.from(campos)) {
+    if (el instanceof HTMLInputElement) {
+      const tipo = el.type.toLowerCase();
+      if ((tipo === 'checkbox' || tipo === 'radio') && !el.checked) continue;
+      if (['submit', 'button', 'image', 'reset', 'file'].includes(tipo)) {
+        continue;
+      }
+    }
+    params.append(el.name, el.value ?? '');
+  }
+  return params;
 }
 
 function detectarSessaoExpirada(html: string): boolean {
@@ -366,126 +428,144 @@ function detectarSessaoExpirada(html: string): boolean {
 }
 
 interface BodySearchInput {
+  form: HTMLFormElement;
   viewState: string;
-  jurisdicaoId: number;
-  orgaoJulgadorId: number;
+  jurisdicaoId?: number;
+  orgaoJulgadorId?: number;
   dataDe: string;
   dataAte: string;
   situacoes: AudienciaSituacaoCodigo[];
 }
 
-function montarBodySearch(i: BodySearchInput): string {
-  const params = new URLSearchParams();
-  params.append(
-    'AJAXREQUEST',
-    'processoAudienciaSearchForm:j_id146'
-  );
-  params.append(
-    'processoAudienciaSearchForm:jurisdicaoDecoration:jurisdicao',
-    String(i.jurisdicaoId)
-  );
-  params.append(
-    'processoAudienciaSearchForm:orgaoJulgadorDecoration:orgaoJulgador',
-    String(i.orgaoJulgadorId)
-  );
-  params.append('processoAudienciaSearchForm:magistradoDecoration:magistrado', '');
-  params.append('processoAudienciaSearchForm:conciliadorDecoration:conciliador', '');
-  for (const s of i.situacoes) {
-    params.append('processoAudienciaSearchForm:listaSituacoes', s);
+type BodySearchResult =
+  | { ok: true; body: string }
+  | { ok: false; error: string };
+
+/**
+ * Monta o POST partindo da serialização do form real, e não de um corpo
+ * escrito à mão. Motivo: o corpo hardcoded quebrava a cada versão do PJe
+ * (os `j_idNNN` são renumerados) e ainda mandava
+ * `_link_hidden_=…:clearButton` — ou seja, dizia ao Seam que o último link
+ * acionado tinha sido *Limpar*, não *Pesquisar*.
+ *
+ * Só sobrescrevemos os campos que o magistrado escolheu; todo o resto
+ * (jurisdição/órgão pré-selecionados pela sessão, combos "sem seleção",
+ * campos de CNJ vazios, hidden voláteis) vem do próprio HTML.
+ */
+function montarBodySearch(i: BodySearchInput): BodySearchResult {
+  const { form } = i;
+  const params = serializarForm(form);
+
+  const nomeDataDe = nomePorSufixo(form, ':dtInicioFromFormInputDate');
+  const nomeDataAte = nomePorSufixo(form, ':dtInicioToFormInputDate');
+  const nomeSituacoes = nomePorSufixo(form, ':listaSituacoes');
+  if (!nomeDataDe || !nomeDataAte || !nomeSituacoes) {
+    const faltando = [
+      !nomeDataDe && 'data inicial',
+      !nomeDataAte && 'data final',
+      !nomeSituacoes && 'situações'
+    ]
+      .filter(Boolean)
+      .join(', ');
+    return {
+      ok: false,
+      error: `Campos do form da pauta não localizados (${faltando}) — layout do PJe mudou.`
+    };
   }
-  const mesAno = i.dataDe.slice(3); // MM/YYYY
-  params.append(
-    'processoAudienciaSearchForm:dtInicioDecoration:dtInicioFromFormInputDate',
-    i.dataDe
+
+  params.set(nomeDataDe, i.dataDe);
+  params.set(nomeDataAte, i.dataAte);
+  // Campos-espelho do rich:calendar (MM/YYYY do mês exibido).
+  const nomeDataDeAtual = nomePorSufixo(form, ':dtInicioFromFormInputCurrentDate');
+  const nomeDataAteAtual = nomePorSufixo(form, ':dtInicioToFormInputCurrentDate');
+  if (nomeDataDeAtual) params.set(nomeDataDeAtual, i.dataDe.slice(3));
+  if (nomeDataAteAtual) params.set(nomeDataAteAtual, i.dataAte.slice(3));
+
+  // Situações: a serialização trouxe as marcadas por default no HTML.
+  // Zera e reaplica exatamente as escolhidas pelo magistrado.
+  params.delete(nomeSituacoes);
+  for (const s of i.situacoes) {
+    params.append(nomeSituacoes, s);
+  }
+
+  // Overrides opcionais — quando ausentes, valem os defaults da sessão que
+  // já vieram serializados do form.
+  if (i.jurisdicaoId != null) {
+    const nome = nomePorSufixo(form, ':jurisdicao');
+    if (nome) params.set(nome, String(i.jurisdicaoId));
+  }
+  if (i.orgaoJulgadorId != null) {
+    const nome = nomePorSufixo(form, ':orgaoJulgador');
+    if (nome) params.set(nome, String(i.orgaoJulgadorId));
+  }
+
+  // Aciona o botão Pesquisar. `AJAXREQUEST=_viewRoot` é o marcador que faz
+  // o filtro AJAX4JSF processar o ciclo Ajax e disparar o action.
+  const idBotao = localizarSearchButton(form);
+  if (!idBotao) {
+    return {
+      ok: false,
+      error: 'Botão "Pesquisar" da pauta não localizado no form — layout do PJe mudou.'
+    };
+  }
+  params.set('AJAXREQUEST', '_viewRoot');
+  // Marcador JSF de "este form foi submetido". Só faz sentido com id.
+  if (form.id) params.set(form.id, form.id);
+  params.set(idBotao, idBotao);
+  params.set('autoScroll', '');
+  params.set('javax.faces.ViewState', i.viewState);
+  params.set('AJAX:EVENTS_COUNT', '1');
+  return { ok: true, body: params.toString() };
+}
+
+/**
+ * Descobre o `name`/`id` do botão Pesquisar. Sufixo `:searchButton` é o
+ * contrato estável; o fallback varre submits pelo rótulo para o caso de
+ * uma renomeação futura.
+ */
+function localizarSearchButton(form: Element): string | null {
+  const porSufixo = nomePorSufixo(form, ':searchButton');
+  if (porSufixo) return porSufixo;
+  const submits = Array.from(
+    form.querySelectorAll<HTMLInputElement>(
+      'input[type="submit"][name], input[type="button"][name]'
+    )
   );
-  params.append(
-    'processoAudienciaSearchForm:dtInicioDecoration:dtInicioFromFormInputCurrentDate',
-    mesAno
-  );
-  params.append(
-    'processoAudienciaSearchForm:dtInicioDecoration:dtInicioToFormInputDate',
-    i.dataAte
-  );
-  params.append(
-    'processoAudienciaSearchForm:dtInicioDecoration:dtInicioToFormInputCurrentDate',
-    i.dataAte.slice(3)
-  );
-  params.append(
-    'processoAudienciaSearchForm:tipoAudienciaDecoration:tipoAudiencia',
-    'org.jboss.seam.ui.NoSelectionConverter.noSelectionValue'
-  );
-  params.append(
-    'processoAudienciaSearchForm:salaAudienciaDecoration:salaAudiencia',
-    'org.jboss.seam.ui.NoSelectionConverter.noSelectionValue'
-  );
-  params.append('processoAudienciaSearchForm:parteDecoration:parte', '');
-  params.append('processoAudienciaSearchForm:nomeAdvogadoDecoration:nomeAdvogado', '');
-  params.append(
-    'processoAudienciaSearchForm:processoAudienciaSearchFormclasseJudicialTreeDecoration:processoAudienciaSearchFormclasseJudicialPanel',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:processoAudienciaSearchFormclasseJudicialTreeDecoration:processoAudienciaSearchFormclasseJudicialTree:input',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:processoAudienciaSearchFormassuntoTrfTreeDecoration:processoAudienciaSearchFormassuntoTrfPanel',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:processoAudienciaSearchFormassuntoTrfTreeDecoration:processoAudienciaSearchFormassuntoTrfTree:input',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:idProcessoAudienciaDecoration:idProcessoAudienciaNumeroSequencial',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:idProcessoAudienciaDecoration:idProcessoAudienciaNumeroDigitoVerificador',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:idProcessoAudienciaDecoration:idProcessoAudienciaAno',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm:idProcessoAudienciaDecoration:labelJusticaFederal',
-    '4'
-  );
-  params.append(
-    'processoAudienciaSearchForm:idProcessoAudienciaDecoration:labelTribunalRespectivo',
-    '05'
-  );
-  params.append(
-    'processoAudienciaSearchForm:idProcessoAudienciaDecoration:idProcessoAudienciaNumeroOrgaoJustica',
-    ''
-  );
-  params.append(
-    'processoAudienciaSearchForm_link_hidden_',
-    'processoAudienciaSearchForm:clearButton'
-  );
-  params.append('processoAudienciaSearchForm', 'processoAudienciaSearchForm');
-  params.append('autoScroll', '');
-  params.append('javax.faces.ViewState', i.viewState);
-  params.append(
-    'processoAudienciaSearchForm:searchButton',
-    'processoAudienciaSearchForm:searchButton'
-  );
-  params.append('processoAudienciaSearchForm:j_id329', '1');
-  params.append('AJAX:EVENTS_COUNT', '1');
-  return params.toString();
+  const alvo = submits.find((el) => /pesquis|buscar/i.test(el.value ?? ''));
+  return alvo?.getAttribute('name') ?? null;
 }
 
 interface ParseResult {
   itens: AudienciaPautaItem[];
   totalInformado: number | null;
+  /**
+   * `true` quando a tabela de resultados sequer apareceu na resposta —
+   * distinto de "apareceu vazia". Sem essa distinção, uma quebra de
+   * contrato com o PJe se disfarça de "nenhum processo no período".
+   */
+  tabelaAusente?: boolean;
+}
+
+/**
+ * Localiza a tabela de resultados. `idProcessoAudiencia` pode vir prefixado
+ * por naming container em versões novas do PJe, então casamos por sufixo do
+ * `id`; o último fallback é a tabela que contém os links de detalhe.
+ */
+function localizarTabelaPauta(doc: Document): Element | null {
+  return (
+    doc.querySelector('table#idProcessoAudiencia') ??
+    doc.querySelector('table[id$=":idProcessoAudiencia"]') ??
+    doc.querySelector('table[id*="idProcessoAudiencia"]') ??
+    doc.querySelector('a[href*="listProcessoCompleto"]')?.closest('table') ??
+    null
+  );
 }
 
 function parsearTabelaPauta(html: string, legacyOrigin: string): ParseResult {
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const tabela = doc.querySelector('table#idProcessoAudiencia');
+  const tabela = localizarTabelaPauta(doc);
   if (!tabela) {
-    return { itens: [], totalInformado: 0 };
+    return { itens: [], totalInformado: 0, tabelaAusente: true };
   }
   const linhas = Array.from(tabela.querySelectorAll('tbody > tr.rich-table-row'));
   const itens: AudienciaPautaItem[] = [];

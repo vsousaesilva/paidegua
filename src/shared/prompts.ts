@@ -10,6 +10,7 @@ import type {
   ProcessoDocumento
 } from './types';
 import { CONTEXT_LIMITS, TRIAGEM_CRITERIOS } from './constants';
+import { SEDE_JUIZO_PLACEHOLDER, type SedeJuizo } from './sede-juizo';
 
 /** System prompt institucional para o assistente da JFCE. */
 export const SYSTEM_PROMPT = `Você é o pAIdegua, um assistente de análise processual para servidores da Justiça Federal no Ceará (JFCE). Atue com rigor técnico, formalidade e precisão jurídica.
@@ -322,13 +323,55 @@ export function getTemplateActionsForGrau(
   return TEMPLATE_ACTIONS_1G;
 }
 
+/**
+ * Monta a regra 5 (fecho da peça) a partir da sede do juízo já
+ * resolvida pelo caller. A sede é DADO, não inferência: quando
+ * conhecida, o modelo recebe a linha pronta e é proibido de trocá-la.
+ *
+ * Histórico: até a v1.9.0 esta regra mandava o modelo "identificar a
+ * cidade a partir dos documentos" e trazia "Maracanaú/CE" como primeiro
+ * exemplo — o que fazia minutas de outras unidades fecharem em
+ * Maracanaú quando a cidade não estava clara nos autos. Nenhum exemplo
+ * de município real deve voltar a este prompt.
+ */
+function buildRegraFechoSede(sede: SedeJuizo | null): string {
+  if (sede && sede.uf) {
+    return (
+      `5. Encerre o texto com EXATAMENTE esta linha, sem alterar nada: ` +
+      `"${sede.municipio}/${sede.uf}, datado eletronicamente." ` +
+      `Esta é a sede do juízo do processo, já verificada — NÃO a substitua ` +
+      `por nenhuma cidade mencionada nos documentos dos autos. ` +
+      `Não use assinatura, nome ou cargo (preenchidos pelo PJe).`
+    );
+  }
+  if (sede) {
+    return (
+      `5. Encerre o texto com a linha "${sede.municipio}/UF, datado eletronicamente.", ` +
+      `substituindo UF pela sigla do estado a que pertence o município de ` +
+      `${sede.municipio}. O município é a sede do juízo do processo, já ` +
+      `verificada — NÃO o substitua por nenhuma cidade mencionada nos ` +
+      `documentos dos autos. Não use assinatura, nome ou cargo (preenchidos pelo PJe).`
+    );
+  }
+  return (
+    `5. Encerre o texto com a linha "${SEDE_JUIZO_PLACEHOLDER}, datado eletronicamente." ` +
+    `A sede do juízo não pôde ser determinada automaticamente: mantenha o ` +
+    `marcador "${SEDE_JUIZO_PLACEHOLDER}" LITERALMENTE, entre colchetes, para ` +
+    `que o usuário o preencha na revisão. NÃO tente adivinhar a cidade a ` +
+    `partir dos documentos dos autos e NÃO invente um município. ` +
+    `Não use assinatura, nome ou cargo (preenchidos pelo PJe).`
+  );
+}
+
 /** Regras de formato comuns a todas as minutas geradas. */
-const MINUTA_FORMAT_RULES = `REGRAS DE FORMATO (obrigatórias):
+function buildMinutaFormatRules(sede: SedeJuizo | null): string {
+  return `REGRAS DE FORMATO (obrigatórias):
 1. Texto em prosa corrida, parágrafos separados por linha em branco.
 2. Sem nenhum marcador de markdown: nada de asteriscos, sustenidos, listas com hífen ou número, nem crases.
 3. Citações textuais de lei ou doutrina devem aparecer em parágrafo próprio iniciado pelo sinal de maior seguido de espaço (> ), que indica recuo de citação.
 4. NÃO inclua cabeçalho, número do processo, identificação das partes nem o título do ato — esses elementos já são preenchidos automaticamente pelo editor do PJe. Comece diretamente pelo corpo da peça.
-5. Encerre o texto com a linha "[Cidade]/[UF], datado eletronicamente." — identifique a cidade e o estado da vara/seção judiciária a partir dos documentos do processo (ex.: "Maracanaú/CE", "Recife/PE", "São Paulo/SP"). Não use assinatura, nome ou cargo (preenchidos pelo PJe).`;
+${buildRegraFechoSede(sede)}`;
+}
 
 /**
  * Instruções específicas por natureza de peça, para geração SEM modelo.
@@ -429,7 +472,8 @@ Agora, com base nos documentos do processo em análise (já carregados no contex
 export function buildMinutaPrompt(
   action: TemplateAction,
   template: { relativePath: string; text: string } | null,
-  refinement?: string
+  refinement?: string,
+  sede?: SedeJuizo | null
 ): string {
   const intro = `Elabore uma ${action.description.toLowerCase().replace(/\.$/, '')} para o processo carregado nos autos.`;
 
@@ -441,7 +485,7 @@ export function buildMinutaPrompt(
     ? `\n\nINSTRUÇÕES ADICIONAIS DO USUÁRIO (devem ser observadas na fundamentação e no resultado):\n${refinement}`
     : '';
 
-  return `${intro}\n\n${body}${refinementBlock}\n\n${MINUTA_FORMAT_RULES}`;
+  return `${intro}\n\n${body}${refinementBlock}\n\n${buildMinutaFormatRules(sede ?? null)}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1076,7 +1120,8 @@ export const EMENDA_INICIAL_GABARITO =
  * `AnaliseCriterio` cujo `atendido === false`.
  */
 export function buildEmendaInicialPrompt(
-  providencias: readonly string[]
+  providencias: readonly string[],
+  sede?: SedeJuizo | null
 ): string {
   const providenciasFmt = providencias.length
     ? providencias.map((p) => `- ${p}`).join('\n')
@@ -1086,13 +1131,13 @@ export function buildEmendaInicialPrompt(
     `Elabore o ato de emenda à inicial reproduzindo INTEGRALMENTE o gabarito abaixo, substituindo APENAS o marcador "[PREENCHER COM A PROVIDÊNCIA A SER SOLICITADA PARA CORRIGIR OS CRITÉRIOS QUE NÃO FORAM ATENDIDOS EM TÓPICOS]" pelas providências listadas mais adiante.\n\n` +
     `IMPORTANTE:\n` +
     `- Mantenha o restante do gabarito EXATAMENTE como está (mesma redação, mesma ordem dos parágrafos, mesma fórmula final).\n` +
-    `- Substitua "[município sede do juízo]" pelo município da vara/seção judiciária responsável pelo processo, identificado a partir dos documentos dos autos (ex.: "Maracanaú/CE", "Fortaleza/CE"). NÃO mantenha o marcador entre colchetes na peça final.\n` +
+    `- Substitua "[município sede do juízo]" conforme a regra 5 das REGRAS DE FORMATO abaixo, que já traz a sede do juízo verificada. NÃO mantenha o marcador "[município sede do juízo]" na peça final e NÃO deduza a cidade a partir dos documentos dos autos.\n` +
     `- O bloco de providências deve ser apresentado em forma de tópicos numerados (1., 2., 3., ...), um tópico por providência, redigidos no IMPERATIVO formal e iniciados por verbo (ex.: "Apresentar...", "Juntar...", "Esclarecer..."). Cada tópico em um parágrafo separado, terminando em ponto-final.\n` +
     `- NÃO acrescente cabeçalho, número do processo, identificação das partes nem assinatura — esses elementos são preenchidos automaticamente pelo editor do PJe.\n\n` +
     `EXCEÇÃO DE FORMATO: as regras de formato gerais aplicáveis às demais minutas PROÍBEM marcadores de lista; aqui, os tópicos numerados (1., 2., ...) do bloco de providências são OBRIGATÓRIOS e a única exceção permitida. O restante do texto (cabeçalho, parágrafos do meio e fecho) segue as regras normais de prosa corrida sem marcadores.\n\n` +
     `=== GABARITO ===\n${EMENDA_INICIAL_GABARITO}\n=== FIM DO GABARITO ===\n\n` +
     `=== PROVIDÊNCIAS A INCLUIR (uma por tópico, na ordem dada) ===\n${providenciasFmt}\n=== FIM DAS PROVIDÊNCIAS ===\n\n` +
-    `${MINUTA_FORMAT_RULES}`
+    `${buildMinutaFormatRules(sede ?? null)}`
   );
 }
 

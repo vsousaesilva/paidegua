@@ -105,8 +105,9 @@ export const PROVIDER_MODELS: Record<ProviderId, readonly ModelInfo[]> = {
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (rápido)' }
   ],
   openai: [
-    { id: 'gpt-4o', label: 'GPT-4o (capaz)', recommended: true },
-    { id: 'gpt-4o-mini', label: 'GPT-4o mini (rápido)' }
+    { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol (mais capaz)' },
+    { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra (equilibrado)', recommended: true },
+    { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna (rápido/econômico)' }
   ],
   gemini: [
     { id: 'gemini-3.5-flash',             label: 'Gemini 3.5 Flash (GA)',             recommended: true },
@@ -193,6 +194,12 @@ export const MESSAGE_CHANNELS = {
    * Modelos na página de Diagnóstico (visível apenas para ADMIN_EMAILS).
    */
   TEST_MODEL_GENERATE: 'paidegua/test-model-generate',
+  /**
+   * Lista os órgãos julgadores de uma unidade na Júlia, para o seletor do
+   * "Fale com a Júlia". Vai pelo background porque a API da Júlia é de outra
+   * origem — o content script esbarraria em CORS.
+   */
+  JULIA_ORGAOS_JULGADORES: 'paidegua/julia/orgaos-julgadores',
   TRANSCRIBE_AUDIO: 'paidegua/transcribe-audio',
   SYNTHESIZE_SPEECH: 'paidegua/synthesize-speech',
   /** Content → background: pede para inserir conteúdo no editor do PJe. */
@@ -789,12 +796,43 @@ export const MESSAGE_CHANNELS = {
    * de etiquetas das Perícias (escrita no iframe frontend-prd). Resposta
    * `PrevjudAplicarEtiquetasResult`.
    */
-  PREVJUD_APLICAR_ETIQUETAS: 'paidegua/prevjud/aplicar-etiquetas'
+  PREVJUD_APLICAR_ETIQUETAS: 'paidegua/prevjud/aplicar-etiquetas',
+
+  // ------------------------------------------------------------------
+  // Painel de Perícias (Pauta) — perfil Gestão. Mesmo padrão do PREVJUD:
+  // o content abre a aba-painel (`OPEN_PAINEL`); a aba dispara `START_COLETA`
+  // e o background repassa `RUN_COLETA` à aba do PJe; o content reporta
+  // progresso (`COLETA_PROG`) e o resultado final (`COLETA_DONE`/`FAIL`); o
+  // background grava o payload e manda a aba navegar ao dashboard (`READY`).
+  // Ao fechar o dashboard, `CLEAR_PAYLOAD` apaga o payload da sessão.
+  // ------------------------------------------------------------------
+  PAUTA_PERICIA_OPEN_PAINEL: 'paidegua/pauta-pericia/open-painel',
+  PAUTA_PERICIA_START_COLETA: 'paidegua/pauta-pericia/start-coleta',
+  PAUTA_PERICIA_RUN_COLETA: 'paidegua/pauta-pericia/run-coleta',
+  PAUTA_PERICIA_COLETA_PROG: 'paidegua/pauta-pericia/coleta-prog',
+  /**
+   * Coletor → background: esqueleto pronto (universo filtrado). O background
+   * grava o payload `running` e manda a aba-painel navegar ao dashboard, que
+   * vai populando via `storage.onChanged` (streaming, como no PREVJUD).
+   */
+  PAUTA_PERICIA_SKELETON_READY: 'paidegua/pauta-pericia/skeleton-ready',
+  /** Coletor → background: lote parcial de processos com perícia + progresso. */
+  PAUTA_PERICIA_SLOT_PATCH: 'paidegua/pauta-pericia/slot-patch',
+  PAUTA_PERICIA_COLETA_DONE: 'paidegua/pauta-pericia/coleta-done',
+  PAUTA_PERICIA_COLETA_READY: 'paidegua/pauta-pericia/coleta-ready',
+  PAUTA_PERICIA_COLETA_FAIL: 'paidegua/pauta-pericia/coleta-fail',
+  PAUTA_PERICIA_CLEAR_PAYLOAD: 'paidegua/pauta-pericia/clear-payload'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */
 export const PORT_NAMES = {
-  CHAT_STREAM: 'paidegua/chat-stream'
+  CHAT_STREAM: 'paidegua/chat-stream',
+  /**
+   * "Fale com Júlia" — porta própria, e não o chat comum, porque o fluxo tem
+   * etapas visíveis ao usuário (extrair filtros → buscar → ler documentos →
+   * sintetizar) e emite eventos que não são texto.
+   */
+  JULIA_STREAM: 'paidegua/julia-stream'
 } as const;
 
 /** Mensagens trocadas via porta de chat. */
@@ -804,6 +842,32 @@ export const CHAT_PORT_MSG = {
   DONE: 'done',
   ERROR: 'error',
   ABORT: 'abort'
+} as const;
+
+/**
+ * Mensagens da porta do "Fale com Júlia".
+ *
+ * `EVIDENCIA` carrega os números reais da recuperação (universo, lidos, fontes)
+ * **antes** do texto começar a chegar. A interface exibe a base contada a partir
+ * desse dado, não do que o modelo escrever: a honestidade da amostra não deve
+ * depender de o LLM obedecer a uma instrução de prompt.
+ */
+export const JULIA_PORT_MSG = {
+  START: 'start',
+  PROGRESSO: 'progresso',
+  EVIDENCIA: 'evidencia',
+  CHUNK: 'chunk',
+  DONE: 'done',
+  ERROR: 'error',
+  ABORT: 'abort'
+} as const;
+
+/** Etapas do fluxo, para feedback na interface. */
+export const JULIA_ETAPA = {
+  EXTRAINDO: 'extraindo',
+  BUSCANDO: 'buscando',
+  LENDO: 'lendo',
+  SINTETIZANDO: 'sintetizando'
 } as const;
 
 /** Chaves usadas em chrome.storage. Conteúdo de processos NUNCA é persistido. */
@@ -1128,7 +1192,39 @@ export const STORAGE_KEYS = {
    * relatório" sem refazer a coleta (que abre uma aba por processo).
    * Sobrescrito a cada nova coleta — guarda apenas um relatório.
    */
-  PREVJUD_ULTIMO_RELATORIO: 'paidegua.prevjud.ultimoRelatorio'
+  PREVJUD_ULTIMO_RELATORIO: 'paidegua.prevjud.ultimoRelatorio',
+  /**
+   * Cache em `chrome.storage.local` de `idProcesso -> órgão julgador` para o
+   * Painel de Perícias. O relatório PautaPericia é amplo por jurisdição e não
+   * expõe a vara na grade; resolvemos por `processos/{id}` e cacheamos aqui,
+   * pois perícias recorrem e o órgão de um processo é estável. Conteúdo:
+   * `{ [idProcesso]: { orgao: string, ts: number } }`.
+   */
+  PAUTA_PERICIA_ORGAO_CACHE: 'paidegua.pautaPericia.orgaoCache',
+  /**
+   * `chrome.storage.session` — estado da aba-painel do Painel de Perícias
+   * (unidade ativa, opções de jurisdição, origem). Prefixado pelo requestId;
+   * removido quando o dashboard fica pronto. Ver `PautaPericiaPainelState`.
+   */
+  PAUTA_PERICIA_PAINEL_STATE_PREFIX: 'paidegua.pautaPericia.painelState.',
+  /**
+   * `chrome.storage.session` — payload do dashboard do Painel de Perícias,
+   * prefixado pelo requestId. Ver `PautaPericiaDashboardPayload`. Apagado por
+   * `PAUTA_PERICIA_CLEAR_PAYLOAD` ao fechar o dashboard.
+   */
+  PAUTA_PERICIA_DASHBOARD_PAYLOAD_PREFIX: 'paidegua.pautaPericia.dashboardPayload.',
+  /**
+   * `chrome.storage.local` — última seleção de filtros do painel (tarefas,
+   * etiquetas, modo, situações a ignorar). Pré-preenche os controles ao
+   * reabrir. Sem PII.
+   */
+  PAUTA_PERICIA_SELECAO: 'paidegua.pautaPericia.selecao',
+  /**
+   * `chrome.storage.local` — ÚLTIMO relatório de perícias gerado (payload
+   * completo). Permite "Reabrir último relatório" sem refazer a coleta.
+   * Sobrescrito a cada coleta concluída.
+   */
+  PAUTA_PERICIA_ULTIMO_RELATORIO: 'paidegua.pautaPericia.ultimoRelatorio'
 } as const;
 
 /** Limites de contexto (em caracteres aproximados, conservador). */

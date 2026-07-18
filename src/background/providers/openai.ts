@@ -21,18 +21,63 @@ interface OpenAiChatChunk {
 }
 
 // O default global DEFAULT_MAX_TOKENS (32k) serve para modelos com janela de
-// saida grande (Claude Sonnet/Haiku 4.x, Gemini 2.5/3.x). GPT-4o e GPT-4o-mini
-// aceitam no maximo 16.384 tokens de completion — enviar mais retorna HTTP 400
-// invalid_value. O map cap por modelo evita o erro sem baixar o default global.
+// saida grande (Claude Sonnet/Haiku 4.x, Gemini 2.5/3.x). Os GPT-5.6 (sol/
+// terra/luna) aceitam ate 128k tokens de saida; modelos GPT-4o legados
+// aceitavam no maximo 16.384 — enviar mais retornava HTTP 400 invalid_value.
+// O map cap por modelo evita o erro sem baixar o default global.
 const OPENAI_MAX_COMPLETION_TOKENS: Record<string, number> = {
+  'gpt-5.6-sol': 128_000,
+  'gpt-5.6-terra': 128_000,
+  'gpt-5.6-luna': 128_000,
   'gpt-4o': 16_384,
   'gpt-4o-mini': 16_384
 };
-const OPENAI_FALLBACK_MAX_COMPLETION = 16_384;
+// Fallback para IDs desconhecidos: 128k cobre a familia GPT-5 atual. Modelos
+// GPT-4o legados ficam limitados pelo map acima.
+const OPENAI_FALLBACK_MAX_COMPLETION = 128_000;
 
 function resolveOpenAiMaxTokens(model: string, requested: number): number {
   const cap = OPENAI_MAX_COMPLETION_TOKENS[model] ?? OPENAI_FALLBACK_MAX_COMPLETION;
   return Math.min(Math.max(1, requested), cap);
+}
+
+// A partir da serie GPT-5, `max_tokens` esta deprecado e e incompativel com
+// os modelos de raciocinio — deve-se enviar `max_completion_tokens`. Alem
+// disso, `temperature` virou campo "greylist": pode ser rejeitado. Para os
+// GPT-5 nao enviamos temperature (usa o default do modelo); modelos legados
+// (gpt-4o*) continuam aceitando o parametro normalmente.
+function isGpt5Family(model: string): boolean {
+  return model.startsWith('gpt-5');
+}
+
+// Sem `reasoning_effort` explicito o GPT-5.6 assume o default `medium`. No
+// Sol (tier frontier) isso significa dezenas de segundos — as vezes minutos —
+// gastos so em reasoning tokens. Em /v1/chat/completions esses tokens NAO
+// aparecem em `delta.content`: o stream fica aberto e silencioso, a UI pisca
+// o indicador de digitacao e nada chega. Mesmo problema que resolvemos no
+// Gemini com `thinkingConfig` (ver buildThinkingConfig em gemini.ts).
+//
+// `low` mantem a qualidade do modelo em redacao de minutas e triagem (tarefas
+// de geracao, nao de prova matematica) com latencia aceitavel. Os valores
+// `none`/`minimal` existem mas sao model-dependent e podem retornar 400 em
+// parte da familia — por isso usamos `low` uniformemente nos tres tiers.
+// Modelos gpt-4o legados nao conhecem o parametro: nada e enviado.
+const OPENAI_REASONING_EFFORT: Record<string, string> = {
+  'gpt-5.6-sol': 'low',
+  'gpt-5.6-terra': 'low',
+  'gpt-5.6-luna': 'low'
+};
+
+function resolveReasoningEffort(model: string): string | undefined {
+  if (!isGpt5Family(model)) {
+    return undefined;
+  }
+  return OPENAI_REASONING_EFFORT[model] ?? 'low';
+}
+
+function reasoningEffortField(model: string): Record<string, string> {
+  const effort = resolveReasoningEffort(model);
+  return effort ? { reasoning_effort: effort } : {};
 }
 
 export const openaiProvider: LLMProvider = {
@@ -73,8 +118,11 @@ export const openaiProvider: LLMProvider = {
         },
         body: JSON.stringify({
           model: params.model,
-          temperature: params.temperature,
-          max_tokens: resolveOpenAiMaxTokens(params.model, params.maxTokens),
+          // temperature so e enviado para modelos legados; nos GPT-5 e
+          // greylist e pode retornar 400 (usa-se o default do modelo).
+          ...(isGpt5Family(params.model) ? {} : { temperature: params.temperature }),
+          ...reasoningEffortField(params.model),
+          max_completion_tokens: resolveOpenAiMaxTokens(params.model, params.maxTokens),
           stream: true,
           messages
         })
@@ -109,7 +157,11 @@ export const openaiProvider: LLMProvider = {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 16,
+          ...reasoningEffortField(model),
+          // Nos modelos de raciocinio o orcamento e consumido primeiro pelos
+          // reasoning tokens: com 16 tokens o ping volta sempre vazio
+          // (finish_reason 'length'). 512 da folga para o texto final.
+          max_completion_tokens: isGpt5Family(model) ? 512 : 16,
           messages: [{ role: 'user', content: 'ping' }]
         })
       });

@@ -14,6 +14,7 @@
 
 import {
   CHAT_PORT_MSG,
+  JULIA_PORT_MSG,
   LOG_PREFIX,
   MESSAGE_CHANNELS,
   PJE_HOST_PATTERNS,
@@ -22,6 +23,16 @@ import {
   getProviderApiHost,
   type ProviderId
 } from '../shared/constants';
+import {
+  executarConsultaJulia,
+  listarOrgaosJulgadoresUnidos,
+  mensagemErroJulia,
+  type JuliaStartPayload
+} from './julia-orquestrador';
+import type {
+  JuliaInstanciaAutenticada,
+  JuliaOrgao
+} from '../shared/julia/julia-types';
 import {
   AUTH_REVALIDATE_AFTER_MS,
   clearAuthState,
@@ -115,6 +126,10 @@ import type {
   TriagemSugestao,
   ValidacaoCadastroDashboardPayload
 } from '../shared/types';
+import type {
+  PautaPericiaColetaConfig,
+  PautaPericiaDashboardPayload
+} from '../shared/pauta-pericia-types';
 import {
   clearGestaoPayloads,
   saveGestaoPayloads
@@ -695,6 +710,16 @@ function dispatchMessage(
         );
         return true;
 
+      case MESSAGE_CHANNELS.JULIA_ORGAOS_JULGADORES:
+        void handleJuliaOrgaosJulgadores(
+          message.payload as {
+            orgao: JuliaOrgao;
+            instancias: JuliaInstanciaAutenticada[];
+          },
+          sendResponse
+        );
+        return true;
+
       case MESSAGE_CHANNELS.TRANSCRIBE_AUDIO:
         void handleTranscribeAudio(message.payload as TranscribeAudioPayload, sendResponse);
         return true;
@@ -1244,7 +1269,7 @@ function dispatchMessage(
             nomesTarefas: string[];
             etiquetasFiltro: string[];
             etiquetaModo?: 'qualquer' | 'todas';
-            ignorarCumpridas?: boolean;
+            statusIgnorar?: string[];
           },
           sendResponse
         );
@@ -1298,6 +1323,90 @@ function dispatchMessage(
       case MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL:
         void handlePrevjudColetaFail(
           message.payload as { requestId: string; error: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_OPEN_PAINEL:
+        void handleOpenPautaPericiaPainel(
+          message.payload as {
+            tarefas: { nome: string; quantidade: number | null }[];
+            situacoes: string[];
+            hostnamePJe: string;
+            legacyOrigin: string;
+            abertoEm: string;
+          },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_START_COLETA:
+        void handlePautaPericiaStartColeta(
+          message.payload as {
+            requestId: string;
+            config: PautaPericiaColetaConfig;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_PROG:
+        void handlePautaPericiaColetaProg(
+          message.payload as { requestId: string; msg: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_SKELETON_READY:
+        void handlePautaPericiaSkeletonReady(
+          message.payload as {
+            requestId: string;
+            hostnamePJe: string;
+            tarefasVarridas: string[];
+            etiquetasFiltro: string[];
+            total: number;
+            processosNaTarefa: number;
+            filtradosPorEtiqueta: number;
+            situacoesIgnoradas?: string[];
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_SLOT_PATCH:
+        void handlePautaPericiaSlotPatch(
+          message.payload as {
+            requestId: string;
+            seq: number;
+            feitos: number;
+            total: number;
+            processos: PautaPericiaDashboardPayload['processos'];
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_DONE:
+        void handlePautaPericiaColetaDone(
+          message.payload as {
+            requestId: string;
+            dashboardPayload: PautaPericiaDashboardPayload;
+          },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_FAIL:
+        void handlePautaPericiaColetaFail(
+          message.payload as { requestId: string; error: string },
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.PAUTA_PERICIA_CLEAR_PAYLOAD:
+        void handlePautaPericiaClearPayload(
+          message.payload as { requestId: string },
           sendResponse
         );
         return true;
@@ -3199,6 +3308,105 @@ chrome.runtime.onConnect.addListener((port) => {
     activeChats.delete(port);
   });
 });
+
+// =====================================================================
+// Porta long-lived: "Fale com Júlia" (perfil Gabinete).
+//
+// Porta separada da de chat porque o fluxo não é só texto: emite etapas
+// (extraindo/buscando/lendo/sintetizando) e um evento `EVIDENCIA` com os
+// números reais da recuperação, que a interface usa para exibir a base
+// contada sem depender do que o modelo escreve.
+// =====================================================================
+
+const activeJulia = new WeakMap<chrome.runtime.Port, AbortController>();
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== PORT_NAMES.JULIA_STREAM) {
+    return;
+  }
+  console.log(`${LOG_PREFIX} julia port conectada`);
+
+  port.onMessage.addListener((msg: { type: string; payload?: unknown }) => {
+    if (!msg || typeof msg.type !== 'string') {
+      return;
+    }
+    if (msg.type === JULIA_PORT_MSG.START) {
+      void handleJuliaStart(port, msg.payload as JuliaStartPayload);
+    } else if (msg.type === JULIA_PORT_MSG.ABORT) {
+      activeJulia.get(port)?.abort();
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    activeJulia.get(port)?.abort();
+    activeJulia.delete(port);
+  });
+});
+
+async function handleJuliaOrgaosJulgadores(
+  payload: { orgao: JuliaOrgao; instancias: JuliaInstanciaAutenticada[] },
+  sendResponse: (r: {
+    ok: boolean;
+    orgaos?: string[];
+    error?: string;
+    sessaoExpirada?: boolean;
+  }) => void
+): Promise<void> {
+  try {
+    const orgaos = await listarOrgaosJulgadoresUnidos(
+      payload.orgao,
+      payload.instancias
+    );
+    sendResponse({ ok: true, orgaos });
+  } catch (error) {
+    sendResponse({ ok: false, ...mensagemErroJulia(error) });
+  }
+}
+
+async function handleJuliaStart(
+  port: chrome.runtime.Port,
+  payload: JuliaStartPayload
+): Promise<void> {
+  activeJulia.get(port)?.abort();
+  const controller = new AbortController();
+  activeJulia.set(port, controller);
+
+  try {
+    if (!(await isAuthenticatedFast())) {
+      port.postMessage({
+        type: JULIA_PORT_MSG.ERROR,
+        error: 'Sessão não autenticada. Faça login no popup do pAIdegua.'
+      });
+      return;
+    }
+
+    const apiKey = await getApiKey(payload.provider);
+    if (!apiKey) {
+      port.postMessage({
+        type: JULIA_PORT_MSG.ERROR,
+        error: `API key não cadastrada para ${payload.provider}.`
+      });
+      return;
+    }
+
+    const settings = await getSettings();
+    await executarConsultaJulia(payload, {
+      apiKey,
+      temperature: payload.temperature ?? settings.temperature,
+      maxTokens: payload.maxTokens ?? settings.maxTokens,
+      signal: controller.signal,
+      emitir: (m) => port.postMessage(m)
+    });
+  } catch (error: unknown) {
+    if ((error as { name?: string }).name === 'AbortError') {
+      port.postMessage({ type: JULIA_PORT_MSG.DONE });
+      return;
+    }
+    port.postMessage({ type: JULIA_PORT_MSG.ERROR, ...mensagemErroJulia(error) });
+  } finally {
+    activeJulia.delete(port);
+  }
+}
 
 async function handleChatStart(
   port: chrome.runtime.Port,
@@ -5440,7 +5648,7 @@ interface PrevjudColetaConfigMsg {
   nomesTarefas: string[];
   etiquetasFiltro: string[];
   etiquetaModo?: 'qualquer' | 'todas';
-  ignorarCumpridas?: boolean;
+  statusIgnorar?: string[];
 }
 
 async function handleOpenPrevjudPainel(
@@ -5529,7 +5737,7 @@ async function handlePrevjudStartColeta(
             ? payload.etiquetasFiltro
             : [],
           etiquetaModo: payload.etiquetaModo ?? 'qualquer',
-          ignorarCumpridas: payload.ignorarCumpridas === true
+          statusIgnorar: Array.isArray(payload.statusIgnorar) ? payload.statusIgnorar : []
         }
       }
     });
@@ -5847,6 +6055,333 @@ async function handlePrevjudColetaFail(
     sendResponse({ ok: true });
   } catch (error: unknown) {
     console.warn(`${LOG_PREFIX} handlePrevjudColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+// =====================================================================
+// Painel de Perícias (Pauta) — perfil Gestão
+// =====================================================================
+
+function gerarPautaPericiaRequestId(): string {
+  return `pauta-pericia-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function handleOpenPautaPericiaPainel(
+  payload: {
+    tarefas: { nome: string; quantidade: number | null }[];
+    situacoes: string[];
+    hostnamePJe: string;
+    legacyOrigin: string;
+    abertoEm: string;
+  },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const pjeTabId = sender?.tab?.id;
+    if (typeof pjeTabId !== 'number') {
+      sendResponse({
+        ok: false,
+        error: 'Não consegui identificar a aba do PJe que disparou o Painel de Perícias.'
+      });
+      return;
+    }
+    if (!payload || !Array.isArray(payload.tarefas)) {
+      sendResponse({ ok: false, error: 'Payload de abertura do Painel de Perícias inválido.' });
+      return;
+    }
+    const requestId = gerarPautaPericiaRequestId();
+    const stateKey = `${STORAGE_KEYS.PAUTA_PERICIA_PAINEL_STATE_PREFIX}${requestId}`;
+    await chrome.storage.session.set({
+      [stateKey]: {
+        requestId,
+        tarefas: payload.tarefas,
+        situacoes: Array.isArray(payload.situacoes) ? payload.situacoes : [],
+        hostnamePJe: payload.hostnamePJe ?? '',
+        legacyOrigin: payload.legacyOrigin ?? '',
+        abertoEm: payload.abertoEm ?? new Date().toISOString()
+      }
+    });
+
+    const url =
+      chrome.runtime.getURL('pauta-pericia-painel/painel.html') +
+      `?rid=${encodeURIComponent(requestId)}`;
+    const tab = await chrome.tabs.create({ url });
+    if (typeof tab.id !== 'number') {
+      await chrome.storage.session.remove(stateKey);
+      sendResponse({ ok: false, error: 'Chrome não atribuiu ID à aba do Painel de Perícias.' });
+      return;
+    }
+    // Reutiliza setRota/getRota — o requestId inclui o prefixo "pauta-pericia-".
+    await setRota(requestId, { painelTabId: tab.id, pjeTabId });
+    sendResponse({ ok: true, requestId });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handleOpenPautaPericiaPainel falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePautaPericiaStartColeta(
+  payload: { requestId: string; config: PautaPericiaColetaConfig },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({
+        ok: false,
+        error: 'Sessão do Painel de Perícias expirou. Volte ao PJe e abra novamente.'
+      });
+      return;
+    }
+    if (
+      !payload.config ||
+      !Array.isArray(payload.config.nomesTarefas) ||
+      payload.config.nomesTarefas.length === 0
+    ) {
+      sendResponse({ ok: false, error: 'Nenhuma tarefa selecionada.' });
+      return;
+    }
+    const ack = await chrome.tabs.sendMessage(rota.pjeTabId, {
+      channel: MESSAGE_CHANNELS.PAUTA_PERICIA_RUN_COLETA,
+      payload: { requestId: payload.requestId, config: payload.config }
+    });
+    if (!ack?.ok) {
+      sendResponse({
+        ok: false,
+        error:
+          ack?.error ??
+          'A aba do PJe não aceitou iniciar a coleta. Confirme que ela continua aberta.'
+      });
+      return;
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePautaPericiaStartColeta falhou:`, error);
+    sendResponse({
+      ok: false,
+      error:
+        'Falha ao contactar a aba do PJe: ' +
+        errorMessage(error) +
+        '. Verifique se a aba original ainda está aberta.'
+    });
+  }
+}
+
+async function handlePautaPericiaColetaProg(
+  payload: { requestId: string; msg: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_PROG,
+          payload
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePautaPericiaColetaProg falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+/** Fila de escrita por requestId — serializa os read-modify-write de patch. */
+const pautaPericiaPatchLocks = new Map<string, Promise<void>>();
+
+async function handlePautaPericiaSkeletonReady(
+  payload: {
+    requestId: string;
+    hostnamePJe: string;
+    tarefasVarridas: string[];
+    etiquetasFiltro: string[];
+    total: number;
+    processosNaTarefa: number;
+    filtradosPorEtiqueta: number;
+    situacoesIgnoradas?: string[];
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    const dashKey = `${STORAGE_KEYS.PAUTA_PERICIA_DASHBOARD_PAYLOAD_PREFIX}${payload.requestId}`;
+    const skeleton: PautaPericiaDashboardPayload = {
+      requestId: payload.requestId,
+      geradoEm: new Date().toISOString(),
+      hostnamePJe: payload.hostnamePJe ?? '',
+      tarefasVarridas: payload.tarefasVarridas ?? [],
+      etiquetasFiltro: payload.etiquetasFiltro ?? [],
+      status: 'running',
+      progress: { feitos: 0, total: payload.total ?? 0 },
+      seq: 0,
+      totais: {
+        processosVarridos: payload.filtradosPorEtiqueta ?? 0,
+        processosComPericia: 0,
+        totalPericias: 0,
+        valorTotal: 0
+      },
+      processos: [],
+      diagnostico: {
+        processosNaTarefa: payload.processosNaTarefa ?? 0,
+        filtradosPorEtiqueta: payload.filtradosPorEtiqueta ?? 0,
+        situacoesIgnoradas: payload.situacoesIgnoradas,
+        falhas: []
+      }
+    };
+    await chrome.storage.session.set({ [dashKey]: skeleton });
+    // Agora sim manda a aba-painel abrir o dashboard (que vai populando).
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePautaPericiaSkeletonReady falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePautaPericiaSlotPatch(
+  payload: {
+    requestId: string;
+    seq: number;
+    feitos: number;
+    total: number;
+    processos: PautaPericiaDashboardPayload['processos'];
+  },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const rid = payload?.requestId ?? '';
+  if (!rid) {
+    sendResponse({ ok: false, error: 'requestId ausente.' });
+    return;
+  }
+  const dashKey = `${STORAGE_KEYS.PAUTA_PERICIA_DASHBOARD_PAYLOAD_PREFIX}${rid}`;
+  const anterior = pautaPericiaPatchLocks.get(rid) ?? Promise.resolve();
+  const atual = anterior
+    .catch(() => { /* ignora erro anterior */ })
+    .then(async () => {
+      const got = await chrome.storage.session.get(dashKey);
+      const atualPayload = got[dashKey] as PautaPericiaDashboardPayload | undefined;
+      if (!atualPayload || atualPayload.status !== 'running') return;
+      if ((atualPayload.seq ?? 0) >= payload.seq) return; // patch fora de ordem
+      const processos = Array.isArray(payload.processos) ? payload.processos : [];
+      const totalPericias = processos.reduce((a, pr) => a + pr.pericias.length, 0);
+      const valorTotal = processos.reduce(
+        (a, pr) => a + pr.pericias.reduce((s, pe) => s + (pe.valor ?? 0), 0),
+        0
+      );
+      const novo: PautaPericiaDashboardPayload = {
+        ...atualPayload,
+        seq: payload.seq,
+        progress: { feitos: payload.feitos, total: payload.total },
+        processos,
+        totais: {
+          ...atualPayload.totais,
+          processosComPericia: processos.length,
+          totalPericias,
+          valorTotal
+        }
+      };
+      await chrome.storage.session.set({ [dashKey]: novo });
+    });
+  pautaPericiaPatchLocks.set(rid, atual);
+  await atual;
+  sendResponse({ ok: true });
+}
+
+async function handlePautaPericiaColetaDone(
+  payload: { requestId: string; dashboardPayload: PautaPericiaDashboardPayload },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (!rota) {
+      sendResponse({ ok: false, error: 'Rota não encontrada.' });
+      return;
+    }
+    if (!payload.dashboardPayload || !Array.isArray(payload.dashboardPayload.processos)) {
+      sendResponse({ ok: false, error: 'Payload do Painel de Perícias inválido.' });
+      return;
+    }
+    const dashKey =
+      `${STORAGE_KEYS.PAUTA_PERICIA_DASHBOARD_PAYLOAD_PREFIX}${payload.requestId}`;
+    // Streaming: a aba-painel já navegou ao dashboard no SKELETON_READY. Aqui
+    // sobrescrevemos com o payload FINAL (status 'done'); o dashboard reage
+    // via storage.onChanged.
+    const finalPayload: PautaPericiaDashboardPayload = {
+      ...payload.dashboardPayload,
+      status: 'done',
+      progress: {
+        feitos: payload.dashboardPayload.totais.processosVarridos,
+        total: payload.dashboardPayload.totais.processosVarridos
+      }
+    };
+    await chrome.storage.session.set({ [dashKey]: finalPayload });
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.PAUTA_PERICIA_PAINEL_STATE_PREFIX}${payload.requestId}`
+    );
+    await chrome.tabs
+      .sendMessage(rota.painelTabId, {
+        channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_READY,
+        payload: { requestId: payload.requestId }
+      })
+      .catch(() => { /* aba-painel pode ter sido fechada */ });
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePautaPericiaColetaDone falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePautaPericiaColetaFail(
+  payload: { requestId: string; error: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rota = await getRota(payload?.requestId ?? '');
+    if (rota) {
+      await chrome.tabs
+        .sendMessage(rota.painelTabId, {
+          channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_FAIL,
+          payload
+        })
+        .catch(() => { /* aba-painel pode ter sido fechada */ });
+    }
+    await chrome.storage.session.remove(
+      `${STORAGE_KEYS.PAUTA_PERICIA_PAINEL_STATE_PREFIX}${payload?.requestId ?? ''}`
+    );
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePautaPericiaColetaFail falhou:`, error);
+    sendResponse({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function handlePautaPericiaClearPayload(
+  payload: { requestId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    const rid = payload?.requestId ?? '';
+    if (rid) {
+      await chrome.storage.session.remove(
+        `${STORAGE_KEYS.PAUTA_PERICIA_DASHBOARD_PAYLOAD_PREFIX}${rid}`
+      );
+    }
+    sendResponse({ ok: true });
+  } catch (error: unknown) {
+    console.warn(`${LOG_PREFIX} handlePautaPericiaClearPayload falhou:`, error);
     sendResponse({ ok: false, error: errorMessage(error) });
   }
 }

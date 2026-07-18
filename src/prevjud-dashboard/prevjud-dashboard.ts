@@ -794,11 +794,11 @@ function montarDiagnostico(p: PrevjudDashboardPayload): HTMLElement {
     `${p.diagnostico.filtradosPorEtiqueta} candidato(s) após o filtro de etiqueta.`,
     `${p.totais.processosComOrdem} processo(s) com ordem PREVJUD (o restante foi descartado por não ter ordem).`
   ];
-  if (typeof p.diagnostico.ordensCumpridasIgnoradas === 'number') {
-    itens.push(
-      `${p.diagnostico.ordensCumpridasIgnoradas} ordem(ns) cumprida(s) ignorada(s) ` +
-        `(opção "Ignorar ordens cumpridas" ativa).`
-    );
+  if (typeof p.diagnostico.ordensIgnoradas === 'number') {
+    const sts = p.diagnostico.statusIgnorados?.length
+      ? ` (status ignorado(s): ${p.diagnostico.statusIgnorados.join(', ')})`
+      : '';
+    itens.push(`${p.diagnostico.ordensIgnoradas} ordem(ns) ignorada(s)${sts}.`);
   }
   if (p.diagnostico.rotaColeta && ROTULO_ROTA[p.diagnostico.rotaColeta]) {
     itens.push(ROTULO_ROTA[p.diagnostico.rotaColeta]);

@@ -1,15 +1,12 @@
 /**
- * Aba-painel da feature "Ordens PREVJUD pAIdegua" (perfil Gestão — GES-10).
+ * Aba-painel do "Painel de Perícias pAIdegua" (perfil Gestão). Espelha o
+ * prevjud-painel: seleção de tarefas + etiquetas de filtro (busca, chips,
+ * modo qualquer/todas). No lugar do "ignorar cumpridas", oferece uma
+ * multi-seleção de SITUAÇÕES a ignorar.
  *
- * Fluxo (parelho com pericias-painel):
- *   1. Recebe `?rid=<requestId>`; lê o estado gravado pelo background em
- *      `chrome.storage.session` (`PREVJUD_PAINEL_STATE_PREFIX + rid`).
- *   2. Mostra o seletor de tarefas + as etiquetas de filtro (uma por linha,
- *      casamento por trecho) + o modo (qualquer/todas).
- *   3. Ao confirmar, dispara `PREVJUD_START_COLETA` → background →
- *      `PREVJUD_RUN_COLETA` na aba do PJe.
- *   4. Recebe progresso via `PREVJUD_COLETA_PROG` e fim via
- *      `PREVJUD_COLETA_READY` (navega ao dashboard) ou `_FAIL`.
+ * Fluxo: lê `?rid=` → estado em `chrome.storage.session` → ao confirmar,
+ * dispara `PAUTA_PERICIA_START_COLETA` → background → `RUN_COLETA` na aba do
+ * PJe; progresso via `COLETA_PROG`, fim via `COLETA_READY` (dashboard) / `_FAIL`.
  */
 
 import { LOG_PREFIX, MESSAGE_CHANNELS, STORAGE_KEYS } from '../shared/constants';
@@ -20,12 +17,14 @@ import {
   saveEtiquetas
 } from '../shared/etiquetas-store';
 import type { EtiquetaRecord } from '../shared/etiquetas-store';
-import { STATUS_PREVJUD_LISTA } from '../shared/prevjud-parser';
 import type {
   PJeApiEtiqueta,
-  PJeApiEtiquetasListResponse,
-  PrevjudPainelState
+  PJeApiEtiquetasListResponse
 } from '../shared/types';
+import type {
+  PautaPericiaColetaConfig,
+  PautaPericiaPainelState
+} from '../shared/pauta-pericia-types';
 
 const selEstados = {
   carregando: document.getElementById('estado-carregando') as HTMLElement,
@@ -46,47 +45,39 @@ const elBtnEtiquetasLimpar = document.getElementById('btn-etiquetas-limpar') as 
 const elBtnEtiquetasRecarregar = document.getElementById('btn-etiquetas-recarregar') as HTMLButtonElement;
 const elBtnTarefasTodas = document.getElementById('btn-tarefas-todas') as HTMLButtonElement;
 const elBtnTarefasLimpar = document.getElementById('btn-tarefas-limpar') as HTMLButtonElement;
-const elListaStatus = document.getElementById('lista-status') as HTMLElement;
-const elContadorStatus = document.getElementById('contador-status') as HTMLElement;
-const elBtnStatusLimpar = document.getElementById('btn-status-limpar') as HTMLButtonElement;
+const elListaSituacoes = document.getElementById('lista-situacoes') as HTMLElement;
+const elContadorSituacoes = document.getElementById('contador-situacoes') as HTMLElement;
+const elBtnSituacoesLimpar = document.getElementById('btn-situacoes-limpar') as HTMLButtonElement;
+const elCacheAviso = document.getElementById('cache-aviso') as HTMLElement;
+const elCacheAvisoTexto = document.getElementById('cache-aviso-texto') as HTMLElement;
+const elBtnReabrir = document.getElementById('btn-reabrir') as HTMLButtonElement;
 const elBtnCancelar = document.getElementById('btn-cancelar') as HTMLButtonElement;
 const elBtnConfirmar = document.getElementById('btn-confirmar') as HTMLButtonElement;
 const elBtnFechar = document.getElementById('btn-fechar') as HTMLButtonElement;
 const elProgressoResumo = document.getElementById('progresso-resumo') as HTMLElement;
-const elCacheAviso = document.getElementById('cache-aviso') as HTMLElement;
-const elCacheAvisoTexto = document.getElementById('cache-aviso-texto') as HTMLElement;
-const elBtnReabrir = document.getElementById('btn-reabrir') as HTMLButtonElement;
 const elBarFill = document.getElementById('bar-fill') as HTMLElement;
 const elBarLabel = document.getElementById('bar-label') as HTMLElement;
 const elLog = document.getElementById('log') as HTMLElement;
 const elBar = elBarFill.parentElement as HTMLElement;
 
 let requestId = '';
-let stateAtual: PrevjudPainelState | null = null;
+let stateAtual: PautaPericiaPainelState | null = null;
 let totalAcumulado = 0;
 let coletadosAcumulado = 0;
-/** Catálogo de etiquetas (nomeTag únicos, ordenado) lido do IndexedDB. */
 let catalogoEtiquetas: string[] = [];
 
 void main();
 
 async function main(): Promise<void> {
   try {
-    const params = new URLSearchParams(window.location.search);
-    requestId = params.get('rid') ?? '';
+    requestId = new URLSearchParams(window.location.search).get('rid') ?? '';
     if (!requestId) {
-      exibirErro(
-        'Identificador de requisição ausente. Feche esta aba e abra a feature ' +
-          'Ordens PREVJUD novamente a partir do PJe.'
-      );
+      exibirErro('Identificador de requisição ausente. Feche esta aba e abra o Painel de Perícias novamente a partir do PJe.');
       return;
     }
     const state = await carregarEstado(requestId);
     if (!state) {
-      exibirErro(
-        'Não encontrei os dados desta sessão. A aba do PJe pode ter sido ' +
-          'fechada. Abra a ferramenta novamente a partir do PJe.'
-      );
+      exibirErro('Não encontrei os dados desta sessão. A aba do PJe pode ter sido fechada. Abra a ferramenta novamente a partir do PJe.');
       return;
     }
     stateAtual = state;
@@ -94,47 +85,43 @@ async function main(): Promise<void> {
     registrarListenerBackground();
     await renderizarSeletor(state);
   } catch (err) {
-    console.error(`${LOG_PREFIX} painel PREVJUD falhou ao montar:`, err);
+    console.error(`${LOG_PREFIX} painel de perícias falhou ao montar:`, err);
     exibirErro(err instanceof Error ? err.message : String(err));
   }
 }
 
-async function carregarEstado(rid: string): Promise<PrevjudPainelState | null> {
-  const key = `${STORAGE_KEYS.PREVJUD_PAINEL_STATE_PREFIX}${rid}`;
+async function carregarEstado(rid: string): Promise<PautaPericiaPainelState | null> {
+  const key = `${STORAGE_KEYS.PAUTA_PERICIA_PAINEL_STATE_PREFIX}${rid}`;
   const out = await chrome.storage.session.get(key);
   const raw = out[key];
   if (!raw || typeof raw !== 'object') return null;
-  const obj = raw as Partial<PrevjudPainelState>;
+  const obj = raw as Partial<PautaPericiaPainelState>;
   if (!Array.isArray(obj.tarefas)) return null;
   return {
     requestId: rid,
     tarefas: obj.tarefas,
+    situacoes: Array.isArray(obj.situacoes) ? obj.situacoes : [],
     hostnamePJe: typeof obj.hostnamePJe === 'string' ? obj.hostnamePJe : '',
     legacyOrigin: typeof obj.legacyOrigin === 'string' ? obj.legacyOrigin : '',
-    abertoEm:
-      typeof obj.abertoEm === 'string' ? obj.abertoEm : new Date().toISOString()
+    abertoEm: typeof obj.abertoEm === 'string' ? obj.abertoEm : new Date().toISOString()
   };
 }
 
-async function montarMeta(state: PrevjudPainelState): Promise<void> {
+async function montarMeta(state: PautaPericiaPainelState): Promise<void> {
   const nomeVara = await lerNomeVaraDasSettings();
   const unidade = nomeVara || state.hostnamePJe;
   const contadores: string[] = [];
-  if (unidade !== state.hostnamePJe && state.hostnamePJe) {
-    contadores.push(state.hostnamePJe);
-  }
+  if (unidade !== state.hostnamePJe && state.hostnamePJe) contadores.push(state.hostnamePJe);
   contadores.push(`${state.tarefas.length} tarefa(s) no painel`);
   renderHeaderMeta(elMeta, { unidade, geradoEm: state.abertoEm, contadores });
 }
 
-async function renderizarSeletor(state: PrevjudPainelState): Promise<void> {
+async function renderizarSeletor(state: PautaPericiaPainelState): Promise<void> {
   mostrarEstado('seletor');
-
   void mostrarAvisoCache();
-
-  // Pré-preenche a partir da última seleção salva (não é PII).
   const salvo = await lerSelecaoSalva();
 
+  // Tarefas
   elListaTarefas.innerHTML = '';
   if (state.tarefas.length === 0) {
     const li = document.createElement('li');
@@ -148,7 +135,6 @@ async function renderizarSeletor(state: PrevjudPainelState): Promise<void> {
       cb.type = 'checkbox';
       cb.id = `tarefa-${i}`;
       cb.value = t.nome;
-      // Se houver seleção salva, respeita-a; senão marca todas.
       cb.checked = salvo ? salvo.nomesTarefas.includes(t.nome) : true;
       cb.addEventListener('change', atualizarContadores);
       const label = document.createElement('label');
@@ -164,6 +150,7 @@ async function renderizarSeletor(state: PrevjudPainelState): Promise<void> {
     });
   }
 
+  // Modo de etiqueta
   if (salvo) {
     const radio = document.querySelector<HTMLInputElement>(
       `input[name="etiqueta-modo"][value="${salvo.etiquetaModo}"]`
@@ -171,22 +158,67 @@ async function renderizarSeletor(state: PrevjudPainelState): Promise<void> {
     if (radio) radio.checked = true;
   }
 
-  renderizarStatus(new Set(salvo?.statusIgnorar ?? []));
+  // Situações a ignorar
+  renderizarSituacoes(state.situacoes, new Set(salvo?.situacoesIgnorar ?? []));
 
   await carregarEtiquetas(salvo?.etiquetasFiltro ?? []);
   atualizarContadores();
 }
 
+// ---------- Situações ----------
+
+function renderizarSituacoes(situacoes: string[], marcadas: Set<string>): void {
+  elListaSituacoes.innerHTML = '';
+  if (situacoes.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'lista-vazia';
+    li.textContent = 'Não consegui carregar a lista de situações — a coleta trará todas.';
+    elListaSituacoes.appendChild(li);
+    atualizarContadorSituacoes();
+    return;
+  }
+  situacoes.forEach((nome, i) => {
+    const li = document.createElement('li');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = `sit-${i}`;
+    cb.value = nome;
+    cb.checked = marcadas.has(nome);
+    cb.addEventListener('change', atualizarContadorSituacoes);
+    const label = document.createElement('label');
+    label.htmlFor = cb.id;
+    const span = document.createElement('span');
+    span.textContent = nome;
+    label.appendChild(span);
+    li.append(cb, label);
+    elListaSituacoes.appendChild(li);
+  });
+  atualizarContadorSituacoes();
+}
+
+function situacoesIgnorar(): string[] {
+  return Array.from(elListaSituacoes.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+    .filter((c) => c.checked)
+    .map((c) => c.value);
+}
+
+function atualizarContadorSituacoes(): void {
+  const n = situacoesIgnorar().length;
+  elContadorSituacoes.textContent =
+    n === 0 ? 'Nenhuma (traz todas as situações)' : `${n} situação(ões) a ignorar`;
+}
+
+// ---------- Etiquetas (idêntico ao PREVJUD) ----------
+
 function normalizarBuscaEtq(s: string): string {
   return s
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** Lê o catálogo do IndexedDB e renderiza a lista, marcando `selecionadas`. */
 async function carregarEtiquetas(selecionadas: string[]): Promise<void> {
   let registros: EtiquetaRecord[] = [];
   try {
@@ -199,9 +231,7 @@ async function carregarEtiquetas(selecionadas: string[]): Promise<void> {
     const n = (r.nomeTag ?? '').trim();
     if (n) nomes.add(n);
   }
-  catalogoEtiquetas = Array.from(nomes).sort((a, b) =>
-    a.localeCompare(b, 'pt-BR')
-  );
+  catalogoEtiquetas = Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   renderizarEtiquetas(new Set(selecionadas));
 }
 
@@ -211,9 +241,7 @@ function renderizarEtiquetas(selecionadas: Set<string>): void {
     const li = document.createElement('li');
     li.className = 'lista-vazia';
     li.textContent =
-      'Catálogo de etiquetas vazio. Clique em "Recarregar catálogo" ' +
-      '(exige uma aba do PJe aberta no painel do usuário). Sem etiquetas ' +
-      'marcadas, a varredura considera todos os processos das tarefas.';
+      'Catálogo de etiquetas vazio. Clique em "Recarregar catálogo" (exige uma aba do PJe aberta no painel do usuário). Sem etiquetas marcadas, a varredura considera todos os processos das tarefas.';
     elListaEtiquetas.appendChild(li);
     atualizarContadorEtiquetas();
     return;
@@ -260,7 +288,6 @@ function atualizarContadorEtiquetas(): void {
   renderChipsSelecionadas(selecionadas);
 }
 
-/** Desenha as etiquetas escolhidas como chips destacados (com × para tirar). */
 function renderChipsSelecionadas(selecionadas: string[]): void {
   elChipsSelecionadas.innerHTML = '';
   if (selecionadas.length === 0) {
@@ -291,30 +318,15 @@ function renderChipsSelecionadas(selecionadas: string[]): void {
   }
 }
 
-/** Desmarca no checklist a etiqueta cujo valor bate com `nome`. */
 function desmarcarEtiqueta(nome: string): void {
-  const alvo = elListaEtiquetas.querySelector<HTMLInputElement>(
-    `input[type="checkbox"][value="${cssEscapar(nome)}"]`
-  );
-  if (alvo) {
-    alvo.checked = false;
-  } else {
-    // Fallback por comparação de valor (caso o seletor de atributo falhe).
-    elListaEtiquetas
-      .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-      .forEach((c) => {
-        if (c.value === nome) c.checked = false;
-      });
-  }
+  elListaEtiquetas
+    .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+    .forEach((c) => {
+      if (c.value === nome) c.checked = false;
+    });
   atualizarContadorEtiquetas();
 }
 
-/** Escapa aspas/barras para uso seguro em seletor de atributo. */
-function cssEscapar(v: string): string {
-  return v.replace(/["\\]/g, '\\$&');
-}
-
-/** Rebusca o catálogo no PJe (via aba aberta) e regrava no IndexedDB. */
 async function recarregarCatalogo(): Promise<void> {
   const preserva = new Set(etiquetasFiltro());
   elBtnEtiquetasRecarregar.disabled = true;
@@ -326,22 +338,19 @@ async function recarregarCatalogo(): Promise<void> {
       payload: { pageSize: 5000 }
     })) as PJeApiEtiquetasListResponse | undefined;
     if (!resp || !resp.ok) {
-      elContadorEtiquetas.textContent =
-        resp?.error ?? 'Falha ao buscar o catálogo no PJe.';
+      elContadorEtiquetas.textContent = resp?.error ?? 'Falha ao buscar o catálogo no PJe.';
       return;
     }
     const now = new Date().toISOString();
-    const records: EtiquetaRecord[] = resp.etiquetas.map(
-      (e: PJeApiEtiqueta) => ({
-        id: e.id,
-        nomeTag: e.nomeTag,
-        nomeTagCompleto: e.nomeTagCompleto,
-        favorita: e.favorita,
-        possuiFilhos: e.possuiFilhos,
-        idTagFavorita: e.idTagFavorita,
-        ingestedAt: now
-      })
-    );
+    const records: EtiquetaRecord[] = resp.etiquetas.map((e: PJeApiEtiqueta) => ({
+      id: e.id,
+      nomeTag: e.nomeTag,
+      nomeTagCompleto: e.nomeTagCompleto,
+      favorita: e.favorita,
+      possuiFilhos: e.possuiFilhos,
+      idTagFavorita: e.idTagFavorita,
+      ingestedAt: now
+    }));
     await clearAllEtiquetas();
     await saveEtiquetas(records);
     await carregarEtiquetas(Array.from(preserva));
@@ -356,65 +365,23 @@ async function recarregarCatalogo(): Promise<void> {
   }
 }
 
+// ---------- Seleções ----------
+
 function tarefasSelecionadas(): string[] {
-  return Array.from(
-    elListaTarefas.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-  )
+  return Array.from(elListaTarefas.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
     .filter((c) => c.checked)
     .map((c) => c.value);
 }
 
 function etiquetasFiltro(): string[] {
-  return Array.from(
-    elListaEtiquetas.querySelectorAll<HTMLInputElement>(
-      'input[type="checkbox"]'
-    )
-  )
+  return Array.from(elListaEtiquetas.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
     .filter((c) => c.checked)
     .map((c) => c.value);
 }
 
 function etiquetaModo(): 'qualquer' | 'todas' {
-  const marcado = document.querySelector<HTMLInputElement>(
-    'input[name="etiqueta-modo"]:checked'
-  );
+  const marcado = document.querySelector<HTMLInputElement>('input[name="etiqueta-modo"]:checked');
   return marcado?.value === 'todas' ? 'todas' : 'qualquer';
-}
-
-/** Renderiza o checklist de status a ignorar (lista canônica do PREVJUD). */
-function renderizarStatus(marcados: Set<string>): void {
-  elListaStatus.innerHTML = '';
-  STATUS_PREVJUD_LISTA.forEach((nome, i) => {
-    const li = document.createElement('li');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.id = `status-${i}`;
-    cb.value = nome;
-    cb.checked = marcados.has(nome);
-    cb.addEventListener('change', atualizarContadorStatus);
-    const label = document.createElement('label');
-    label.htmlFor = cb.id;
-    const span = document.createElement('span');
-    span.textContent = nome;
-    label.appendChild(span);
-    li.append(cb, label);
-    elListaStatus.appendChild(li);
-  });
-  atualizarContadorStatus();
-}
-
-function statusIgnorar(): string[] {
-  return Array.from(
-    elListaStatus.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-  )
-    .filter((c) => c.checked)
-    .map((c) => c.value);
-}
-
-function atualizarContadorStatus(): void {
-  const n = statusIgnorar().length;
-  elContadorStatus.textContent =
-    n === 0 ? 'Nenhum (traz todas as situações)' : `${n} situação(ões) a ignorar`;
 }
 
 function atualizarContadores(): void {
@@ -427,40 +394,22 @@ function atualizarContadores(): void {
 }
 
 elBtnTarefasTodas.addEventListener('click', () => {
-  elListaTarefas
-    .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    .forEach((c) => {
-      c.checked = true;
-    });
+  elListaTarefas.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((c) => { c.checked = true; });
   atualizarContadores();
 });
 elBtnTarefasLimpar.addEventListener('click', () => {
-  elListaTarefas
-    .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    .forEach((c) => {
-      c.checked = false;
-    });
+  elListaTarefas.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((c) => { c.checked = false; });
   atualizarContadores();
 });
 elInputEtiquetasBusca.addEventListener('input', aplicarBuscaEtiquetas);
 elBtnEtiquetasLimpar.addEventListener('click', () => {
-  elListaEtiquetas
-    .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    .forEach((c) => {
-      c.checked = false;
-    });
+  elListaEtiquetas.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((c) => { c.checked = false; });
   atualizarContadorEtiquetas();
 });
-elBtnEtiquetasRecarregar.addEventListener('click', () => {
-  void recarregarCatalogo();
-});
-elBtnStatusLimpar.addEventListener('click', () => {
-  elListaStatus
-    .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    .forEach((c) => {
-      c.checked = false;
-    });
-  atualizarContadorStatus();
+elBtnEtiquetasRecarregar.addEventListener('click', () => { void recarregarCatalogo(); });
+elBtnSituacoesLimpar.addEventListener('click', () => {
+  elListaSituacoes.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((c) => { c.checked = false; });
+  atualizarContadorSituacoes();
 });
 elBtnCancelar.addEventListener('click', () => window.close());
 elBtnFechar.addEventListener('click', () => window.close());
@@ -468,22 +417,17 @@ elBtnFechar.addEventListener('click', () => window.close());
 elBtnConfirmar.addEventListener('click', () => {
   const nomesTarefas = tarefasSelecionadas();
   if (nomesTarefas.length === 0) return;
-  const filtro = etiquetasFiltro();
-  const modo = etiquetaModo();
-  void salvarSelecao({
+  const config: PautaPericiaColetaConfig = {
     nomesTarefas,
-    etiquetasFiltro: filtro,
-    etiquetaModo: modo,
-    statusIgnorar: statusIgnorar()
-  });
-  void iniciarColeta(nomesTarefas, filtro, modo);
+    etiquetasFiltro: etiquetasFiltro(),
+    etiquetaModo: etiquetaModo(),
+    situacoesIgnorar: situacoesIgnorar()
+  };
+  void salvarSelecao(config);
+  void iniciarColeta(config);
 });
 
-async function iniciarColeta(
-  nomesTarefas: string[],
-  filtro: string[],
-  modo: 'qualquer' | 'todas'
-): Promise<void> {
+async function iniciarColeta(config: PautaPericiaColetaConfig): Promise<void> {
   totalAcumulado = 0;
   coletadosAcumulado = 0;
   elLog.innerHTML = '';
@@ -493,23 +437,15 @@ async function iniciarColeta(
   mostrarEstado('progresso');
 
   elProgressoResumo.textContent =
-    filtro.length > 0
-      ? `Varrendo ${nomesTarefas.length} tarefa(s), filtrando por: ${filtro.join(', ')}. ` +
-        'Não feche esta aba — o painel abre automaticamente ao final.'
-      : `Varrendo ${nomesTarefas.length} tarefa(s) SEM filtro de etiqueta (pode demorar). ` +
-        'Não feche esta aba.';
+    config.etiquetasFiltro.length > 0
+      ? `Varrendo ${config.nomesTarefas.length} tarefa(s), filtrando por: ${config.etiquetasFiltro.join(', ')}. Não feche esta aba — o painel abre ao final.`
+      : `Varrendo ${config.nomesTarefas.length} tarefa(s) SEM filtro de etiqueta (pode demorar). Não feche esta aba.`;
   logLinha('Pedindo ao PJe para varrer as tarefas selecionadas...');
 
   try {
     const resp = await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.PREVJUD_START_COLETA,
-      payload: {
-        requestId,
-        nomesTarefas,
-        etiquetasFiltro: filtro,
-        etiquetaModo: modo,
-        statusIgnorar: statusIgnorar()
-      }
+      channel: MESSAGE_CHANNELS.PAUTA_PERICIA_START_COLETA,
+      payload: { requestId, config }
     });
     if (!resp?.ok) {
       const msg = resp?.error ?? 'Falha desconhecida ao iniciar a coleta.';
@@ -526,27 +462,27 @@ async function iniciarColeta(
 function registrarListenerBackground(): void {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || typeof message.channel !== 'string') return false;
-    if (sender?.tab) return false; // fica só com o relay do background
+    if (sender?.tab) return false;
     const payload = message.payload as { requestId?: string } | undefined;
     if (!payload || payload.requestId !== requestId) return false;
 
-    if (message.channel === MESSAGE_CHANNELS.PREVJUD_COLETA_PROG) {
+    if (message.channel === MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_PROG) {
       const msg = (payload as { msg?: string }).msg ?? '';
       logLinha(msg);
       avancarBarra(msg);
       sendResponse({ ok: true });
       return false;
     }
-    if (message.channel === MESSAGE_CHANNELS.PREVJUD_COLETA_READY) {
-      logLinha('Abrindo o painel — vai populando durante a coleta...', 'ok');
+    if (message.channel === MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_READY) {
+      logLinha('Abrindo o painel de perícias...', 'ok');
       const url =
-        chrome.runtime.getURL('prevjud-dashboard/prevjud-dashboard.html') +
+        chrome.runtime.getURL('pauta-pericia-dashboard/pauta-pericia-dashboard.html') +
         `?rid=${encodeURIComponent(requestId)}`;
       window.setTimeout(() => window.location.replace(url), 300);
       sendResponse({ ok: true });
       return false;
     }
-    if (message.channel === MESSAGE_CHANNELS.PREVJUD_COLETA_FAIL) {
+    if (message.channel === MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_FAIL) {
       const err = (payload as { error?: string }).error ?? 'Erro desconhecido.';
       logLinha(`Falha: ${err}`, 'err');
       exibirErro(err);
@@ -557,11 +493,6 @@ function registrarListenerBackground(): void {
   });
 }
 
-/**
- * Progresso reconhecido:
- *   - `[filtro] N/M candidato(s)...` → define o denominador (candidatos).
- *   - `[coleta] i/total — <processo>` → atualiza o numerador.
- */
 function avancarBarra(msg: string): void {
   const mFiltro = msg.match(/\[filtro\]\s+(\d+)\//i);
   if (mFiltro) {
@@ -587,11 +518,11 @@ function atualizarBarra(): void {
   }
   const pct = Math.min(100, Math.round((coletadosAcumulado / totalAcumulado) * 100));
   elBarFill.style.width = `${pct}%`;
-  elBarLabel.textContent =
-    `${coletadosAcumulado} de ${totalAcumulado} processo${totalAcumulado === 1 ? '' : 's'} · ${pct}%`;
+  elBarLabel.textContent = `${coletadosAcumulado} de ${totalAcumulado} processo${totalAcumulado === 1 ? '' : 's'} · ${pct}%`;
 }
 
 function logLinha(msg: string, kind: 'info' | 'ok' | 'err' = 'info'): void {
+  if (!msg) return;
   const li = document.createElement('li');
   if (kind === 'ok') li.className = 'ok';
   if (kind === 'err') li.className = 'err';
@@ -613,17 +544,17 @@ function exibirErro(msg: string): void {
 }
 
 /**
- * Se houver um relatório salvo (`PREVJUD_ULTIMO_RELATORIO`, gravado pelo
- * dashboard a cada coleta), oferece reabri-lo sem nova varredura — a
- * coleta abre uma aba por processo e pode levar minutos.
+ * Se houver um relatório salvo (`PAUTA_PERICIA_ULTIMO_RELATORIO`, gravado
+ * pelo dashboard ao concluir a coleta), oferece reabri-lo sem nova varredura
+ * — a coleta abre cada processo e pode levar minutos.
  */
 async function mostrarAvisoCache(): Promise<void> {
   try {
     const out = await chrome.storage.local.get(
-      STORAGE_KEYS.PREVJUD_ULTIMO_RELATORIO
+      STORAGE_KEYS.PAUTA_PERICIA_ULTIMO_RELATORIO
     );
-    const raw = out[STORAGE_KEYS.PREVJUD_ULTIMO_RELATORIO] as
-      | { geradoEm?: string; totais?: { totalOrdens?: number } }
+    const raw = out[STORAGE_KEYS.PAUTA_PERICIA_ULTIMO_RELATORIO] as
+      | { geradoEm?: string; totais?: { totalPericias?: number } }
       | undefined;
     if (!raw || typeof raw.geradoEm !== 'string') return;
     const quando = new Date(raw.geradoEm);
@@ -635,16 +566,17 @@ async function mostrarAvisoCache(): Promise<void> {
           hour: '2-digit',
           minute: '2-digit'
         })}`;
-    const ordens = raw.totais?.totalOrdens;
+    const pericias = raw.totais?.totalPericias;
     elCacheAvisoTexto.textContent =
       `Há um relatório salvo${rotuloQuando}` +
-      (typeof ordens === 'number' ? ` (${ordens} ordem(ns))` : '') +
+      (typeof pericias === 'number' ? ` (${pericias} perícia(s))` : '') +
       '. Você pode reabri-lo sem refazer a coleta.';
     elCacheAviso.hidden = false;
     elBtnReabrir.addEventListener('click', () => {
       const url =
-        chrome.runtime.getURL('prevjud-dashboard/prevjud-dashboard.html') +
-        '?cache=1';
+        chrome.runtime.getURL(
+          'pauta-pericia-dashboard/pauta-pericia-dashboard.html'
+        ) + '?cache=1';
       window.location.replace(url);
     });
   } catch {
@@ -656,29 +588,36 @@ interface SelecaoSalva {
   nomesTarefas: string[];
   etiquetasFiltro: string[];
   etiquetaModo: 'qualquer' | 'todas';
-  statusIgnorar?: string[];
+  situacoesIgnorar: string[];
 }
 
 async function lerSelecaoSalva(): Promise<SelecaoSalva | null> {
   try {
-    const out = await chrome.storage.local.get(STORAGE_KEYS.PREVJUD_SELECAO);
-    const raw = out[STORAGE_KEYS.PREVJUD_SELECAO];
+    const out = await chrome.storage.local.get(STORAGE_KEYS.PAUTA_PERICIA_SELECAO);
+    const raw = out[STORAGE_KEYS.PAUTA_PERICIA_SELECAO];
     if (!raw || typeof raw !== 'object') return null;
     const o = raw as Partial<SelecaoSalva>;
     return {
       nomesTarefas: Array.isArray(o.nomesTarefas) ? o.nomesTarefas : [],
       etiquetasFiltro: Array.isArray(o.etiquetasFiltro) ? o.etiquetasFiltro : [],
       etiquetaModo: o.etiquetaModo === 'todas' ? 'todas' : 'qualquer',
-      statusIgnorar: Array.isArray(o.statusIgnorar) ? o.statusIgnorar : []
+      situacoesIgnorar: Array.isArray(o.situacoesIgnorar) ? o.situacoesIgnorar : []
     };
   } catch {
     return null;
   }
 }
 
-async function salvarSelecao(sel: SelecaoSalva): Promise<void> {
+async function salvarSelecao(config: PautaPericiaColetaConfig): Promise<void> {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEYS.PREVJUD_SELECAO]: sel });
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.PAUTA_PERICIA_SELECAO]: {
+        nomesTarefas: config.nomesTarefas,
+        etiquetasFiltro: config.etiquetasFiltro,
+        etiquetaModo: config.etiquetaModo ?? 'qualquer',
+        situacoesIgnorar: config.situacoesIgnorar ?? []
+      }
+    });
   } catch {
     /* não crítico */
   }

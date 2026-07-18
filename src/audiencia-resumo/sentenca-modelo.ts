@@ -25,6 +25,8 @@ import {
   templatesRerank,
   templatesSearch
 } from '../shared/templates-client';
+import { lerNomeVaraDasSettings } from '../shared/header-meta';
+import { resolverSedeJuizo } from '../shared/sede-juizo';
 import type { ProcessoDocumento } from '../shared/types';
 import type { DadosLinha, SentencaJulgamento } from './resumo-prompt';
 
@@ -149,7 +151,22 @@ export async function prepararPromptComModelo(
     : null;
 
   // 5. Prompt final via helper compartilhado (mesma função usada na sidebar).
-  const prompt = buildMinutaPrompt(action, tplForPrompt, input.orientacoes);
+  //    A sede do juízo vai como dado — esta aba não tem a capa dos autos
+  //    (e portanto não tem o campo "Jurisdição"), então dependemos do
+  //    órgão julgador da linha da pauta e do nome da vara das settings.
+  //    Sem nenhum dos dois, o prompt emite `[Cidade]/[UF]` em vez de
+  //    deixar o LLM inventar o município.
+  let nomeVara: string | null = null;
+  try {
+    nomeVara = await lerNomeVaraDasSettings();
+  } catch {
+    /* settings indisponíveis — segue com o órgão julgador */
+  }
+  const sede = resolverSedeJuizo({
+    nomeVara,
+    orgaoJulgador: input.linha.orgaoJulgador
+  });
+  const prompt = buildMinutaPrompt(action, tplForPrompt, input.orientacoes, sede);
 
   return {
     ok: true,

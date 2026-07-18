@@ -83,6 +83,12 @@ export interface SidebarElements {
    */
   ordensPrevjudButton: HTMLButtonElement;
   /**
+   * Botão "Painel de Perícias pAIdegua" — perfil Gestão. Coleta o relatório
+   * de perícias do PJe, filtra pela unidade do perfil ativo e abre o painel
+   * analítico da pauta.
+   */
+  pautaPericiaButton: HTMLButtonElement;
+  /**
    * Botão "Controle Metas CNJ" — perfil Gestão. Mantém um acervo
    * persistente dos processos da vara classificados quanto às Metas
    * Nacionais 2026 do CNJ.
@@ -94,6 +100,14 @@ export interface SidebarElements {
    * nova aba estática com chat especializado nos fluxos jBPM do PJe.
    */
   consultorFluxosButton: HTMLButtonElement;
+  /**
+   * Botão "Fale com a Júlia" (seção Pesquisa) — **só no perfil Gabinete**, que
+   * é quem minuta e portanto quem precisa fundamentar.
+   *
+   * Não depende de processo aberto nem do painel do usuário: a pergunta é sobre
+   * o acervo da unidade, não sobre os autos em tela.
+   */
+  faleComJuliaButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -688,11 +702,15 @@ export function mountSidebar(
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="painel-gerencial" title="Abre o painel gerencial com alertas, relacionamentos e indicadores da unidade" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Painel Gerencial pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Aqui você se faz!</span></span></button>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="prazos-fita" title="Coleta os expedientes abertos das tarefas de Controle de prazo e abre o painel Prazos na Fita" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Prazos na Fita pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Expedientes abertos por prazo</span></span></button>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="ordens-prevjud" title="Consolida as ordens PREVJUD (Intimações INSS) dos processos filtrados por etiqueta, para acompanhar o cumprimento pelo INSS e os prazos" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Ordens PREVJUD pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Cumprimento do INSS num painel!</span></span></button>
+      <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="pauta-pericia" title="Coleta o relatório de perícias do PJe, filtra pelas perícias da sua unidade e abre um painel com valores, situações e laudos pendentes" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Painel de Perícias pAIdegua</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Sua pauta de perícias num painel!</span></span></button>
       <button type="button" data-profile-section="gestao" data-painel-section="painel" data-paidegua="metas-cnj" title="Funcionalidade temporariamente em revisão (MET-07)." style="display: none !important; min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Controle Metas CNJ</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Acervo persistente das Metas 2026</span></span></button>
       <div data-profile-section="gestao" data-painel-section="fora-painel" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 12px; color: var(--paidegua-text-muted); line-height: 1.45; padding: 10px 12px; background: rgba(255,255,255,0.6); border: 1px dashed var(--paidegua-border); border-radius: var(--paidegua-radius-sm);">Abra o <strong>Painel do usuário</strong> do PJe para usar as ferramentas de Gestão.</div>
       <div class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Conhecimento</div>
       <button type="button" data-paidegua="consultor-fluxos" title="Tire dúvidas sobre os fluxos do PJe — entradas, saídas, decisões, caminhos entre tarefas." style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Consultor de fluxos</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Como o processo caminha no PJe</span></span></button>
+      <div data-profile-section="gabinete" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
+      <div data-profile-section="gabinete" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Pesquisa</div>
+      <button type="button" data-profile-section="gabinete" data-paidegua="fale-com-julia" title="Consulta a jurisprudência do TRF5 na Júlia e compara o entendimento da sua unidade com o da instância revisora" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Fale com a Júlia</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">O que a sua unidade e o TRF5 vêm decidindo</span></span></button>
     </div>
 
     <div class="paidegua-sidebar__notice" data-paidegua="global-notice"></div>
@@ -755,8 +773,10 @@ export function mountSidebar(
   const painelGerencialButton = q<HTMLButtonElement>('painel-gerencial');
   const prazosFitaButton = q<HTMLButtonElement>('prazos-fita');
   const ordensPrevjudButton = q<HTMLButtonElement>('ordens-prevjud');
+  const pautaPericiaButton = q<HTMLButtonElement>('pauta-pericia');
   const metasCnjButton = q<HTMLButtonElement>('metas-cnj');
   const consultorFluxosButton = q<HTMLButtonElement>('consultor-fluxos');
+  const faleComJuliaButton = q<HTMLButtonElement>('fale-com-julia');
   const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
@@ -813,8 +833,10 @@ export function mountSidebar(
     painelGerencialButton,
     prazosFitaButton,
     ordensPrevjudButton,
+    pautaPericiaButton,
     metasCnjButton,
     consultorFluxosButton,
+    faleComJuliaButton,
     providerLabel,
     globalNotice
   };

@@ -33,7 +33,11 @@ import {
   listarProcessosDaTarefa,
   montarUrlAutos
 } from '../pje-api/pje-api-from-content';
-import { normalizarOrdemPrevjud, ordemPendente } from '../../shared/prevjud-parser';
+import {
+  normalizarOrdemPrevjud,
+  ordemPendente,
+  statusOrdemIgnorado
+} from '../../shared/prevjud-parser';
 import { coletarOrdensPrevjudViaSSR } from './prevjud-ssr';
 
 export interface ColetorPrevjudInput {
@@ -98,6 +102,7 @@ export async function coletarOrdensPrevjud(
   const filtroNorm = (config.etiquetasFiltro ?? [])
     .map(norm)
     .filter((s) => s.length > 0);
+  const statusIgnorar = config.statusIgnorar ?? [];
 
   if (!config.nomesTarefas || config.nomesTarefas.length === 0) {
     return { ok: false, error: 'Nenhuma tarefa selecionada para a coleta.' };
@@ -188,18 +193,18 @@ export async function coletarOrdensPrevjud(
   let coletadosViaSsr = 0;
   let tentativasViaAba = 0;
 
-  let cumpridasIgnoradas = 0;
+  let ordensIgnoradas = 0;
   const registrarProcesso = (
     p: PJeApiProcesso,
     ordensBrutas: OrdemPrevjud[],
     urlAutos: string | null
   ): void => {
     let ordens = ordensBrutas;
-    if (config.ignorarCumpridas) {
+    if (statusIgnorar.length > 0) {
       const antes = ordens.length;
-      ordens = ordens.filter((o) => ordemPendente(o));
-      cumpridasIgnoradas += antes - ordens.length;
-      // Processo que ficou sem ordens pendentes é descartado do relatório.
+      ordens = ordens.filter((o) => !statusOrdemIgnorado(o.status, statusIgnorar));
+      ordensIgnoradas += antes - ordens.length;
+      // Processo que ficou sem ordens é descartado do relatório.
       if (ordens.length === 0) return;
     }
     processos.push({
@@ -538,9 +543,8 @@ export async function coletarOrdensPrevjud(
       processosNaTarefa,
       filtradosPorEtiqueta: candidatos.length,
       rotaColeta,
-      ordensCumpridasIgnoradas: config.ignorarCumpridas
-        ? cumpridasIgnoradas
-        : undefined,
+      ordensIgnoradas: statusIgnorar.length > 0 ? ordensIgnoradas : undefined,
+      statusIgnorados: statusIgnorar.length > 0 ? [...statusIgnorar] : undefined,
       falhas
     }
   };

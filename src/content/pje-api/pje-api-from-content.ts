@@ -30,7 +30,8 @@ import type {
   PJeApiListarResponse,
   PJeApiProcesso,
   PJeApiResolveCaResponse,
-  PJeAuthSnapshot
+  PJeAuthSnapshot,
+  PJeProcessoResumoResponse
 } from '../../shared/types';
 import {
   decodeJwtExp,
@@ -734,6 +735,86 @@ export async function gerarChaveAcesso(
     return {
       ok: false,
       ca: null,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
+/**
+ * Resolve o resumo leve de um processo:
+ *   GET {base}/processos/{idProcesso}
+ * (endpoint confirmado em campo, TRF5 1G — ~302 bytes JSON com
+ * `orgaoJulgador`, `jurisdicao`, `classeJudicial`, `status`,
+ * `dataDistribuicao`). Usado pelo Painel de Perícias para descobrir a
+ * vara de cada linha do relatório PautaPericia (que é amplo por
+ * jurisdição) e filtrar pela unidade do perfil ativo.
+ *
+ * Same-origin: o cookie de sessão vai junto; o Bearer é opcional para
+ * este endpoint, mas enviamos por consistência com os demais.
+ */
+export async function obterResumoProcesso(
+  idProcesso: number
+): Promise<PJeProcessoResumoResponse> {
+  const snap = await obterSnapshot();
+  if (!snap) return { ok: false, error: 'Sem snapshot de auth.' };
+  if (!Number.isFinite(idProcesso) || idProcesso <= 0) {
+    return { ok: false, error: 'idProcesso invalido.' };
+  }
+  const baseUrl = pjeBaseUrl(snap);
+  const url = `${baseUrl}/processos/${idProcesso}`;
+  const headers = montarHeaders(snap);
+  try {
+    return await comRetryTransiente<PJeProcessoResumoResponse>(async () => {
+      const resp = await fetchTextoComTimeout(
+        url,
+        { method: 'GET', headers, credentials: 'include' },
+        20_000
+      );
+      if (!resp.ok) {
+        return {
+          resultado: { ok: false, error: `HTTP ${resp.status} em ${url}` },
+          httpStatus: resp.status,
+          transiente: eErroTransiente(null, resp.status)
+        };
+      }
+      const text = resp.text.trim();
+      if (!text) {
+        return {
+          resultado: {
+            ok: false,
+            error: `Resposta vazia (Content-Type: ${resp.contentType ?? '?'}).`
+          }
+        };
+      }
+      let json: Record<string, unknown>;
+      try {
+        json = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return {
+          resultado: {
+            ok: false,
+            error: `Resposta nao-JSON em ${url} (len ${text.length}).`
+          }
+        };
+      }
+      return {
+        resultado: {
+          ok: true,
+          resumo: {
+            idProcesso: toNumberOrNull(json.idProcesso) ?? idProcesso,
+            numeroProcesso: extrairTexto(json.numeroProcesso),
+            classeJudicial: extrairTexto(json.classeJudicial),
+            orgaoJulgador: extrairTexto(json.orgaoJulgador),
+            jurisdicao: extrairTexto(json.jurisdicao),
+            status: extrairTexto(json.status),
+            dataDistribuicao: toNumberOrNull(json.dataDistribuicao)
+          }
+        }
+      };
+    }, { tentativas: 2 });
+  } catch (err) {
+    return {
+      ok: false,
       error: err instanceof Error ? err.message : String(err)
     };
   }

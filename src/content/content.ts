@@ -57,6 +57,8 @@ import {
   sanitizePayloadForLLM,
   type TriagemPayloadAnon
 } from '../shared/triagem-anonymize';
+import { resolverSedeJuizo, type SedeJuizo } from '../shared/sede-juizo';
+import { lerNomeVaraDasSettings } from '../shared/header-meta';
 import { detect, isPJeHost } from './detector';
 import { mountShell } from './ui/shell';
 import { mountNavbarButton, type NavbarButtonController } from './ui/navbar-button';
@@ -89,6 +91,12 @@ import {
 import { instalarBridgeInterceptorAuth } from './auth/pje-auth-interceptor';
 import { abrirPainelGerencial } from './gestao/gestao-coordinator';
 import { abrirConsultorFluxos } from './fluxos/fluxos-coordinator';
+import {
+  consultarJulia,
+  inferirContexto,
+  renderSeletorConsulta,
+  type JuliaContextoUnidade
+} from './julia/julia-chat';
 import {
   dispensarTarefaContextual,
   instalarDetectorTarefaContextual
@@ -129,6 +137,9 @@ import { enriquecerPessoaFisicaPorCpf } from './criminal/pje-pessoa-fisica-fetch
 import { coletarPautasPorPeritos } from './pericias/pericias-coletor';
 import { coletarOrdensPrevjud } from './prevjud/prevjud-coletor';
 import { atualizarEtiquetasStatus } from './prevjud/prevjud-etiqueta-orquestrador';
+import { abrirPautaPericiaPainel } from './pauta-pericia/pauta-pericia-coordinator';
+import { coletarPautaPericia } from './pauta-pericia/pauta-pericia-coletor';
+import type { PautaPericiaColetaConfig } from '../shared/pauta-pericia-types';
 import {
   aplicarEtiquetaEmLoteComBridge,
   aplicarEtiquetasNoProcessoComBridge,
@@ -892,7 +903,7 @@ function buildChatBubbleActions(): ChatBubbleAction[] {
           );
           return;
         }
-        executeMinutaGeneration(lastMinuta.action, null);
+        void executeMinutaGeneration(lastMinuta.action, null);
       }
     },
     {
@@ -968,7 +979,7 @@ function promptRefineMinuta(): void {
         matchedFolderHint: false
       } as TemplateSearchHit)
     : null;
-  executeMinutaGeneration(lastMinuta.action, tplHit, instr.trim());
+  void executeMinutaGeneration(lastMinuta.action, tplHit, instr.trim());
 }
 
 function ensureChatMounted(): ChatController {
@@ -1721,21 +1732,53 @@ const lastMinuta: {
 } = { action: null, template: null };
 
 /**
+ * Resolve a sede do juízo (o "Cidade/UF" que fecha a minuta) para o
+ * processo aberto nesta aba. Fonte primária é a capa dos autos, que traz
+ * "Jurisdição: CE / Fortaleza"; as settings entram como fallback quando
+ * a capa não está renderizada (o usuário pode estar em outra aba do PJe).
+ *
+ * Best effort por design: quando nada resolve, devolvemos `null` e o
+ * prompt emite o marcador `[Cidade]/[UF]` em vez de deixar o LLM
+ * adivinhar — ver `src/shared/sede-juizo.ts`.
+ */
+async function resolverSedeDoProcessoAtual(): Promise<SedeJuizo | null> {
+  let jurisdicao: string | null = null;
+  let orgaoJulgador: string | null = null;
+  try {
+    const detalhes = extrairDetalhesProcesso(document);
+    jurisdicao = detalhes?.jurisdicao ?? null;
+    orgaoJulgador = detalhes?.orgaoJulgador ?? null;
+  } catch {
+    /* capa ausente/não carregada — segue para as settings */
+  }
+
+  let nomeVara: string | null = null;
+  try {
+    nomeVara = await lerNomeVaraDasSettings();
+  } catch {
+    /* settings indisponíveis — segue com o que houver */
+  }
+
+  return resolverSedeJuizo({ jurisdicao, nomeVara, orgaoJulgador });
+}
+
+/**
  * Dispara a geração propriamente dita: monta o prompt, registra estado
  * para refinamento posterior, e envia ao LLM via sendChatMessage.
  */
-function executeMinutaGeneration(
+async function executeMinutaGeneration(
   action: TemplateAction,
   template: TemplateSearchHit | null,
   refinement?: string
-): void {
+): Promise<void> {
   const tplForPrompt = template
     ? { relativePath: template.relativePath, text: template.text }
     : null;
   lastMinuta.action = action;
   lastMinuta.template = tplForPrompt;
 
-  const prompt = buildMinutaPrompt(action, tplForPrompt, refinement);
+  const sede = await resolverSedeDoProcessoAtual();
+  const prompt = buildMinutaPrompt(action, tplForPrompt, refinement, sede);
   const label = template
     ? `Gerando ${action.label.toLowerCase()} com modelo ${template.relativePath}…`
     : `Gerando ${action.label.toLowerCase()} (sem modelo)…`;
@@ -1932,7 +1975,7 @@ async function handleTemplateAction(
 
   const hasConfig = await templatesHasConfig();
   if (!hasConfig) {
-    executeMinutaGeneration(action, null, userRefinement || undefined);
+    await executeMinutaGeneration(action, null, userRefinement || undefined);
     return;
   }
 
@@ -2002,7 +2045,7 @@ async function handleTemplateAction(
       ],
       onChoose: (choiceId) => {
         if (choiceId === 'no-template') {
-          executeMinutaGeneration(action, null, userRefinement || undefined);
+          void executeMinutaGeneration(action, null, userRefinement || undefined);
         }
       }
     });
@@ -2062,7 +2105,7 @@ async function handleTemplateAction(
   }
 
   chat.addSystemText(msg);
-  executeMinutaGeneration(action, top, userRefinement || undefined);
+  await executeMinutaGeneration(action, top, userRefinement || undefined);
 }
 
 // =====================================================================
@@ -2659,6 +2702,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     void handleAbrirPrevjud();
   });
 
+  els.pautaPericiaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleAbrirPautaPericia();
+  });
+
   els.metasCnjButton.addEventListener('click', (event) => {
     event.preventDefault();
     void handleMetasCnj();
@@ -2667,6 +2715,11 @@ function wireSidebarEvents(sidebar: SidebarController): void {
   els.consultorFluxosButton.addEventListener('click', (event) => {
     event.preventDefault();
     void handleConsultorFluxos();
+  });
+
+  els.faleComJuliaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleFaleComJulia();
   });
 }
 
@@ -2809,6 +2862,35 @@ async function handleAbrirPrevjud(): Promise<void> {
   } catch (err) {
     console.warn(`${LOG_PREFIX} handleAbrirPrevjud falhou:`, err);
     notice(`Falha em "Ordens PREVJUD": ${errorMessage(err)}`, 'error');
+  }
+}
+
+/**
+ * Fluxo do botão "Painel de Perícias pAIdegua" (perfil Gestão): lê a unidade
+ * do perfil ativo + as jurisdições disponíveis e abre a aba dedicada onde o
+ * usuário escolhe o período. A coleta do relatório e o dashboard acontecem
+ * naquela aba. Mesmo padrão do Painel Gerencial / Ordens PREVJUD.
+ */
+async function handleAbrirPautaPericia(): Promise<void> {
+  if (!mounted) return;
+  const notice = (msg: string, kind: 'info' | 'error' = 'info'): void => {
+    mounted?.sidebar.setGlobalNotice(msg, kind);
+  };
+
+  notice('Abrindo "Painel de Perícias" em nova aba...');
+  try {
+    const result = await abrirPautaPericiaPainel({
+      onProgress: (msg) => notice(msg)
+    });
+    if (!result.ok) {
+      notice(result.error ?? 'Falha ao abrir o "Painel de Perícias".', 'error');
+      return;
+    }
+    notice('"Painel de Perícias" aberto em nova aba.');
+    window.setTimeout(() => notice('', 'info'), 3500);
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} handleAbrirPautaPericia falhou:`, err);
+    notice(`Falha em "Painel de Perícias": ${errorMessage(err)}`, 'error');
   }
 }
 
@@ -3333,7 +3415,8 @@ async function handleGerarEmendaInicial(
     notice('Ação "Emenda à inicial" não configurada.', 'error');
     return;
   }
-  const prompt = buildEmendaInicialPrompt(providencias);
+  const sede = await resolverSedeDoProcessoAtual();
+  const prompt = buildEmendaInicialPrompt(providencias, sede);
   lastMinuta.action = action;
   lastMinuta.template = null;
   sendChatMessage(prompt, true, `Gerando ${action.label.toLowerCase()}…`, 'emenda');
@@ -3560,6 +3643,63 @@ async function handleConsultorFluxos(): Promise<void> {
     console.warn(`${LOG_PREFIX} handleConsultorFluxos falhou:`, err);
     notice(`Falha no Consultor de fluxos: ${errorMessage(err)}`, 'error');
   }
+}
+
+/**
+ * "Fale com a Júlia" — pesquisa de jurisprudência do TRF5 (perfil Gabinete).
+ *
+ * Abre no próprio chat, e não em aba nova como o Consultor de fluxos: a resposta
+ * é fundamentação para o que o usuário está redigindo ali, e tirá-lo da tela
+ * quebraria o fluxo de trabalho.
+ *
+ * Não exige processo aberto — a pergunta é sobre o acervo da unidade, não sobre
+ * os autos em tela.
+ */
+async function handleFaleComJulia(): Promise<void> {
+  if (!mounted || !memory.settings) return;
+  // Capturado aqui, e não lido dentro do `onConfirm`: o callback roda depois, e
+  // `memory.settings` é mutável — pode ter sido zerado nesse intervalo.
+  const settings = memory.settings;
+  const chat = ensureChatMounted();
+  const shadow = mountShell().shadow;
+  const contexto = await inferirContexto();
+
+  /**
+   * Monta o formulário no fim do fio da conversa.
+   *
+   * Recursiva de propósito: cada consulta encerrada oferece "Iniciar outra
+   * consulta", que chama isto de novo com o contexto já usado — assim a
+   * próxima pergunta herda as instâncias e unidades escolhidas.
+   */
+  const abrirFormulario = (
+    ctx: JuliaContextoUnidade,
+    termosIniciais?: string
+  ): void => {
+    chat.addCustomBubble(
+      renderSeletorConsulta({
+        contexto: ctx,
+        shadow,
+        termosIniciais,
+        onConsultar: (escolhido, pergunta, termosManuais, reabilitar) => {
+          consultarJulia({
+            chat,
+            shadow,
+            pergunta,
+            contexto: escolhido,
+            termosManuais,
+            provider: settings.activeProvider,
+            model: settings.models[settings.activeProvider],
+            // Reabilita mesmo em erro: sessão expirada é caminho comum, e
+            // deixar o formulário travado obrigaria a reabrir tudo.
+            onFim: reabilitar,
+            onNovaConsulta: abrirFormulario
+          });
+        }
+      })
+    );
+  };
+
+  abrirFormulario(contexto);
 }
 
 /**
@@ -4091,7 +4231,7 @@ async function handlePrevjudRunColeta(payload: {
     nomesTarefas: string[];
     etiquetasFiltro: string[];
     etiquetaModo?: 'qualquer' | 'todas';
-    ignorarCumpridas?: boolean;
+    statusIgnorar?: string[];
   };
 }): Promise<void> {
   const { requestId, config } = payload;
@@ -4164,6 +4304,87 @@ async function handlePrevjudRunColeta(payload: {
     }
   } finally {
     prevjudEmCurso.delete(requestId);
+  }
+}
+
+/** requestIds do Painel de Perícias em curso (evita disparo duplicado). */
+const pautaPericiaEmCurso = new Set<string>();
+
+/**
+ * Handler do `PAUTA_PERICIA_RUN_COLETA` — roda no top frame do PJe legacy.
+ * Coleta o relatório de perícias, resolve o órgão julgador de cada processo,
+ * filtra pela unidade do perfil ativo e monta o payload. Progresso via
+ * `PAUTA_PERICIA_COLETA_PROG`; resultado via `PAUTA_PERICIA_COLETA_DONE`/`_FAIL`.
+ */
+async function handlePautaPericiaRunColeta(payload: {
+  requestId: string;
+  config: PautaPericiaColetaConfig;
+}): Promise<void> {
+  const { requestId, config } = payload;
+  if (pautaPericiaEmCurso.has(requestId)) {
+    console.warn(
+      `${LOG_PREFIX} handlePautaPericiaRunColeta: ${requestId} já em curso — ignorando.`
+    );
+    return;
+  }
+  pautaPericiaEmCurso.add(requestId);
+  try {
+    const postProg = (msg: string): void => {
+      chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_PROG,
+          payload: { requestId, msg }
+        })
+        .catch(() => { /* aba-painel pode ter fechado */ });
+    };
+
+    const hostnamePJe = window.location.hostname;
+    const legacyOrigin = window.location.origin;
+    const { ok, payload: dashboardPayload, error } = await coletarPautaPericia({
+      requestId,
+      hostnamePJe,
+      legacyOrigin,
+      config,
+      onProgress: postProg
+    });
+    if (!ok || !dashboardPayload) {
+      await chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_FAIL,
+          payload: { requestId, error: error ?? 'Falha ao coletar as perícias.' }
+        })
+        .catch(() => { /* aba-painel pode ter fechado */ });
+      return;
+    }
+
+    const resp = await chrome.runtime.sendMessage({
+      channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_DONE,
+      payload: { requestId, dashboardPayload }
+    });
+    if (!resp?.ok) {
+      await chrome.runtime
+        .sendMessage({
+          channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_FAIL,
+          payload: {
+            requestId,
+            error: resp?.error ?? 'Falha ao gravar o relatório de perícias.'
+          }
+        })
+        .catch(() => { /* aba-painel pode ter fechado */ });
+    }
+  } catch (err) {
+    if (isExtensionContextInvalidated(err)) return;
+    console.warn(`${LOG_PREFIX} handlePautaPericiaRunColeta falhou:`, err);
+    try {
+      await chrome.runtime.sendMessage({
+        channel: MESSAGE_CHANNELS.PAUTA_PERICIA_COLETA_FAIL,
+        payload: { requestId, error: errorMessage(err) }
+      });
+    } catch {
+      /* aba-painel pode ter sido fechada */
+    }
+  } finally {
+    pautaPericiaEmCurso.delete(requestId);
   }
 }
 
@@ -4627,7 +4848,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         nomesTarefas: string[];
         etiquetasFiltro: string[];
         etiquetaModo?: 'qualquer' | 'todas';
-        ignorarCumpridas?: boolean;
+        statusIgnorar?: string[];
       };
     };
     if (
@@ -4641,6 +4862,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     sendResponse({ ok: true });
     void handlePrevjudRunColeta(payload);
+    return false;
+  }
+
+  // Painel de Perícias: coleta o relatório, resolve órgão e filtra por unidade.
+  // Só o top frame da aba PJe roda.
+  if (message.channel === MESSAGE_CHANNELS.PAUTA_PERICIA_RUN_COLETA) {
+    if (window !== window.top) return false;
+    if (!isPJeHost(window.location.hostname)) return false;
+    const payload = message.payload as {
+      requestId: string;
+      config: PautaPericiaColetaConfig;
+    };
+    if (
+      !payload ||
+      !payload.requestId ||
+      !payload.config ||
+      !Array.isArray(payload.config.nomesTarefas)
+    ) {
+      sendResponse({ ok: false, error: 'Payload de coleta de perícias inválido.' });
+      return false;
+    }
+    sendResponse({ ok: true });
+    void handlePautaPericiaRunColeta(payload);
     return false;
   }
 

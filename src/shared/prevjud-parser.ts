@@ -51,6 +51,23 @@ export function canonicalizarStatusPrevjud(raw: string | null | undefined): stri
   return STATUS_CANONICO_POR_LOWER.get(v.toLowerCase()) ?? v;
 }
 
+/**
+ * Lista canônica dos status PREVJUD conhecidos — alimenta o seletor
+ * "situações a ignorar" da aba-painel (o usuário escolhe quais status não
+ * devem entrar no relatório).
+ */
+export const STATUS_PREVJUD_LISTA: readonly string[] = STATUS_CANONICOS;
+
+/** true quando o status da ordem está na lista a ignorar (comparação canônica). */
+export function statusOrdemIgnorado(
+  status: string,
+  ignorar: string[] | undefined
+): boolean {
+  if (!ignorar || ignorar.length === 0) return false;
+  const s = canonicalizarStatusPrevjud(status).toLowerCase();
+  return ignorar.some((i) => canonicalizarStatusPrevjud(i).toLowerCase() === s);
+}
+
 /** Mapeia uma linha crua (células por índice 0–9) para `OrdemPrevjud`. */
 export function normalizarOrdemPrevjud(raw: RawPrevjudRow): OrdemPrevjud {
   const c = raw.celulas ?? [];
