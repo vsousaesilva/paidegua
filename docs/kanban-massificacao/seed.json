@@ -7636,7 +7636,8 @@
       "descricao": "Encontrado pelo owner em 19/07/2026, logo após a aprovação da v1.10.0, ao instalar a extensão em navegador onde a Júlia nunca fora aberta.\n\nSINTOMA: a consulta respondia normalmente, mas apenas com jurisprudência da instância revisora (API pública, que não usa sessão). As decisões da própria unidade — a metade que motivou a feature — ficavam de fora, e a necessidade de autenticar não era sinalizada de forma acionável.\n\nCAUSA: em julia-orquestrador.ts, o aviso de sessão expirada só disparava quando NADA era lido:\n\n  const nadaLido = !recuperacao.unidade?.analisados.length && !recuperacao.revisor?.analisados.length;\n\nComo a API pública sempre responde, nadaLido era falso e o alerta nunca vinha. O painel de evidência mostrava 'Indisponível — sessão da Júlia expirada' no bloco da unidade, mas como linha de texto sem ação, seguida de uma resposta com aparência de completa.\n\nErro de enquadramento: queda de sessão foi tratada como DEGRADAÇÃO A REPORTAR quando é CONDIÇÃO A CONFRONTAR. Atinge justamente todo piloto que instala a extensão agora, em navegador onde a Júlia nunca foi aberta.\n\nCORREÇÃO (v1.10.1):\n- Bloco de reconexão com botão inserido no fio da conversa quando o escopo da unidade cai por sessão, mesmo que o revisor tenha respondido — entra ANTES da resposta.\n- Regra 6.1 no prompt de síntese: com a unidade indisponível por sessão, a resposta ABRE avisando que reflete apenas a instância revisora.\n- Texto do bloco no formulário reescrito: em vez de 'sessão expirada', diz o que se perde ('as decisões da sua unidade ficam de fora').",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "Achado do owner em 19/07/2026, após aprovação da v1.10.0",
       "tags": ["julia", "sessao", "degradacao-silenciosa", "bug", "pilotos"],
       "esforco": "S",
@@ -7666,6 +7667,20 @@
           "autor": "claude-code/sessao-2026-07-19",
           "data": "2026-07-19T00:00:00.000Z",
           "comando": "Correção pronta e empacotada na REL-1.10.1. Broadcast aos pilotos da v1.10.0 foi deliberadamente segurado até esta versão sair — comunicar a feature com a degradação silenciosa ativa daria primeira impressão de resposta pela metade justamente a quem instala agora."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Empacotado na REL-1.10.1, aprovada e publicada pela CWS em 19/07/2026."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Em produção na v1.10.1. Smoke em navegador limpo (sem sessão da Júlia) e broadcast represado a executar."
         }
       ]
     },
@@ -7732,7 +7747,8 @@
       "descricao": "Patch sobre a v1.10.0, empacotado no mesmo dia da aprovação dela.\n\n- BUG-28: em navegador sem a Júlia autenticada, a consulta respondia apenas pela API pública (instância revisora) sem sinalizar de forma acionável que faltava autenticar. O aviso de sessão só disparava quando NADA era lido, e como a API pública sempre responde, ele nunca vinha.\n\nCorreções: bloco de reconexão com botão inserido antes da resposta quando o escopo da unidade cai por sessão; regra 6.1 no prompt de síntese, obrigando a resposta a abrir com o aviso; texto do formulário reescrito para dizer a consequência ('as decisões da sua unidade ficam de fora') em vez do estado ('sessão expirada').\n\nBump 1.10.0 -> 1.10.1 (patch). Sem novas dependências, permissões ou hosts.\n\nO broadcast aos pilotos da v1.10.0 foi segurado para sair com esta versão — o público a comunicar é exatamente o que instala em navegador novo, onde o defeito se manifesta.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "skill release-extensao — sessão 2026-07-19",
       "tags": ["release", "extensao", "cws", "julia", "hotfix"],
       "esforco": "XS",
@@ -7756,6 +7772,20 @@
           "autor": "claude-code/sessao-2026-07-19",
           "data": "2026-07-19T00:00:00.000Z",
           "comando": "Card aberto na skill release-extensao. Bump 1.10.0 -> 1.10.1 (patch). Decisão do owner: subir a correção imediatamente e comunicar os pilotos só depois dela, já que a revisão da CWS leva horas."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aprovada e publicada pela CWS em 19/07/2026, no mesmo dia da v1.10.0. Build local + validação do dist (manifest 1.10.1, aviso de sessão no content.js) + upload manual + commit/push + sync KV feitos. Incidente de processo registrado: a tag v1.10.1 chegou a ser criada ANTES do commit das mudanças, apontando para código da v1.10.0 — detectado na conferência, tag apagada local e remotamente, Release do GitHub removido e tag recriada no commit correto. A v1.10.0, tagueada com SHA explícito (b79e63d), estava certa."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Em produção. Restam o smoke em navegador limpo e o broadcast represado, que cobre as duas versões."
         }
       ]
     }
