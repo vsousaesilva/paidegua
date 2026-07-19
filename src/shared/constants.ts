@@ -200,6 +200,20 @@ export const MESSAGE_CHANNELS = {
    * origem — o content script esbarraria em CORS.
    */
   JULIA_ORGAOS_JULGADORES: 'paidegua/julia/orgaos-julgadores',
+  /**
+   * Sonda o acesso à Júlia antes de montar o formulário. Distingue três
+   * estados: autenticado, sessão ausente e serviço indisponível — que pedem
+   * ações diferentes do usuário.
+   */
+  JULIA_VERIFICAR_SESSAO: 'paidegua/julia/verificar-sessao',
+  /**
+   * Login assistido: abre a Júlia em aba nova, sonda a API até autenticar,
+   * fecha a aba e devolve o foco à aba de origem.
+   *
+   * Responde só ao fim (sucesso, desistência ou teto de tempo) — é mensagem de
+   * vida longa, mantida viva pelas próprias chamadas de API da sondagem.
+   */
+  JULIA_LOGIN_ASSISTIDO: 'paidegua/julia/login-assistido',
   TRANSCRIBE_AUDIO: 'paidegua/transcribe-audio',
   SYNTHESIZE_SPEECH: 'paidegua/synthesize-speech',
   /** Content → background: pede para inserir conteúdo no editor do PJe. */
@@ -854,6 +868,14 @@ export const CHAT_PORT_MSG = {
  */
 export const JULIA_PORT_MSG = {
   START: 'start',
+  /**
+   * Refaz apenas a síntese, reaproveitando a evidência já recuperada.
+   *
+   * Falha na chamada de IA (cota, rede) não deve custar nova varredura no
+   * servidor do TRF5: a parte cara da consulta são as dezenas de requisições
+   * à Júlia, e elas continuam válidas.
+   */
+  RETENTAR_SINTESE: 'retentar-sintese',
   PROGRESSO: 'progresso',
   EVIDENCIA: 'evidencia',
   CHUNK: 'chunk',

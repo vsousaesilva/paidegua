@@ -7742,6 +7742,192 @@
       ]
     },
     {
+      "id": "PES-06",
+      "titulo": "Fale com a Júlia: porta de entrada de autenticação e login assistido",
+      "descricao": "A autenticação deixa de ser condição reportada quando falha e passa a ser pré-requisito resolvido antes de começar.\n\nAo clicar em Fale com a Júlia, o background sonda o acesso pelo endpoint mais barato (processos:data-atualizacao) e distingue TRÊS estados: autenticado, sessão ausente e serviço fora do ar — que pedem ações diferentes e antes caíam na mesma mensagem. O formulário só é montado com acesso de pé.\n\nLOGIN ASSISTIDO: o botão abre a Júlia em aba nova e o background sonda a API a cada 3s até autenticar; conseguindo, fecha a aba e devolve o foco à aba de origem pelo tabId (o Chrome ativa a vizinha ao fechar, não a anterior). A detecção é por SONDAGEM DA API, não por leitura do DOM da página — a Júlia renumera identificadores entre versões, e sondar testa a capacidade real em vez de semelhança visual. Efeito colateral útil: chamar API do Chrome a cada 3s mantém vivo o service worker MV3.\n\nGuardas ao fechar a aba: só a que nós abrimos, só se ainda estiver na Júlia, teto de 3 minutos, e clique novo cancela a sondagem anterior. Se o tab.url vier vazio, NÃO fecha — melhor deixar aba a mais que fechar a errada.\n\nSonda inicial com teto de 10s e otimista no estouro: verificação inconclusiva abre o formulário assim mesmo, porque travar a tela seria pior que o problema original.\n\nSaída secundária 'Consultar apenas a segunda instância', para que indisponibilidade da Júlia não mate também o acervo público, que segue de pé.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Pedido do owner em 19/07/2026 — usuário sempre espera consultar a base autenticada",
+      "tags": ["julia", "autenticacao", "sessao", "ux"],
+      "esforco": "M",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "Clique verifica o acesso antes de montar o formulário",
+        "Sessão ausente e serviço fora do ar têm mensagens e ações distintas",
+        "Login assistido fecha a aba da Júlia e devolve o foco à aba de origem",
+        "Aba fechada pelo usuário encerra a sondagem sem insistir",
+        "Sonda inconclusiva em 10s abre o formulário mesmo assim"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aberto após o owner apontar que a falta de autenticação não era sinalizada de forma acionável (BUG-28) e pedir que a verificação viesse antes do uso."
+        }
+      ]
+    },
+    {
+      "id": "PES-07",
+      "titulo": "Documento citado: citações clicáveis e painel sobreposto com cópia",
+      "descricao": "Cada [n] da resposta vira botão que abre painel sobreposto com o documento — número do processo, metadados, abas (Texto completo, Ementa/Fundamentação, Dispositivo, Referência) e três botões de cópia.\n\nO modelo escreve [3] limpo e a interface converte no DOM ao fim do streaming. Tentamos antes pedir markdown com URL ([[3](url)]): poluía a leitura e dependia de o modelo copiar a URL certa.\n\nPOR QUE PAINEL E NÃO BOLHA: consultar citação é ato passageiro; empilhar documento a cada clique transformava o chat em depósito onde a própria resposta se perdia.\n\nPOR QUE EXIBIR E NÃO LINKAR: o endpoint de download do PJe exige sessão NAQUELA instalação, e servidor de 1º grau em regra não tem acesso ao pjett — verificado em campo, o link do 2º grau abria em branco. Como a recuperação já leu os documentos para montar o prompt, exibimos o texto que está em mãos. O link ao PJe permanece só onde funciona (1º grau), como opção secundária.\n\nCópia: ementa/fundamentação (com a referência ao pé, que é a unidade colável numa minuta), texto completo e referência isolada. A ementa sai limpa — sem cabeçalho do órgão, qualificação das partes nem a palavra EMENTA.\n\nO painel espelha o modal do projeto (audiencia-resumo-config-modal.ts): mesmas variáveis de fonte e mesmo backdrop. O pointer-events: auto é indispensável — o contêiner da barra lateral usa none para manter o PJe clicável, e a sobreposição herdava isso, aparecendo na tela sem receber cliques.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Pedido do owner em 19/07/2026",
+      "tags": ["julia", "citacoes", "modal", "copia", "ux"],
+      "esforco": "M",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "Numeração contínua entre os escopos — cada [n] é único na resposta",
+        "Clique em [n] e na lista de fontes abre o painel sobreposto",
+        "Painel recebe cliques (pointer-events) e usa a fonte do paidegua",
+        "Cópia da ementa vem sem cabeçalho e com a referência ao pé",
+        "Link ao PJe aparece só em documentos de 1º grau"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aberto na sessão de refinamento da Júlia, após o owner constatar que os links do 2º grau abriam em branco por falta de acesso ao pjett."
+        }
+      ]
+    },
+    {
+      "id": "PES-08",
+      "titulo": "Interface do 2º grau: Fale com a Júlia sobre a API pública",
+      "descricao": "Chave invisível ao usuário: quem estiver no 2º grau do TRF5 (host pjett, detection.grau === '2g') recebe uma interface distinta, que nunca toca a API autenticada.\n\nMOTIVO: a Júlia que serve ao 2º grau consulta apenas o próprio 2º grau — acervo que a API pública cobre por inteiro. Não há base autenticada a acessar nem instância revisora com que confrontar dentro do acervo.\n\nO fluxo público dispensa a porta de entrada de autenticação, troca o formulário (some seccional, instâncias autenticadas, unidades e o marcador de comparação; fica a escolha de acervo — TRF5 marcado por padrão, mais TRU e as seis Turmas Recursais) e usa prompt próprio.\n\nO prompt próprio importa: reusar o da análise dupla faria a resposta se desculpar por uma metade ausente, quando no 2º grau essa metade não existe por desenho. Mantém as travas que seguem valendo (base contada, linguagem de indício, citação por afirmação, não atribuir citação alheia, divergência no tempo) e remove as que só fazem sentido no confronto.\n\nTurma Recursal (host pje2g) fica no fluxo de 1º grau por decisão do owner: é segunda instância para todos os efeitos da aplicação, mas na Júlia tem unidade própria na base autenticada e é confrontável com a TRU. 'unknown' também cai no fluxo completo.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Pedido do owner em 19/07/2026",
+      "tags": ["julia", "segundo-grau", "api-publica", "trf5"],
+      "esforco": "M",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "Usuário em pjett recebe o formulário público, sem porta de autenticação",
+        "Usuário em pje1g ou pje2g recebe o fluxo de análise dupla",
+        "Resposta do modo público não menciona escopo ausente nem comparação impossível",
+        "Painel de evidência mostra bloco único no modo público"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aberto a pedido do owner: a Júlia do 2º grau só consulta o 2º grau, então a interface de análise dupla não se aplica ali."
+        }
+      ]
+    },
+    {
+      "id": "BUG-29",
+      "titulo": "Escopo da unidade caía inteiro por HTTP 500 causado por rajada de requisições",
+      "descricao": "SINTOMA: a resposta vinha só com jurisprudência de 2ª instância e afirmava que a amostra era 'temporalmente concentrada entre junho e julho'. O escopo da unidade não vinha concentrado — não vinha.\n\nDIAGNÓSTICO (log do service worker): 'julia-rag: escopo unidade falhou: JuliaApiError: JULIA respondeu HTTP 500'.\n\nDUAS CAUSAS ENCADEADAS:\n1. Promise.all na passada principal — uma combinação que retornasse 500 rejeitava tudo e descartava as outras sete buscas bem-sucedidas.\n2. Rajada: até 8 buscas + 8 sumários simultâneos, mais a passada histórica e até 16 requisições de inteiro teor, tudo de uma vez contra servidor de produção do TRF5.\n\nCORREÇÃO: execução em lotes de 3 (executarEmLotes), busca e sumário em sequência dentro de cada combinação, e tolerância a falha individual — o que der certo entra na resposta, e só marcamos indisponibilidade quando TODAS falham. Aviso no log quando parte falha.\n\nCusto aceito: a consulta fica alguns segundos mais lenta. Melhor esperar e receber o escopo da unidade que receber rápido uma resposta que perdeu metade em silêncio — e é o comportamento correto perante servidor institucional que não é nosso.",
+      "categoria": "pesquisa",
+      "prioridade": "P0",
+      "coluna": "qa",
+      "origem": "Diagnóstico em 19/07/2026 pelo log do service worker",
+      "tags": ["julia", "http-500", "concorrencia", "carga", "bug"],
+      "esforco": "S",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "No máximo 3 requisições simultâneas à Júlia",
+        "Falha em uma combinação não derruba as demais",
+        "Escopo só é marcado indisponível quando todas as buscas falham",
+        "Log registra falhas parciais"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aberto após o log do service worker revelar que o escopo da unidade falhava por completo — o que explicava a cadeia de sintomas atribuída antes à amostragem."
+        }
+      ]
+    },
+    {
+      "id": "PES-09",
+      "titulo": "Qualidade da amostra: transcrições, cabeçalho, ementa pura e amostragem no tempo",
+      "descricao": "Conjunto de correções na qualidade do que chega ao modelo, todas nascidas de uso real.\n\nDESCARTE DE TRANSCRIÇÕES: consulta sobre medicamento off-label lia 5 de 775 — o orçamento se esgotava em cinco sentenças de ~24 mil caracteres, volume vindo de doutrina e precedente TRANSCRITOS, que o próprio prompt manda não atribuir à unidade. Removemos blocos que tenham as DUAS marcas: abertura por linha terminada em dois-pontos e fecho por referência de julgado. Exigir as duas deixa transcrições escaparem, e é intencional — o que escapa custa orçamento, o removido por engano custaria razão de decidir. Fail-safe: remoção acima de 70% devolve o texto íntegro.\n\nORÇAMENTO: teto da unidade de 120 mil para 250 mil caracteres.\n\nCABEÇALHO: a fundamentação vinha com PODER JUDICIÁRIO, vara, classe, número e qualificação das partes. Removido sempre — é identificável, ao contrário do relatório, tolerado quando não tem título.\n\nEMENTA PURA: documento do tipo EMENTA não é só a ementa; traz antes o cabeçalho do órgão. Isolamos a ementa de fato, o que também fez as abas de texto completo e ementa deixarem de ser idênticas.\n\nAMOSTRAGEM ESTRATIFICADA NO TEMPO: a Júlia ordena por relevância e o acervo recente domina, então a amostra vinha comprimida em semanas e o 'Mudou com o tempo?' não tinha matéria-prima. Detectando intervalo menor que 12 meses, uma passada complementar busca julgados anteriores ao mais antigo encontrado, com 35% das vagas reservadas — sem cota, os recentes (melhor ranqueados) ocupariam tudo de novo. Adaptativo: só ocorre havendo concentração.\n\nBUG CORRIGIDO NO MESMO CICLO: os históricos entravam CONCATENADOS no fim da lista, e o aplicarOrcamento percorre em ordem pulando o que não cabe — eram sempre os primeiros a cair, e a passada extra virava requisição paga e descartada. Agora são INTERCALADOS com os recentes.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Uso real pelo owner em 18-19/07/2026",
+      "tags": ["julia", "rag", "qualidade", "orcamento", "amostragem"],
+      "esforco": "M",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "Consulta em tema citação-pesado lê mais de 10 documentos, não 5",
+        "Fundamentação exibida não traz cabeçalho do órgão nem qualificação das partes",
+        "Ementa copiada vem sem cabeçalho e sem a palavra EMENTA",
+        "Amostra concentrada dispara busca histórica e os antigos chegam ao prompt",
+        "Intervalo insuficiente mesmo após a busca histórica impede afirmar evolução"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aberto consolidando as correções de qualidade da amostra apontadas pelo owner em uso real."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.10.2",
+      "titulo": "Release v1.10.2 — autenticação assistida, documento citado em painel, interface do 2º grau e correções de carga",
+      "descricao": "Bundle da v1.10.2, todo sobre o Fale com a Júlia:\n\n- PES-06: porta de entrada de autenticação e login assistido (abre a Júlia, sonda a API, fecha a aba e devolve o foco).\n- PES-07: citações clicáveis e painel sobreposto do documento, com abas e botões de cópia.\n- PES-08: interface própria para o 2º grau do TRF5, só sobre a API pública.\n- BUG-29 (P0): escopo da unidade caía inteiro por HTTP 500 provocado por rajada de requisições.\n- PES-09: qualidade da amostra — descarte de transcrições, remoção de cabeçalho, ementa pura e amostragem estratificada no tempo.\n- Retentativa de síntese reaproveitando a evidência já recuperada, para que falha de cota do provedor de IA não custe nova varredura ao servidor do TRF5.\n\nBump 1.10.1 -> 1.10.2. Sem novas dependências, permissões ou hosts.\n\nNOTA DE VERSIONAMENTO: pelo critério da skill (minor = feature nova significativa), a interface do 2º grau e o login assistido justificariam 1.11.0. Mantido patch por decisão do owner.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "skill release-extensao — sessão 2026-07-19",
+      "tags": ["release", "extensao", "cws", "julia"],
+      "esforco": "XS",
+      "depende": ["PES-06", "PES-07", "PES-08", "PES-09", "BUG-29"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.10.2; dist/manifest.json em 1.10.2",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "zip versoes/dist v1.10.2.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main e sync do KV",
+        "Smoke: navegador sem sessão da Júlia mostra a porta de entrada; login assistido fecha a aba e volta",
+        "Smoke: usuário em pjett recebe a interface pública",
+        "Tag git v1.10.2 + Release no GitHub"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Card aberto na skill release-extensao. Bump 1.10.1 -> 1.10.2."
+        }
+      ]
+    },
+    {
       "id": "REL-1.10.1",
       "titulo": "Release v1.10.1 — sinalização de sessão não autenticada no Fale com a Júlia",
       "descricao": "Patch sobre a v1.10.0, empacotado no mesmo dia da aprovação dela.\n\n- BUG-28: em navegador sem a Júlia autenticada, a consulta respondia apenas pela API pública (instância revisora) sem sinalizar de forma acionável que faltava autenticar. O aviso de sessão só disparava quando NADA era lido, e como a API pública sempre responde, ele nunca vinha.\n\nCorreções: bloco de reconexão com botão inserido antes da resposta quando o escopo da unidade cai por sessão; regra 6.1 no prompt de síntese, obrigando a resposta a abrir com o aviso; texto do formulário reescrito para dizer a consequência ('as decisões da sua unidade ficam de fora') em vez do estado ('sessão expirada').\n\nBump 1.10.0 -> 1.10.1 (patch). Sem novas dependências, permissões ou hosts.\n\nO broadcast aos pilotos da v1.10.0 foi segurado para sair com esta versão — o público a comunicar é exatamente o que instala em navegador novo, onde o defeito se manifesta.",

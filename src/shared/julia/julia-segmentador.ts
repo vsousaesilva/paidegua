@@ -118,6 +118,47 @@ function primeiraOcorrencia(texto: string, marcador: RegExp): number {
 /** Recorte curto demais denuncia falso positivo (ex.: "JULGO" numa citação). */
 const MINIMO_RECORTE = 80;
 
+// ── Cabeçalho ────────────────────────────────────────────────────
+
+/**
+ * Linhas de cabeçalho do ato: órgão, autuação e qualificação das partes.
+ *
+ * Sempre no topo e sempre reconhecíveis — ao contrário do relatório, que nem
+ * sempre tem título e por isso é tolerado quando não se identifica.
+ */
+const LINHA_CABECALHO =
+  /^[ \t]*(?:PODER JUDICI[ÁA]RIO|JUSTI[ÇC]A FEDERAL|SE[ÇC][ÃA]O JUDICI[ÁA]RIA|TRIBUNAL REGIONAL FEDERAL|\d+[ªa]?\s+(?:VARA|TURMA|RELATORIA)[^\n]*|(?:AUTOR|R[ÉE]U|REQUERENTE|REQUERIDO|RECORRENTE|RECORRIDO|APELANTE|APELADO|AGRAVANTE|AGRAVADO|EMBARGANTE|EMBARGADO|IMPETRANTE|IMPETRADO|EXEQUENTE|EXECUTADO|ADVOGADO|PROCURADOR|MAGISTRADO|JUIZ|RELATOR)[^\n:]*:[^\n]*|[^\n]*\(\d+\)\s*N[ºo°][^\n]*|SENTEN[ÇC]A|DECIS[ÃA]O|AC[ÓO]RD[ÃA]O)[ \t]*$/i;
+
+/** Só procuramos cabeçalho no começo — ele nunca está no meio do ato. */
+const JANELA_CABECALHO = 3_000;
+
+/**
+ * Remove o cabeçalho do ato.
+ *
+ * Corta até a **última** linha de cabeçalho encontrada na janela inicial, o que
+ * dá conta da ordem variável (às vezes o título SENTENÇA vem antes das partes,
+ * às vezes depois).
+ *
+ * Fail-safe duplo: não corta se o resultado ficar curto demais ou se for
+ * remover mais que a janela — cabeçalho é dezenas de linhas, não metade do
+ * documento.
+ */
+export function removerCabecalho(texto: string): string {
+  const janela = texto.slice(0, JANELA_CABECALHO);
+  const linhas = janela.split(/\r?\n/);
+
+  let corte = -1;
+  let posicao = 0;
+  for (const linha of linhas) {
+    posicao += linha.length + 1;
+    if (linha.trim() && LINHA_CABECALHO.test(linha)) corte = posicao;
+  }
+  if (corte <= 0) return texto;
+
+  const resto = texto.slice(corte).trim();
+  return resto.length >= MINIMO_RECORTE ? resto : texto;
+}
+
 // ── Extratores ───────────────────────────────────────────────────
 
 /**
@@ -170,9 +211,156 @@ export function extrairFundamentacao(texto: string): {
   const recorte = texto.slice(inicio, fim).trim();
   // Só vale como recorte se de fato removeu algo relevante.
   if (recorte.length < MINIMO_RECORTE || recorte.length === texto.length) {
-    return { fundamentacao: texto, foiRecortada: false };
+    // Sem marcador de fundamentação, ao menos tiramos o cabeçalho: ele é
+    // sempre identificável, ao contrário do relatório, que muitas vezes não
+    // tem título e por isso é tolerado.
+    return { fundamentacao: removerCabecalho(texto), foiRecortada: false };
   }
-  return { fundamentacao: recorte, foiRecortada: true };
+  return { fundamentacao: removerCabecalho(recorte), foiRecortada: true };
+}
+
+// ── Ementa pura ──────────────────────────────────────────────────
+
+/** Linha que contém só a palavra EMENTA — o título da seção. */
+const TITULO_EMENTA = /(?:^|\n)[ \t]*EMENTA[ \t]*:?[ \t]*(?=\n|$)/gi;
+
+/** Abaixo disso o que veio depois do título não é a ementa, é sobra. */
+const MINIMO_EMENTA = 200;
+
+/**
+ * Isola a ementa do cabeçalho que a precede.
+ *
+ * Documento do tipo `EMENTA` no acervo do TRF5 não é só a ementa: vem com o
+ * cabeçalho do órgão (tribunal, turma, classe, número) e a qualificação das
+ * partes, e só então o título EMENTA e o texto. Devolver esse conjunto como
+ * "a ementa" suja a cópia para minuta e torna a aba de texto completo idêntica
+ * à de ementa.
+ *
+ * Pegamos a **última** ocorrência do título que ainda deixe conteúdo
+ * substancial depois: acórdãos costumam repetir o cabeçalho e o título, e a
+ * ementa verdadeira vem após a última repetição. O piso de caracteres evita
+ * cair num "EMENTA" citado dentro de precedente transcrito no fim do texto.
+ */
+export function extrairEmentaPura(texto: string): {
+  ementa: string;
+  foiRecortada: boolean;
+} {
+  const re = new RegExp(TITULO_EMENTA.source, TITULO_EMENTA.flags);
+  let inicio = -1;
+  for (let m = re.exec(texto); m; m = re.exec(texto)) {
+    const fim = m.index + m[0].length;
+    if (texto.length - fim >= MINIMO_EMENTA) inicio = fim;
+  }
+  if (inicio < 0) return { ementa: texto, foiRecortada: false };
+
+  const recorte = texto.slice(inicio).trim();
+  return recorte.length >= MINIMO_EMENTA
+    ? { ementa: recorte, foiRecortada: true }
+    : { ementa: texto, foiRecortada: false };
+}
+
+// ── Descarte de transcrições ─────────────────────────────────────
+
+/**
+ * Fecho de citação usado no acervo do TRF5 e nos tribunais superiores.
+ *
+ * É o marcador mais confiável de que o que veio antes são palavras de OUTRO
+ * órgão: um juiz não encerra o próprio raciocínio com a referência do julgado
+ * que acabou de proferir.
+ */
+const FECHO_CITACAO =
+  /\((?:PROCESSO:|TRF5\.|REsp|AgRg|AgInt|EDcl|PEDILEF|RE |AI |ADI )[^)]{10,400}\)/gi;
+
+/** Introdução típica de transcrição: linha terminada em dois-pontos. */
+const ABERTURA_TRANSCRICAO = /:\s*$/;
+
+/** Abaixo disso não vale remover — é referência curta, não bloco transcrito. */
+const MINIMO_TRANSCRICAO = 300;
+
+/**
+ * Proporção máxima do texto que aceitamos descartar.
+ *
+ * Passar disso indica que a heurística se perdeu — melhor devolver o texto
+ * íntegro e gastar orçamento do que entregar ao modelo um documento mutilado
+ * achando que é a fundamentação.
+ */
+const MAX_PROPORCAO_REMOVIDA = 0.7;
+
+/**
+ * Remove blocos transcritos de doutrina, ementas e precedentes alheios.
+ *
+ * ## Por que agora, tendo eu recusado antes
+ *
+ * Recusei fazer isso por regex argumentando que separar "citar" de "decidir" é
+ * análise semântica. O argumento vale no geral e falhou no caso concreto: em
+ * temas citação-pesados (medicamento off-label, por exemplo) uma sentença
+ * chega a 24 mil caracteres e o orçamento se esgota em cinco documentos de 775
+ * encontrados. O custo de não recortar passou a ser maior que o risco de
+ * recortar.
+ *
+ * ## A regra, e por que ela é conservadora
+ *
+ * Só removemos um trecho quando ele tem **as duas** marcas ao mesmo tempo:
+ * abertura por linha terminada em dois-pontos (a introdução clássica de
+ * transcrição) e fecho por referência de julgado. Texto próprio do juiz
+ * raramente termina com a referência de um acórdão alheio.
+ *
+ * Exigir as duas marcas reduz muito o alcance — várias transcrições escapam —
+ * mas erra para o lado seguro: o que passa custa orçamento, o que é removido
+ * por engano custaria razão de decidir.
+ *
+ * ## Fail-safe
+ *
+ * Se o resultado ficar abaixo de 30% do original, devolvemos o texto íntegro:
+ * remoção dessa magnitude é sinal de heurística perdida, não de documento
+ * citação-pesado.
+ */
+export function removerTranscricoes(texto: string): {
+  texto: string;
+  charsRemovidos: number;
+} {
+  const linhas = texto.split(/\r?\n/);
+  const manter: string[] = [];
+  let buffer: string[] = [];
+  let bufferAberto = false;
+
+  const descarregar = (transcricao: boolean): void => {
+    const bloco = buffer.join('\n');
+    // Bloco curto não compensa remover, mesmo casando as duas marcas.
+    if (!transcricao || bloco.length < MINIMO_TRANSCRICAO) manter.push(bloco);
+    buffer = [];
+    bufferAberto = false;
+  };
+
+  for (const linha of linhas) {
+    if (bufferAberto) {
+      buffer.push(linha);
+      FECHO_CITACAO.lastIndex = 0;
+      if (FECHO_CITACAO.test(linha)) descarregar(true);
+      // Bloco longo demais sem fecho: provavelmente não é transcrição.
+      else if (buffer.join('\n').length > 12_000) descarregar(false);
+      continue;
+    }
+    if (ABERTURA_TRANSCRICAO.test(linha)) {
+      buffer.push(linha);
+      bufferAberto = true;
+      continue;
+    }
+    manter.push(linha);
+  }
+  if (bufferAberto) descarregar(false);
+
+  const limpo = manter
+    .join('\n')
+    // Remove também as referências soltas que ficaram no meio do texto próprio.
+    .replace(FECHO_CITACAO, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (limpo.length < texto.length * (1 - MAX_PROPORCAO_REMOVIDA)) {
+    return { texto, charsRemovidos: 0 };
+  }
+  return { texto: limpo, charsRemovidos: texto.length - limpo.length };
 }
 
 // ── Classificação ────────────────────────────────────────────────
@@ -218,37 +406,43 @@ export function segmentar(doc: JuliaDocumento): JuliaTrecho {
   if (ehSentenca(doc)) {
     const { fundamentacao, foiRecortada } = extrairFundamentacao(doc.texto);
     const { dispositivo, foiRecortado } = extrairDispositivo(doc.texto);
+    // Só na fundamentação: é onde se acumulam doutrina e precedente alheio. O
+    // dispositivo é curto e não transcreve.
+    const { texto: enxuto } = removerTranscricoes(fundamentacao);
     return {
-      texto: fundamentacao,
+      texto: enxuto,
       secao: foiRecortada ? 'fundamentacao' : 'integral',
       dispositivo: foiRecortado ? dispositivo : null,
       charsOriginais,
-      charsResultantes: fundamentacao.length
+      charsResultantes: enxuto.length
     };
   }
 
-  // `tipoDocumento: EMENTA` **já é** a razão de decidir condensada — não há
-  // seção a isolar. Sem este caso, o extrator procuraria marcadores de
-  // RELATÓRIO/VOTO que não existem, cairia no caminho seguro e marcaria
-  // `'integral'`: o orçamento então trataria como não-segmentado um documento
-  // que já estava no formato ideal, e um só resultado consumiria a cota
-  // inteira do escopo.
+  // `tipoDocumento: EMENTA` dispensa a busca por RELATÓRIO/VOTO, que não
+  // existem ali — mas o documento **não é só a ementa**: traz antes o
+  // cabeçalho do órgão e a qualificação das partes. Isolamos a ementa de fato,
+  // para que a cópia sirva a uma minuta e para que a aba de texto completo
+  // tenha conteúdo distinto.
   if (/^\s*ementa\s*$/i.test(doc.tipoDocumento ?? '')) {
+    const { ementa } = extrairEmentaPura(doc.texto);
     return {
-      texto: doc.texto,
+      texto: ementa,
       secao: 'ementa',
       dispositivo: null,
       charsOriginais,
-      charsResultantes: charsOriginais
+      charsResultantes: ementa.length
     };
   }
 
+  // Acórdão completo: recorta a seção EMENTA de dentro dele e, em seguida,
+  // descarta o cabeçalho que ainda vier junto.
   const { ementa, foiRecortada } = extrairEmenta(doc.texto);
+  const puro = extrairEmentaPura(ementa).ementa;
   return {
-    texto: ementa,
+    texto: puro,
     secao: foiRecortada ? 'ementa' : 'integral',
     dispositivo: null,
     charsOriginais,
-    charsResultantes: ementa.length
+    charsResultantes: puro.length
   };
 }

@@ -26,7 +26,10 @@ import {
 import {
   executarConsultaJulia,
   listarOrgaosJulgadoresUnidos,
+  loginAssistidoJulia,
   mensagemErroJulia,
+  retentarSinteseJulia,
+  verificarAcessoJulia,
   type JuliaStartPayload
 } from './julia-orquestrador';
 import type {
@@ -718,6 +721,32 @@ function dispatchMessage(
           },
           sendResponse
         );
+        return true;
+
+      case MESSAGE_CHANNELS.JULIA_VERIFICAR_SESSAO:
+        void (async () => {
+          const p = message.payload as {
+            orgao: JuliaOrgao;
+            instancia: JuliaInstanciaAutenticada;
+          };
+          sendResponse({
+            ok: true,
+            acesso: await verificarAcessoJulia(p.orgao, p.instancia)
+          });
+        })();
+        return true;
+
+      case MESSAGE_CHANNELS.JULIA_LOGIN_ASSISTIDO:
+        void (async () => {
+          const p = message.payload as {
+            orgao: JuliaOrgao;
+            instancia: JuliaInstanciaAutenticada;
+          };
+          // `sender.tab.id` é a aba do PJe de onde veio o clique — é para ela
+          // que devolvemos o foco depois do login.
+          const r = await loginAssistidoJulia(p.orgao, p.instancia, sender.tab?.id);
+          sendResponse({ ok: true, ...r });
+        })();
         return true;
 
       case MESSAGE_CHANNELS.TRANSCRIBE_AUDIO:
@@ -3332,6 +3361,12 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (msg.type === JULIA_PORT_MSG.START) {
       void handleJuliaStart(port, msg.payload as JuliaStartPayload);
+    } else if (msg.type === JULIA_PORT_MSG.RETENTAR_SINTESE) {
+      void handleJuliaStart(
+        port,
+        msg.payload as JuliaStartPayload,
+        /* somenteSintese */ true
+      );
     } else if (msg.type === JULIA_PORT_MSG.ABORT) {
       activeJulia.get(port)?.abort();
     }
@@ -3365,7 +3400,9 @@ async function handleJuliaOrgaosJulgadores(
 
 async function handleJuliaStart(
   port: chrome.runtime.Port,
-  payload: JuliaStartPayload
+  payload: JuliaStartPayload,
+  /** Refaz só a síntese, sem nova varredura na Júlia. */
+  somenteSintese = false
 ): Promise<void> {
   activeJulia.get(port)?.abort();
   const controller = new AbortController();
@@ -3390,13 +3427,16 @@ async function handleJuliaStart(
     }
 
     const settings = await getSettings();
-    await executarConsultaJulia(payload, {
+    const ctx = {
       apiKey,
       temperature: payload.temperature ?? settings.temperature,
       maxTokens: payload.maxTokens ?? settings.maxTokens,
       signal: controller.signal,
-      emitir: (m) => port.postMessage(m)
-    });
+      emitir: (m: Record<string, unknown>) => port.postMessage(m)
+    };
+    await (somenteSintese
+      ? retentarSinteseJulia(ctx)
+      : executarConsultaJulia(payload, ctx));
   } catch (error: unknown) {
     if ((error as { name?: string }).name === 'AbortError') {
       port.postMessage({ type: JULIA_PORT_MSG.DONE });

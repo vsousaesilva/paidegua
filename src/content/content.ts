@@ -94,7 +94,10 @@ import { abrirConsultorFluxos } from './fluxos/fluxos-coordinator';
 import {
   consultarJulia,
   inferirContexto,
+  renderPortaEntrada,
   renderSeletorConsulta,
+  renderSeletorPublico,
+  verificarAcesso,
   type JuliaContextoUnidade
 } from './julia/julia-chat';
 import {
@@ -3665,12 +3668,54 @@ async function handleFaleComJulia(): Promise<void> {
   const contexto = await inferirContexto();
 
   /**
+   * Chave 1G/2G, derivada do host e invisível ao usuário.
+   *
+   * No 2º grau do TRF5 (`pjett`) a Júlia consulta apenas o próprio 2º grau, e
+   * esse acervo a API pública cobre por inteiro — não há base autenticada a
+   * acessar nem instância revisora com que confrontar.
+   *
+   * Turma Recursal (`pje2g`) fica no fluxo de 1G por decisão do owner: ela tem
+   * unidade própria na base autenticada e é confrontável com a TRU. `unknown`
+   * também, por ser o fluxo mais completo.
+   */
+  const modo: 'dupla' | 'publica' =
+    memory.detection?.grau === '2g' ? 'publica' : 'dupla';
+
+  /**
    * Monta o formulário no fim do fio da conversa.
    *
    * Recursiva de propósito: cada consulta encerrada oferece "Iniciar outra
    * consulta", que chama isto de novo com o contexto já usado — assim a
    * próxima pergunta herda as instâncias e unidades escolhidas.
    */
+  /** Fluxo do 2º grau: só API pública, sem porta de autenticação. */
+  const abrirFormularioPublico = (
+    ctx: JuliaContextoUnidade,
+    termosIniciais?: string
+  ): void => {
+    chat.addCustomBubble(
+      renderSeletorPublico({
+        contexto: ctx,
+        shadow,
+        termosIniciais,
+        onConsultar: (escolhido, pergunta, termosManuais, reabilitar) => {
+          consultarJulia({
+            chat,
+            shadow,
+            pergunta,
+            contexto: escolhido,
+            termosManuais,
+            modo: 'publica',
+            provider: settings.activeProvider,
+            model: settings.models[settings.activeProvider],
+            onFim: reabilitar,
+            onNovaConsulta: abrirFormularioPublico
+          });
+        }
+      })
+    );
+  };
+
   const abrirFormulario = (
     ctx: JuliaContextoUnidade,
     termosIniciais?: string
@@ -3699,7 +3744,37 @@ async function handleFaleComJulia(): Promise<void> {
     );
   };
 
-  abrirFormulario(contexto);
+  // A ramificação vem DEPOIS das declarações acima — ambas são const de escopo
+  // de bloco e não sofrem hoisting.
+  if (modo === 'publica') {
+    abrirFormularioPublico(contexto);
+    return;
+  }
+
+  // Sonda o acesso ANTES de montar o formulário. A expectativa do usuário é
+  // consultar a base da própria unidade; abrir o formulário sem sessão o faria
+  // digitar a pergunta e gastar uma chamada de LLM para receber metade.
+  const aguarde = chat.addSystemText('Verificando acesso à Júlia…');
+  const acesso = await verificarAcesso(contexto);
+  aguarde.remove();
+
+  if (acesso === 'autenticado') {
+    abrirFormulario(contexto);
+    return;
+  }
+
+  chat.addCustomBubble(
+    renderPortaEntrada({
+      acesso,
+      contexto,
+      shadow,
+      onLiberado: () => abrirFormulario(contexto),
+      // Sem a base da unidade, não faz sentido oferecer as instâncias dela no
+      // formulário — a consulta vai só pela API pública.
+      onSomenteRevisor: () =>
+        abrirFormulario({ ...contexto, instancias: [...contexto.instancias] })
+    })
+  );
 }
 
 /**

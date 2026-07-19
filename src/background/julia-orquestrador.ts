@@ -36,12 +36,15 @@ import {
   type JuliaExtracao
 } from '../shared/julia/julia-prompts';
 import { recuperar, type JuliaRecuperacao } from '../shared/julia/julia-rag';
+import type { JuliaDocumento } from '../shared/julia/julia-types';
 import { montarUrlDocumentoPje } from '../shared/julia/julia-identificador';
 import {
   JuliaSessaoExpiradaError,
-  listarOrgaosJulgadores
+  listarOrgaosJulgadores,
+  obterDataAtualizacao
 } from '../shared/julia/julia-client-autenticado';
 import type {
+  JuliaInstancia,
   JuliaInstanciaAutenticada,
   JuliaOrgao
 } from '../shared/julia/julia-types';
@@ -101,6 +104,133 @@ export async function listarOrgaosJulgadoresUnidos(
   return [...uniao].sort(compararUnidades);
 }
 
+// ── Sonda de acesso e login assistido ────────────────────────────
+
+/** URL de login da Júlia. */
+const URL_LOGIN_JULIA = 'https://julia.trf5.jus.br/julia/entrar';
+
+export type JuliaAcesso = 'autenticado' | 'sessao' | 'indisponivel';
+
+/**
+ * Sonda o acesso à Júlia pelo endpoint mais barato do conjunto.
+ *
+ * Distingue **sessão ausente** de **serviço fora do ar** de propósito: a
+ * primeira se resolve logando, a segunda só esperando. Tratá-las igual faz o
+ * usuário tentar logar cinco vezes contra um servidor indisponível.
+ */
+export async function verificarAcessoJulia(
+  orgao: JuliaOrgao,
+  instancia: JuliaInstanciaAutenticada
+): Promise<JuliaAcesso> {
+  try {
+    await obterDataAtualizacao(orgao, instancia);
+    return 'autenticado';
+  } catch (err) {
+    if (err instanceof JuliaSessaoExpiradaError) return 'sessao';
+    console.warn(`${LOG_PREFIX} julia: sonda de acesso falhou:`, err);
+    return 'indisponivel';
+  }
+}
+
+/** Intervalo entre sondagens durante o login assistido. */
+const LOGIN_POLL_MS = 3_000;
+/** Teto da sondagem. Passado isso, paramos e devolvemos o controle ao usuário. */
+const LOGIN_TIMEOUT_MS = 180_000;
+
+let abortarLoginAnterior: (() => void) | null = null;
+
+/**
+ * Abre a Júlia em aba nova e acompanha até a autenticação acontecer.
+ *
+ * ## Por que sondar a API em vez de observar a página
+ *
+ * Detectar "o login terminou" pelo DOM ou pela URL seria adivinhação — e a
+ * Júlia já mostrou que renumera identificadores entre versões. Sondar
+ * `processos:data-atualizacao` testa exatamente a capacidade que interessa: a
+ * extensão consegue falar com a API autenticada. É prova, não semelhança.
+ *
+ * Efeito colateral útil: chamar uma API do Chrome a cada 3s mantém o service
+ * worker MV3 vivo, o mesmo recurso que o `stream-guard` usa contra o
+ * encerramento por ociosidade.
+ *
+ * ## Guardas ao fechar a aba
+ *
+ * Fechar guia alheia é intrusivo. Só fechamos a que **nós** abrimos, e só se
+ * ainda estiver na Júlia — se a pessoa navegou para outro lugar naquela aba,
+ * deixamos aberta e apenas devolvemos o foco.
+ */
+export async function loginAssistidoJulia(
+  orgao: JuliaOrgao,
+  instancia: JuliaInstanciaAutenticada,
+  tabOrigemId: number | undefined
+): Promise<{ autenticado: boolean; motivo?: 'timeout' | 'aba-fechada' }> {
+  // Clique novo cancela a sondagem anterior, para não acumular.
+  abortarLoginAnterior?.();
+
+  const aba = await chrome.tabs.create({ url: URL_LOGIN_JULIA, active: true });
+  const abaId = aba.id;
+
+  let cancelado = false;
+  abortarLoginAnterior = () => {
+    cancelado = true;
+  };
+
+  const inicio = Date.now();
+  try {
+    while (!cancelado && Date.now() - inicio < LOGIN_TIMEOUT_MS) {
+      await new Promise((r) => setTimeout(r, LOGIN_POLL_MS));
+      if (cancelado) break;
+
+      // Aba fechada pelo usuário = desistência. Não insistimos.
+      if (abaId !== undefined && !(await abaExiste(abaId))) {
+        return { autenticado: false, motivo: 'aba-fechada' };
+      }
+
+      if ((await verificarAcessoJulia(orgao, instancia)) === 'autenticado') {
+        await fecharAbaSeAindaNaJulia(abaId);
+        await focarAba(tabOrigemId);
+        return { autenticado: true };
+      }
+    }
+    return { autenticado: false, motivo: 'timeout' };
+  } finally {
+    if (abortarLoginAnterior) abortarLoginAnterior = null;
+  }
+}
+
+async function abaExiste(abaId: number): Promise<boolean> {
+  try {
+    await chrome.tabs.get(abaId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fecharAbaSeAindaNaJulia(abaId: number | undefined): Promise<void> {
+  if (abaId === undefined) return;
+  try {
+    const aba = await chrome.tabs.get(abaId);
+    // `url` vem preenchida por causa do host_permissions em *.jus.br. Se vier
+    // vazia, preferimos NÃO fechar a fechar a aba errada.
+    if (aba.url?.includes('julia.trf5.jus.br')) {
+      await chrome.tabs.remove(abaId);
+    }
+  } catch {
+    /* aba já não existe */
+  }
+}
+
+async function focarAba(tabId: number | undefined): Promise<void> {
+  if (tabId === undefined) return;
+  try {
+    // Explícito: ao fechar uma guia o Chrome ativa a vizinha, não a anterior.
+    await chrome.tabs.update(tabId, { active: true });
+  } catch {
+    /* aba de origem já não existe */
+  }
+}
+
 export interface JuliaStartPayload {
   pergunta: string;
   orgao: JuliaOrgao;
@@ -110,6 +240,13 @@ export interface JuliaStartPayload {
   orgaosJulgadores?: string[];
   /** Escolha explícita do usuário — não se infere da redação da pergunta. */
   compararComRevisor?: boolean;
+  /**
+   * `'publica'` no 2º grau do TRF5: só a API pública, escopo único, sem
+   * confronto — não há instância revisora do Tribunal dentro do acervo.
+   */
+  modo?: 'dupla' | 'publica';
+  /** Acervos públicos escolhidos no modo `'publica'`. */
+  instanciasPublicas?: JuliaInstancia[];
   /**
    * Termos escritos pelo usuário. Quando presentes, **substituem** a extração
    * por LLM: quem conhece o vocabulário dos próprios julgados acerta mais que
@@ -230,8 +367,39 @@ async function extrair(
   }
 }
 
+/**
+ * Referência do julgado, pronta para colar numa minuta.
+ *
+ * A API pública já entrega isso montado no campo `resumo`, no formato que o
+ * próprio Tribunal usa — preferimos ele quando existe, em vez de reconstruir
+ * algo parecido e divergir da convenção da casa.
+ *
+ * Na API autenticada `resumo` não vem, então montamos com os campos
+ * disponíveis. Note que `relator` costuma vir vazio em primeiro grau (o
+ * `nomeMagistrado` do payload é nulo nas capturas), daí a montagem por partes
+ * presentes em vez de gabarito fixo.
+ */
+function montarReferencia(d: JuliaDocumento): string {
+  if (d.resumo?.trim()) return d.resumo.trim();
+
+  const data = (d.dataJulgamento ?? d.dataAssinatura ?? '').slice(0, 10);
+  const partes = [
+    d.numeroProcessoFormatado ?? d.numeroProcesso,
+    d.classeJudicial,
+    d.relator,
+    d.orgaoJulgador,
+    data ? `julgamento: ${data.split('-').reverse().join('/')}` : null
+  ].filter((p): p is string => !!p?.trim());
+
+  return partes.length ? `(${partes.join(', ')})` : '';
+}
+
 /** Resumo enviado à interface — números reais, sem texto de documento. */
 function resumirEvidencia(r: JuliaRecuperacao) {
+  // Numeração CONTÍNUA entre os escopos: o prompt cita por número, e numerar
+  // cada bloco a partir de 1 tornava `[1]` ambíguo entre unidade e revisor.
+  // O painel precisa usar exatamente os mesmos números da resposta.
+  let proximo = 0;
   const lado = (e: typeof r.unidade) =>
     e
       ? {
@@ -243,17 +411,32 @@ function resumirEvidencia(r: JuliaRecuperacao) {
           falhasLeitura: e.falhasLeitura,
           indisponivel: e.indisponivel?.motivo ?? null,
           processos: e.analisados.map((a) => ({
+            n: ++proximo,
             numero: a.documento.numeroProcessoFormatado ?? a.documento.numeroProcesso,
             tipo: a.documento.tipoDocumento,
             orgaoJulgador: a.documento.orgaoJulgador,
             data: a.documento.dataJulgamento ?? a.documento.dataAssinatura,
             secao: a.trecho.secao,
+            classe: a.documento.classeJudicial,
+            // Trecho e texto integral enviados para a interface exibir e
+            // copiar. Ficam na máquina do usuário: a anonimização vale para o
+            // que sai ao provedor de IA, não para o que ele já acessa
+            // legitimamente.
+            trecho: a.trecho.texto,
+            textoIntegral: a.documento.texto,
+            dispositivo: a.trecho.dispositivo,
+            referencia: montarReferencia(a.documento),
             // `urlPje` é só a base da instalação; o link do documento é montado
             // a partir dos ids embutidos no identificador.
             urlPje: montarUrlDocumentoPje(
               a.documento.codigoDocumento,
               a.documento.urlPje
-            )
+            ),
+            // O endpoint de download exige sessão do PJe NAQUELA instalação.
+            // Servidor de primeiro grau costuma não ter acesso ao pjett (2º
+            // grau), então oferecer o link ali seria beco sem saída — melhor
+            // não mostrar do que mostrar quebrado.
+            podeAbrirNoPje: /^(G1|JEF)$/i.test(a.documento.instancia ?? '')
           }))
         }
       : null;
@@ -289,11 +472,17 @@ export async function executarConsultaJulia(
       orgaosJulgadores: payload.orgaosJulgadores,
       dataInicial: extracao.dataInicial ?? undefined,
       dataFinal: extracao.dataFinal ?? undefined,
-      // A escolha do usuário prevalece sobre o que o LLM inferiu da redação.
-      escopos: {
-        unidade: extracao.escopos.unidade,
-        revisor: payload.compararComRevisor ?? extracao.escopos.revisor
-      },
+      instanciasPublicas: payload.instanciasPublicas,
+      // No modo público não há escopo de unidade a consultar — a base
+      // autenticada do 2º grau só cobre o que a pública já cobre.
+      escopos:
+        payload.modo === 'publica'
+          ? { unidade: false, revisor: true }
+          : {
+              // A escolha do usuário prevalece sobre o que o LLM inferiu.
+              unidade: extracao.escopos.unidade,
+              revisor: payload.compararComRevisor ?? extracao.escopos.revisor
+            },
       signal: comPrazo(ctx.signal, TIMEOUT_RECUPERACAO_MS)
     });
 
@@ -346,7 +535,44 @@ export async function executarConsultaJulia(
     return;
   }
 
-  emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.SINTETIZANDO });
+  // Guardada para permitir refazer só a síntese. A recuperação custou dezenas
+  // de requisições ao servidor do TRF5; perdê-la por falha de cota do provedor
+  // de IA seria desperdiçar recurso institucional por problema alheio a ele.
+  ultimaRecuperacao = { payload, recuperacao };
+
+  await sintetizar(payload, recuperacao, ctx);
+}
+
+/** Última recuperação bem-sucedida, para refazer a síntese sem nova varredura. */
+let ultimaRecuperacao: {
+  payload: JuliaStartPayload;
+  recuperacao: JuliaRecuperacao;
+} | null = null;
+
+/** Refaz a síntese sobre a evidência já recuperada. */
+export async function retentarSinteseJulia(ctx: JuliaContexto): Promise<void> {
+  if (!ultimaRecuperacao) {
+    ctx.emitir({
+      type: JULIA_PORT_MSG.ERROR,
+      error: 'Não há consulta anterior para refazer. Inicie uma nova.'
+    });
+    return;
+  }
+  const { payload, recuperacao } = ultimaRecuperacao;
+  ctx.emitir({
+    type: JULIA_PORT_MSG.EVIDENCIA,
+    evidencia: resumirEvidencia(recuperacao),
+    termoUsado: payload.termosManuais ?? payload.pergunta
+  });
+  await sintetizar(payload, recuperacao, ctx);
+}
+
+async function sintetizar(
+  payload: JuliaStartPayload,
+  recuperacao: JuliaRecuperacao,
+  ctx: JuliaContexto
+): Promise<void> {
+  ctx.emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.SINTETIZANDO });
 
   const provider = getProvider(payload.provider);
   const generator = provider.sendMessage({
@@ -356,7 +582,11 @@ export async function executarConsultaJulia(
     messages: [
       {
         role: 'user',
-        content: buildJuliaSintesePrompt(payload.pergunta, recuperacao),
+        content: buildJuliaSintesePrompt(
+          payload.pergunta,
+          recuperacao,
+          payload.modo ?? 'dupla'
+        ),
         timestamp: Date.now()
       }
     ],
@@ -369,9 +599,9 @@ export async function executarConsultaJulia(
 
   for await (const chunk of generator) {
     if (ctx.signal.aborted) break;
-    emitir({ type: JULIA_PORT_MSG.CHUNK, delta: chunk.delta });
+    ctx.emitir({ type: JULIA_PORT_MSG.CHUNK, delta: chunk.delta });
   }
-  emitir({ type: JULIA_PORT_MSG.DONE });
+  ctx.emitir({ type: JULIA_PORT_MSG.DONE });
 }
 
 /** Mensagem de erro legível, distinguindo sessão do resto. */

@@ -240,7 +240,11 @@ function normalizarDocumento(bruto: JuliaDocumentoBruto): JuliaDocumento {
     origem: 'publica',
     // A API pública devolve o documento inteiro na própria busca — ao
     // contrário da autenticada, que devolve trecho.
-    textoCompleto: true
+    textoCompleto: true,
+    // A API pública não traz base de URL (o campo `url` vem `null`), então o
+    // link é derivado da instância embutida no `codigoDocumento`. Sem isso os
+    // documentos do escopo revisor ficavam sem link.
+    urlPje: null
   };
 }
 

@@ -84,15 +84,40 @@ export function chaveDeduplicacao(identificador: string): string {
  * `null` quando o identificador não decompõe, para o chamador exibir texto sem
  * link em vez de um endereço quebrado.
  */
+/**
+ * Host do PJe correspondente à instância, conforme a convenção do TRF5
+ * registrada em `shared/pje-host.ts`.
+ *
+ * A API pública devolve `url: null`, então para os documentos do escopo revisor
+ * a base precisa ser derivada — sem isso eles ficam sem link, que foi o
+ * comportamento observado em campo.
+ *
+ * `TRU` está mapeada junto com a Turma Recursal por ser o colegiado de
+ * uniformização dos JEFs; **não verificado**.
+ */
+function hostPorInstancia(instancia: string): string | null {
+  const i = instancia.toUpperCase();
+  if (i === 'G1' || i === 'JEF') return 'https://pje1g.trf5.jus.br/pje';
+  if (i === 'TR' || i === 'TRU' || i.startsWith('TR_')) {
+    return 'https://pje2g.trf5.jus.br/pje';
+  }
+  if (i === 'G2') return 'https://pjett.trf5.jus.br/pje';
+  return null;
+}
+
 export function montarUrlDocumentoPje(
   identificador: string,
   urlBase: string | null | undefined
 ): string | null {
   const d = decomporIdentificador(identificador);
-  if (!d || !urlBase) return null;
+  if (!d) return null;
+
+  // A base vem do payload quando existe (API autenticada) e é derivada da
+  // instância quando não (API pública, que devolve `url: null`).
+  const base = (urlBase ?? hostPorInstancia(d.instancia))?.replace(/\/+$/, '');
+  if (!base) return null;
 
   // `G1`/`JEF` vivem na instalação de 1º grau; recursais, na de 2º.
   const grau = /^(G1|JEF)$/i.test(d.instancia) ? '1g' : '2g';
-  const base = urlBase.replace(/\/+$/, '');
   return `${base}/seam/resource/rest/pje-legacy/documento/download/${d.orgao}/${grau}/${d.idProcesso}/${d.idDocumento}`;
 }

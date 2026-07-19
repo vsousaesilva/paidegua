@@ -76,11 +76,10 @@ import type {
  * Por isso o revisor é mais generoso: ampliá-lo é quase de graça, enquanto
  * ampliar a unidade tem custo linear em carga para o Tribunal.
  *
- * ## Por que não subir mais
+ * ## Por que não subir o número de documentos
  *
- * Não é contexto nem custo — ~55 mil tokens de entrada cabem folgados em
- * qualquer provedor suportado e custam frações de centavo. São dois outros
- * fatores:
+ * Não é contexto nem custo — cabem folgados em qualquer provedor suportado e
+ * custam frações de centavo. São dois outros fatores:
  *
  *   1. **Carga.** 16 documentos na unidade são 16 requisições de inteiro teor
  *      por pergunta, somadas às buscas.
@@ -88,10 +87,22 @@ import type {
  *      decrescente até ~20, e acima de ~30 tende a piorar: modelos atendem
  *      menos ao miolo de contextos longos, e documentos marginais diluem o
  *      sinal. Reconhecer um padrão de entendimento pede dezenas, não centenas.
+ *
+ * ## Por que o teto de caracteres subiu para 250 mil
+ *
+ * Em campo, uma consulta sobre medicamento off-label leu **5 de 775** — o teto
+ * anterior (120 mil) se esgotava em cinco sentenças, porque tema
+ * citação-pesado produz fundamentação de ~24 mil caracteres. O limite estava
+ * cortando onze documentos já buscados e pagos em requisição.
+ *
+ * O teto sozinho seria remendo: o volume vinha de doutrina e precedente
+ * transcritos, que o próprio prompt manda o modelo NÃO atribuir à unidade.
+ * Por isso veio junto o descarte de transcrições em `julia-segmentador.ts` —
+ * o teto dá folga, e o recorte ataca a causa.
  */
 const ORCAMENTO = {
-  unidade: { documentos: 16, maxChars: 120_000 },
-  revisor: { documentos: 24, maxChars: 90_000 }
+  unidade: { documentos: 16, maxChars: 250_000 },
+  revisor: { documentos: 24, maxChars: 120_000 }
 } as const;
 
 /** Quantos resultados pedir por escopo antes de selecionar. */
@@ -214,6 +225,14 @@ export interface JuliaConsulta {
    * Cada unidade vira uma busca por instância — ver `MAX_COMBINACOES`.
    */
   orgaosJulgadores?: readonly string[];
+  /**
+   * Sobrepõe a derivação do revisor por rito.
+   *
+   * No 2º grau do TRF5 não existe "quem revisa" dentro do acervo, então o
+   * usuário escolhe os acervos públicos diretamente em vez de o sistema
+   * inferi-los da instância da unidade.
+   */
+  instanciasPublicas?: readonly JuliaInstancia[];
   dataInicial?: string;
   dataFinal?: string;
   escopos?: { unidade?: boolean; revisor?: boolean };
@@ -310,66 +329,156 @@ async function recuperarUnidade(c: JuliaConsulta): Promise<JuliaEscopoResultado>
       );
     }
 
-    const porInstancia = await Promise.all(
-      combinacoes.slice(0, MAX_COMBINACOES).map(async ({ instancia, orgaoJulgador }) => {
-        const filtros = {
-          orgao: c.orgao,
-          instancia,
-          termo: c.termo,
-          orgaoJulgador,
-          dataInicial: c.dataInicial,
-          dataFinal: c.dataFinal,
-          // Dois filtros num só: exclui peça de parte (petição, contestação) e
-          // exclui ato de outra instância. A Júlia indexa por processo, então
-          // sem isto o acórdão do recurso vem junto com a sentença da vara.
-          tiposDocumento: tiposPorInstancia(instancia),
-          length: CANDIDATOS_POR_ESCOPO
-        };
+    const usadas = combinacoes.slice(0, MAX_COMBINACOES);
 
-        // O sumário dá o universo real sem baixar documento — é o que sustenta
-        // o "de N encontradas, analisadas M" exigido pelo plano.
-        const [busca, sumario] = await Promise.all([
-          buscarDocumentos(filtros, { signal: c.signal }),
-          obterSumario(filtros, { signal: c.signal }).catch(() => [])
-        ]);
-        const universoSumario = sumario.reduce((s, i) => s + (i.quantidade ?? 0), 0);
-        return {
-          universo: universoSumario || busca.total,
-          ehTeto: busca.totalEhTeto,
-          documentos: busca.documentos
-        };
-      })
+    const buscarCombinacao = async (
+      instancia: JuliaInstanciaAutenticada,
+      orgaoJulgador: string | undefined,
+      /** Recorte de teto para a passada histórica. */
+      dataFinal?: string
+    ) => {
+      const filtros = {
+        orgao: c.orgao,
+        instancia,
+        termo: c.termo,
+        orgaoJulgador,
+        dataInicial: c.dataInicial,
+        dataFinal: dataFinal ?? c.dataFinal,
+        // Dois filtros num só: exclui peça de parte (petição, contestação) e
+        // exclui ato de outra instância. A Júlia indexa por processo, então
+        // sem isto o acórdão do recurso vem junto com a sentença da vara.
+        tiposDocumento: tiposPorInstancia(instancia),
+        length: CANDIDATOS_POR_ESCOPO
+      };
+
+      // Busca e sumário em sequência, não em paralelo: são duas requisições
+      // por combinação, e paralelizá-las dobrava a rajada que provocava 500.
+      const busca = await buscarDocumentos(filtros, { signal: c.signal });
+      // O sumário dá o universo real sem baixar documento — é o que sustenta
+      // o "de N encontradas, analisadas M" exigido pelo plano. Só na passada
+      // recente: na histórica o universo já está contabilizado.
+      const sumario = dataFinal
+        ? []
+        : await obterSumario(filtros, { signal: c.signal }).catch(() => []);
+      const universoSumario = sumario.reduce((s, i) => s + (i.quantidade ?? 0), 0);
+      return {
+        universo: universoSumario || busca.total,
+        ehTeto: busca.totalEhTeto,
+        documentos: busca.documentos
+      };
+    };
+
+    // Em lotes e tolerante a falha individual. Com `Promise.all`, uma
+    // combinação que retornasse 500 descartava as demais e o escopo da unidade
+    // sumia inteiro da resposta — observado em campo em 19/07/2026.
+    const { ok: porInstancia, falhas: falhasBusca } = await executarEmLotes(
+      usadas.map(
+        ({ instancia, orgaoJulgador }) =>
+          () =>
+            buscarCombinacao(instancia, orgaoJulgador)
+      )
     );
+
+    if (falhasBusca > 0) {
+      console.warn(
+        `${LOG_PREFIX} julia-rag: ${falhasBusca} de ${usadas.length} busca(s) da unidade falharam; seguindo com as demais.`
+      );
+    }
+    // Todas falharam: aí sim é indisponibilidade, não resultado parcial.
+    if (!porInstancia.length && usadas.length) {
+      base.indisponivel = {
+        motivo: 'erro',
+        detalhe: 'Nenhuma das buscas da unidade foi concluída.'
+      };
+      return base;
+    }
 
     for (const r of porInstancia) {
       base.universo += r.universo;
       base.universoEhTeto ||= r.ehTeto;
     }
 
-    // Mantém a ordem de relevância que o própria Júlia monta — o motor de busca
+    // Mantém a ordem de relevância que a própria Júlia monta — o motor de busca
     // do Tribunal conhece o acervo melhor que qualquer reordenação nossa.
     // Intercalamos apenas para que uma instância com acervo maior não
     // monopolize as vagas, e deduplicamos entre as buscas antes de cortar.
-    const candidatos = deduplicarEntreBuscas(
+    const recentes = deduplicarEntreBuscas(
       intercalarListas(porInstancia.map((r) => r.documentos))
-    ).slice(0, ORCAMENTO.unidade.documentos);
+    );
+
+    // Amostragem estratificada no tempo.
+    //
+    // Concentrando-se os candidatos em poucos meses, uma segunda passada busca
+    // julgados ANTERIORES ao mais antigo já encontrado. Sem isso o "mudou com o
+    // tempo" não tem matéria-prima: a Júlia ordena por relevância e o acervo
+    // recente domina o ranking, então a amostra vinha comprimida em semanas.
+    //
+    // Adaptativo de propósito — a passada extra só ocorre havendo concentração,
+    // e limitada a poucas buscas. Carga ao servidor do TRF5 é decisão
+    // consciente, não efeito colateral.
+    let historicos: JuliaDocumento[] = [];
+    const { meses, maisAntiga } = intervaloDaAmostra(recentes);
+    if (maisAntiga && meses < INTERVALO_MINIMO_MESES && !c.dataFinal) {
+      const teto = recuarDias(maisAntiga, 1);
+      const { ok: passadas } = await executarEmLotes(
+        usadas.slice(0, MAX_BUSCAS_HISTORICO).map(
+          ({ instancia, orgaoJulgador }) =>
+            () =>
+              buscarCombinacao(instancia, orgaoJulgador, teto)
+        )
+      );
+      historicos = deduplicarEntreBuscas(
+        intercalarListas(passadas.map((p) => p.documentos))
+      );
+      // Sem este log a passada histórica é indistinguível de não ter ocorrido:
+      // amostra concentrada e acervo sem profundidade produzem a mesma
+      // mensagem na resposta.
+      console.debug(
+        `${LOG_PREFIX} julia-rag: amostra de ${meses.toFixed(1)} mês(es); busca histórica anterior a ${teto} trouxe ${historicos.length} documento(s).`
+      );
+    }
+
+    // Reserva de vagas para os antigos: sem cota fixa, os recentes (mais bem
+    // ranqueados) ocupariam tudo de novo e a passada histórica teria sido em vão.
+    const cotaHistorico = historicos.length
+      ? Math.min(
+          historicos.length,
+          Math.round(ORCAMENTO.unidade.documentos * PROPORCAO_HISTORICO)
+        )
+      : 0;
+
+    // INTERCALADOS, não concatenados. `aplicarOrcamento` percorre em ordem e
+    // pula o que não couber no teto de caracteres — com os históricos no fim
+    // da fila, eram sempre os primeiros a cair, e a passada extra virava
+    // requisição paga e jogada fora. Alternando, os dois estratos sobrevivem
+    // ao corte na mesma proporção.
+    const candidatos = deduplicarEntreBuscas(
+      intercalarListas([
+        recentes.slice(0, ORCAMENTO.unidade.documentos - cotaHistorico),
+        historicos.slice(0, cotaHistorico)
+      ])
+    );
 
     // A busca autenticada devolve trecho; a razão de decidir exige o inteiro
     // teor. Paralelo e tolerante: documento que falhe individualmente não
     // derruba o escopo.
-    const completos = await Promise.allSettled(
-      candidatos.map((d) => obterInteiroTeor(d.codigoDocumento, { signal: c.signal }))
+    // Também em lotes: são até 16 requisições de inteiro teor, e a rajada é o
+    // que provocava 500 no servidor.
+    const { ok: completos, falhas: falhasRede } = await executarEmLotes(
+      candidatos.map(
+        (d) => () => obterInteiroTeor(d.codigoDocumento, { signal: c.signal })
+      )
     );
 
     const evidencias: JuliaEvidencia[] = [];
-    let falhas = 0;
-    for (const r of completos) {
-      // `null` = sigiloso recusado pelo cliente, ou ausente.
-      if (r.status !== 'fulfilled' || !r.value) {
+    // `null` = sigiloso recusado pelo cliente, ou ausente.
+    let falhas = falhasRede;
+    for (const doc of completos) {
+      if (!doc) {
         falhas++;
         continue;
       }
-      evidencias.push({ documento: r.value, trecho: segmentar(r.value) });
+      evidencias.push({ documento: doc, trecho: segmentar(doc) });
     }
     base.falhasLeitura = falhas;
     if (falhas > 0) {
@@ -416,31 +525,64 @@ async function recuperarRevisor(
   };
 
   try {
+    const buscarPublica = (inst: JuliaInstancia, dataFim?: string) =>
+      buscarJulia(
+        {
+          instancia: inst,
+          pesquisaLivre: c.termo,
+          dataIni: c.dataInicial,
+          dataFim: dataFim ?? c.dataFinal,
+          length: CANDIDATOS_POR_ESCOPO
+        },
+        { signal: c.signal }
+      );
+
     const buscas = await Promise.allSettled(
-      instancias.map((inst) =>
-        buscarJulia(
-          {
-            instancia: inst,
-            pesquisaLivre: c.termo,
-            dataIni: c.dataInicial,
-            dataFim: c.dataFinal,
-            length: CANDIDATOS_POR_ESCOPO
-          },
-          { signal: c.signal }
-        )
-      )
+      instancias.map((inst) => buscarPublica(inst))
     );
 
-    const evidencias: JuliaEvidencia[] = [];
+    const recentes: JuliaDocumento[] = [];
     for (const r of buscas) {
       if (r.status !== 'fulfilled') continue;
       base.universo += r.value.total;
       base.universoEhTeto ||= r.value.totalEhTeto;
-      // A API pública já entrega o documento completo — sem round-trip extra.
-      for (const d of r.value.documentos) {
-        evidencias.push({ documento: d, trecho: segmentar(d) });
-      }
+      recentes.push(...r.value.documentos);
     }
+
+    // Passada histórica, como no escopo da unidade — e aqui ainda mais barata:
+    // a API pública devolve o inteiro teor na própria busca, então cada
+    // instância custa UMA requisição, sem round-trip por documento.
+    let historicos: JuliaDocumento[] = [];
+    const { meses, maisAntiga } = intervaloDaAmostra(recentes);
+    if (maisAntiga && meses < INTERVALO_MINIMO_MESES && !c.dataFinal) {
+      const teto = recuarDias(maisAntiga, 1);
+      const passadas = await Promise.allSettled(
+        instancias.slice(0, MAX_BUSCAS_HISTORICO).map((inst) =>
+          buscarPublica(inst, teto)
+        )
+      );
+      historicos = passadas.flatMap((p) =>
+        p.status === 'fulfilled' ? p.value.documentos : []
+      );
+      console.debug(
+        `${LOG_PREFIX} julia-rag (revisor): amostra de ${meses.toFixed(1)} mês(es); busca histórica anterior a ${teto} trouxe ${historicos.length} documento(s).`
+      );
+    }
+
+    const cotaHistorico = historicos.length
+      ? Math.min(
+          historicos.length,
+          Math.round(ORCAMENTO.revisor.documentos * PROPORCAO_HISTORICO)
+        )
+      : 0;
+
+    // Intercalados pelo mesmo motivo do escopo da unidade: no fim da fila, os
+    // históricos seriam os primeiros a cair no corte por orçamento.
+    // A API pública já entrega o documento completo — sem round-trip extra.
+    const evidencias: JuliaEvidencia[] = intercalarListas([
+      recentes.slice(0, ORCAMENTO.revisor.documentos - cotaHistorico),
+      historicos.slice(0, cotaHistorico)
+    ]).map((d) => ({ documento: d, trecho: segmentar(d) }));
 
     if (!evidencias.length && buscas.every((r) => r.status === 'rejected')) {
       base.indisponivel = { motivo: 'erro', detalhe: 'Todas as buscas falharam.' };
@@ -473,6 +615,53 @@ async function recuperarRevisor(
   }
 }
 
+// ── Amostragem estratificada no tempo ────────────────────────────
+
+/**
+ * Abaixo deste intervalo a amostra não comporta análise de evolução.
+ *
+ * A Júlia ordena por relevância e o acervo recente domina o ranking, então a
+ * amostra tende a se concentrar em poucos meses. Perguntar "mudou com o tempo"
+ * a partir de seis semanas produz ou falsa estabilidade ou tendência inventada.
+ */
+const INTERVALO_MINIMO_MESES = 12;
+
+/** Fatia do orçamento reservada a julgados anteriores ao recorte recente. */
+const PROPORCAO_HISTORICO = 0.35;
+
+/** Buscas históricas por escopo. Adaptativo: só ocorrem se houver concentração. */
+const MAX_BUSCAS_HISTORICO = 2;
+
+function dataDeReferencia(d: JuliaDocumento): string {
+  return (d.dataJulgamento ?? d.dataAssinatura ?? '').slice(0, 10);
+}
+
+/** Intervalo coberto, em meses, e a data mais antiga da amostra. */
+function intervaloDaAmostra(docs: JuliaDocumento[]): {
+  meses: number;
+  maisAntiga: string | null;
+} {
+  const datas = docs
+    .map(dataDeReferencia)
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  if (datas.length < 2) return { meses: 0, maisAntiga: datas[0] ?? null };
+
+  const de = datas[0]!;
+  const ate = datas[datas.length - 1]!;
+  const meses =
+    (new Date(ate).getTime() - new Date(de).getTime()) /
+    (1000 * 60 * 60 * 24 * 30.4);
+  return { meses, maisAntiga: de };
+}
+
+/** Subtrai dias de uma data ISO sem passar por fuso local. */
+function recuarDias(iso: string, dias: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - dias);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Remove documentos repetidos **entre** as buscas de um mesmo escopo.
  *
@@ -494,6 +683,41 @@ function deduplicarEntreBuscas(docs: JuliaDocumento[]): JuliaDocumento[] {
     saida.push(d);
   }
   return saida;
+}
+
+/**
+ * Concorrência máxima contra a Júlia.
+ *
+ * Disparar todas as combinações de uma vez levava a HTTP 500 intermitente —
+ * observado em campo em 19/07/2026, com o escopo da unidade caindo por
+ * inteiro. São até 8 buscas + 8 sumários + a passada histórica; em rajada, é
+ * carga desproporcional para um servidor de produção do Tribunal.
+ */
+const CONCORRENCIA_JULIA = 3;
+
+/**
+ * Executa em lotes, tolerando falhas individuais.
+ *
+ * Devolve só os resultados bem-sucedidos mais a contagem de falhas: uma
+ * combinação que falha não pode derrubar as demais, que é o que acontecia com
+ * `Promise.all`.
+ */
+async function executarEmLotes<T>(
+  tarefas: Array<() => Promise<T>>,
+  limite = CONCORRENCIA_JULIA
+): Promise<{ ok: T[]; falhas: number }> {
+  const ok: T[] = [];
+  let falhas = 0;
+  for (let i = 0; i < tarefas.length; i += limite) {
+    const lote = await Promise.allSettled(
+      tarefas.slice(i, i + limite).map((t) => t())
+    );
+    for (const r of lote) {
+      if (r.status === 'fulfilled') ok.push(r.value);
+      else falhas++;
+    }
+  }
+  return { ok, falhas };
 }
 
 /** Alterna entre listas, uma de cada vez, até esgotar todas. */
@@ -547,7 +771,9 @@ function intercalarPorFonte(
 export async function recuperar(c: JuliaConsulta): Promise<JuliaRecuperacao> {
   const querUnidade = c.escopos?.unidade ?? true;
   const querRevisor = c.escopos?.revisor ?? true;
-  const instanciasRevisor = mapearOrgaoRevisor(c.orgao, c.instancias);
+  const instanciasRevisor = c.instanciasPublicas?.length
+    ? [...c.instanciasPublicas]
+    : mapearOrgaoRevisor(c.orgao, c.instancias);
 
   const [unidade, revisor, datas] = await Promise.all([
     querUnidade ? recuperarUnidade(c) : Promise.resolve(null),

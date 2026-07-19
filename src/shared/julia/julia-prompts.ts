@@ -31,6 +31,7 @@
 
 import { aplicarRegexAnonimizacao } from '../anonymizer';
 import { tryParseLooseJson } from '../prompts';
+import { montarUrlDocumentoPje } from './julia-identificador';
 import type { JuliaEscopoResultado, JuliaRecuperacao } from './julia-rag';
 
 // ── Anonimização específica deste corpus ─────────────────────────
@@ -270,7 +271,12 @@ function tituloEscopo(base: string, e: JuliaEscopoResultado | null): string {
   return `${base} — ${e.fontes.join(', ')}`;
 }
 
-function formatarEscopo(e: JuliaEscopoResultado | null, titulo: string): string {
+function formatarEscopo(
+  e: JuliaEscopoResultado | null,
+  titulo: string,
+  /** Número da primeira citação deste bloco — a numeração é contínua entre os escopos. */
+  offset = 0
+): string {
   if (!e) return `### ${titulo}\n\nNão consultado.\n`;
 
   if (e.indisponivel) {
@@ -291,10 +297,22 @@ function formatarEscopo(e: JuliaEscopoResultado | null, titulo: string): string 
     .map((a) => a.documento.dataJulgamento ?? a.documento.dataAssinatura)
     .filter((d): d is string => !!d)
     .sort();
-  const periodo =
-    datas.length >= 2
-      ? `Período coberto pelos documentos lidos: ${datas[0]?.slice(0, 10)} a ${datas[datas.length - 1]?.slice(0, 10)}.\n`
-      : '';
+  let periodo = '';
+  if (datas.length >= 2) {
+    const de = datas[0]?.slice(0, 10) ?? '';
+    const ate = datas[datas.length - 1]?.slice(0, 10) ?? '';
+    const meses =
+      (new Date(ate).getTime() - new Date(de).getTime()) /
+      (1000 * 60 * 60 * 24 * 30.4);
+    periodo =
+      `Período coberto pelos documentos lidos: ${de} a ${ate}` +
+      // O alerta é calculado, não deixado à percepção do modelo: ele tende a
+      // narrar evolução mesmo quando o intervalo não a comporta.
+      (meses < 12
+        ? ` — intervalo de aproximadamente ${Math.max(1, Math.round(meses))} mês(es). AMOSTRA TEMPORALMENTE CONCENTRADA: não avalie evolução do entendimento a partir dela.`
+        : '') +
+      `\n`;
+  }
 
   const cabecalho =
     `### ${titulo}\n\n` +
@@ -310,12 +328,16 @@ function formatarEscopo(e: JuliaEscopoResultado | null, titulo: string): string 
 
   const blocos = e.analisados.map((ev, i) => {
     const d = ev.documento;
+    const n = offset + i + 1;
+    const url = montarUrlDocumentoPje(d.codigoDocumento, d.urlPje);
     const partes = [
-      `[${i + 1}] Processo ${d.numeroProcessoFormatado ?? d.numeroProcesso ?? 's/n'}`,
+      `[${n}] Processo ${d.numeroProcessoFormatado ?? d.numeroProcesso ?? 's/n'}`,
       `Tipo: ${d.tipoDocumento ?? '—'}`,
       `Órgão julgador: ${d.orgaoJulgador ?? '—'}`,
       `Data: ${d.dataJulgamento ?? d.dataAssinatura ?? '—'}`,
       `Trecho: ${ROTULO_SECAO[ev.trecho.secao] ?? ev.trecho.secao}`,
+      // URL entregue ao modelo para que ele produza a citação já clicável.
+      url ? `URL: ${url}` : 'URL: (indisponível)',
       '',
       prepararTextoParaIA(ev.trecho.texto)
     ];
@@ -328,10 +350,90 @@ function formatarEscopo(e: JuliaEscopoResultado | null, titulo: string): string 
   return `${cabecalho}\n${blocos.join('\n\n---\n\n')}\n`;
 }
 
+/**
+ * Síntese de escopo único, para quem trabalha no 2º grau.
+ *
+ * Mantém as travas que continuam valendo — base contada, linguagem de indício,
+ * citação por afirmação, divergência relatada, não atribuir citação alheia — e
+ * remove as que só fazem sentido na análise dupla: nada de comparar escopos
+ * nem de avisar que falta uma metade, porque ali não falta.
+ */
+function buildSintesePublica(pergunta: string, r: JuliaRecuperacao): string {
+  const dataIndice = r.dataIndice
+    ? `O índice da Júlia foi atualizado pela última vez em ${r.dataIndice}. Decisões posteriores não constam.`
+    : 'A data de atualização do índice não pôde ser obtida.';
+
+  return `Você é o pAIdegua analisando jurisprudência do TRF5 para um servidor da Justiça Federal.
+
+Responda à pergunta abaixo usando EXCLUSIVAMENTE os documentos fornecidos. Você não tem outra fonte, e não deve recorrer a conhecimento próprio sobre o tema.
+
+PERGUNTA:
+"""
+${pergunta}
+"""
+
+${dataIndice}
+
+## REGRAS INEGOCIÁVEIS
+
+1. **Base contada.** Informe quantos documentos foram encontrados e quantos
+   foram lidos. Nunca escreva como se os lidos fossem o universo.
+
+2. **Amostra pequena exige linguagem de indício.** Com poucos documentos lidos
+   frente ao universo, escreva "nos julgados analisados". NUNCA "é o
+   entendimento consolidado" ou "prevalece o entendimento".
+
+3. **Citação por afirmação.** Pelo número entre colchetes: [3], [7]. Escreva
+   apenas o número, sem markdown de link — a interface torna cada [n] clicável.
+
+4. **Não atribua ao órgão o que ele apenas citou.** Os documentos transcrevem
+   doutrina e acórdãos de outros tribunais. Distinga "o acórdão adota a tese X"
+   de "o acórdão cita precedente do STJ no sentido de X".
+
+5. **Divergência se relata, não se resolve.** Apontando os julgados em direções
+   diferentes, apresente a divergência e quem sustenta cada posição.
+
+6. **Divergência no tempo tem tratamento próprio.** Compare as datas: decisões
+   recentes divergindo das anteriores é mudança de posicionamento, e deve ser
+   destacada. Divergência entre julgados da mesma época é dissenso entre
+   órgãos, não evolução.
+
+7. **Se a evidência não responde à pergunta, diga isso.**
+
+8. **Escreva para um servidor.** Nada de rótulos internos deste prompt, nomes
+   de parâmetro ou referências ao funcionamento da consulta.
+
+## DOCUMENTOS
+
+${formatarEscopo(r.revisor, tituloEscopo('JURISPRUDÊNCIA CONSULTADA', r.revisor), 0)}
+
+## FORMATO DA RESPOSTA
+
+Use exatamente estes títulos, omitindo as seções sem dados:
+
+**Resposta** — dois ou três parágrafos respondendo à pergunta, com as citações [n].
+
+**O que os julgados decidem** — tese(s) identificada(s), com citações.
+
+**Mudou com o tempo?** — o entendimento se manteve ou mudou ao longo das datas?
+Cite as datas. Se não houve variação relevante, diga que se manteve estável no
+período coberto.
+
+**O que esta análise não permite afirmar** — os limites da base consultada.
+Sempre presente.`;
+}
+
 export function buildJuliaSintesePrompt(
   pergunta: string,
-  r: JuliaRecuperacao
+  r: JuliaRecuperacao,
+  /**
+   * `'publica'` no 2º grau: escopo único, sem confronto. Ali a ausência do
+   * segundo bloco é o desenho, não uma falha — e as travas que existem para
+   * impedir comparação indevida se tornariam ressalvas sem sentido.
+   */
+  modo: 'dupla' | 'publica' = 'dupla'
 ): string {
+  if (modo === 'publica') return buildSintesePublica(pergunta, r);
   const dataIndice = r.dataIndice
     ? `O índice da Júlia foi atualizado pela última vez em ${r.dataIndice}. Decisões posteriores a essa data não constam.`
     : 'A data de atualização do índice não pôde ser obtida.';
@@ -360,7 +462,14 @@ ${dataIndice}
    a amostra não sustenta.
 
 3. **Citação por afirmação.** Toda afirmação sobre entendimento deve remeter aos
-   documentos que a embasam, pelo número do processo entre colchetes: [1], [2].
+   documentos que a embasam, pelo número entre colchetes: [3], [7]. A numeração
+   é **contínua entre os dois blocos**, então cada número é único em toda a
+   resposta — não reinicie a contagem no segundo bloco.
+
+   Escreva apenas o número entre colchetes, sem markdown de link e sem URL: a
+   interface transforma cada [n] em elemento clicável. Vários numa citação só
+   ficam assim: [3][7].
+
    Afirmação sem lastro em documento fornecido não entra na resposta.
 
 4. **Não atribua ao juízo o que ele apenas citou.** Os documentos transcrevem
@@ -373,13 +482,21 @@ ${dataIndice}
    direções diferentes, APRESENTE A DIVERGÊNCIA e indique quais documentos
    sustentam cada posição. Não eleja a maioria como "o entendimento".
 
-5.1. **Divergência no TEMPO tem tratamento próprio.** Os documentos vêm
-   ordenados do mais recente para o mais antigo e cada um traz sua data.
-   Compare-os cronologicamente: se as decisões recentes divergem das anteriores,
-   isso é **mudança de posicionamento** e deve ser destacado com as datas —
-   é a informação mais valiosa que esta análise pode produzir, porque muda o que
-   se deve escrever hoje. Se o entendimento se mantém estável ao longo das
-   datas, diga isso também: estabilidade é achado, não ausência de achado.
+5.1. **Divergência no TEMPO tem tratamento próprio, e depende do intervalo.**
+   Cada documento traz sua data, e o cabeçalho de cada bloco informa o período
+   coberto.
+
+   **Antes de analisar evolução, olhe o intervalo.** Se os documentos lidos se
+   concentram em poucos meses, NÃO responda se o entendimento mudou ou se
+   manteve — diga que a amostra é temporalmente concentrada e que o período não
+   permite avaliar evolução. Afirmar estabilidade a partir de seis semanas é
+   conclusão sem base, e soa a achado quando é ausência de dados.
+
+   Havendo intervalo suficiente (um ano ou mais), compare cronologicamente:
+   decisões recentes divergindo das anteriores é **mudança de posicionamento** e
+   deve ser destacada com as datas — é a informação mais valiosa desta análise,
+   porque muda o que se deve escrever hoje. Estabilidade ao longo de período
+   amplo também é achado, e deve ser dita.
 
    Cuidado com o inverso: divergência entre decisões **da mesma época** é
    dissenso entre julgadores, não evolução. Não confunda os dois.
@@ -410,9 +527,9 @@ ${dataIndice}
 
 ## DOCUMENTOS
 
-${formatarEscopo(r.unidade, tituloEscopo('DECISÕES DA PRÓPRIA UNIDADE (primeiro grau)', r.unidade))}
+${formatarEscopo(r.unidade, tituloEscopo('DECISÕES DA PRÓPRIA UNIDADE (primeiro grau)', r.unidade), 0)}
 
-${formatarEscopo(r.revisor, tituloEscopo('DECISÕES DA INSTÂNCIA QUE REVISA A UNIDADE', r.revisor))}
+${formatarEscopo(r.revisor, tituloEscopo('DECISÕES DA INSTÂNCIA QUE REVISA A UNIDADE', r.revisor), r.unidade?.analisados.length ?? 0)}
 
 ## FORMATO DA RESPOSTA
 
