@@ -7401,7 +7401,8 @@
       "descricao": "Consulta à Júlia (sistema de pesquisa de jurisprudência do TRF5) dentro do chat da barra lateral, com análise dupla: como a unidade vem entendendo o tema e como a instância que a revisa vem decidindo.\n\nFase 0 (engenharia reversa) concluída em 18/07/2026, documentada em docs/extracao-julia-trf5.md. Dois sistemas distintos:\n- PÚBLICA (juliapesquisa.trf5.jus.br/julia-pesquisa/api/v1/documento:dt/{instancia}): JSON sem autenticação, protocolo DataTables. Cobre G2, TRU e TR_{UF}; NÃO tem 1º grau. Devolve o inteiro teor na própria busca.\n- AUTENTICADA (julia.trf5.jus.br/julia/api/v1/): eixos 'orgao' e 'instancia' separados — instancia=G1|JEF dá o 1º grau. Busca devolve TRECHO; inteiro teor exige GET documentos/{identificador}. Endpoints de vocabulário (orgaos-julgadores, relatores, classes-judiciais, tarefas) e processos:data-atualizacao.\n\nDecisão de segurança: a extensão NÃO armazena credenciais. Reaproveita a sessão que o usuário já abriu no navegador (JSESSIONID, Path=/julia, cookie de sessão). Verificado que requisição de extensão com host_permissions carrega o cookie mesmo com SameSite ausente (=Lax), então ambos os clientes rodam no service worker. Motivo: src/background/crypto.ts é ofuscação com segredo fixo no build — adequado a chave de API, inadequado a credencial institucional numa extensão pública na CWS.\n\nMitigações contra generalização falsa (a feature responde 'qual o entendimento prevalece' sobre amostra pequena): base contada exibida em painel próprio a partir da recuperação real (não do que o modelo escreve); citação por afirmação; divergência relatada em vez de maioria eleita; proibição de afirmar convergência sem os dois escopos; instrução de não atribuir à unidade o que ela apenas citou (doutrina/STJ transcritos na fundamentação).\n\nSem novas permissões — https://*.jus.br/* já cobria os dois hosts.",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "Pedido do owner em 18/07/2026 (acesso a MCP da Júlia levou à engenharia reversa e a cliente próprio)",
       "tags": ["julia", "jurisprudencia", "trf5", "pesquisa", "gabinete", "rag", "chat"],
       "esforco": "L",
@@ -7443,6 +7444,20 @@
           "autor": "claude-code/sessao-2026-07-18",
           "data": "2026-07-18T00:00:00.000Z",
           "comando": "Implementação concluída e testada em produção pelo owner ao longo da sessão. Correções decorrentes do uso real: (1) petição inicial e contestação entravam na amostra — filtro tiposDocumento por instância; (2) acórdão do recurso aparecia no escopo do 1º grau (a Júlia indexa por processo, não por autoria); (3) escopo revisor era desligado pelo LLM quando a pergunta dizia 'a vara' — virou marcador explícito no formulário; (4) orçamento de 4 documentos produzia '1 lida de 241' — subido para 16/24 com contador separado de falhas de leitura; (5) operadores da Júlia ($ trunca, adj) ensinados ao extrator, com fallback sem operadores; (6) fallback local de termos (a pergunta crua num buscador léxico garante zero resultados); (7) ordenação natural das unidades (1ª antes de 10ª). PENDENTE: travamento intermitente na extração de termos (chamada JSON mode ao provedor) — mitigado por prazo de 30s + fallback local, causa não identificada."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Empacotada na REL-1.10.0, aprovada pela CWS em 19/07/2026. Ver BUG-28, aberto no mesmo dia: em navegador sem a Júlia autenticada a feature respondia só pela API pública sem sinalizar; corrigido na v1.10.1, e o broadcast aos pilotos foi segurado até ela."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Em produção desde a aprovação da v1.10.0."
         }
       ]
     },
@@ -7452,7 +7467,8 @@
       "descricao": "Painel de acompanhamento da pauta de perícias, construído no mesmo molde do Painel de Ordens PREVJUD (GES-10) e reusando a mesma lógica de coleta — coleta SSR primária (fetch da página + POST A4J replicado, sem abrir aba), com aba invisível como fallback, e dashboard em streaming que abre no esqueleto e popula conforme os dados chegam.\n\nEntregas: src/content/pauta-pericia/ (coletor), src/pauta-pericia-painel/ e src/pauta-pericia-dashboard/ (páginas novas registradas no webpack), src/shared/pauta-pericia-parser.ts e pauta-pericia-types.ts.\n\nPerfil Gestão, como o PREVJUD. Reaproveitar o padrão do GES-10 significa herdar também suas decisões de desempenho: a aba invisível custava 2-3s por processo e virou fallback justamente por isso.",
       "categoria": "gestao",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "Registro retroativo na skill release-extensao — v1.10.0 (2026-07-18)",
       "tags": ["pericias", "pauta", "gestao", "painel", "registro-retroativo"],
       "esforco": "L",
@@ -7484,7 +7500,8 @@
       "descricao": "Até a v1.9.0 o fecho da minuta ('Cidade/UF, datado eletronicamente') era INFERIDO pelo modelo a partir dos documentos dos autos, e o prompt trazia 'Maracanaú/CE' como primeiro exemplo. Quando o modelo não localizava a cidade nos autos, caía no exemplo — usuários fora do Ceará recebiam minutas fechadas em Maracanaú/CE.\n\nGravidade: erro plausível e silencioso, num campo que quase ninguém confere na revisão, em ato que vai aos autos assinado. É bloqueante para uso fora da SJCE e, portanto, para a massificação.\n\nCorreção: a sede passa a ser DADO, resolvido em src/shared/sede-juizo.ts a partir de fontes estruturadas, nunca mais inferência. Ordem de confiança: (1) 'jurisdicao' do PJe ('CE / Fortaleza'), da capa dos autos ou do endpoint processos/{id}, que traz cidade e UF explícitas; (2) 'nomeVara' das settings, e só quando o usuário escreveu a UF junto ('10ª Vara Federal de Sousa/PB'); (3) 'orgaoJulgador', que costuma trazer o município mas quase nunca a UF.\n\nSem fonte que resolva, devolve null e o prompt emite o marcador '[Cidade]/[UF]' — erro VISÍVEL na revisão, preferível a um chute plausível que passa despercebido.\n\nAlcance no diff: novo src/shared/sede-juizo.ts; ajustes em src/shared/prompts.ts, prompts/minuta-regras-de-formato.md e prompts/emenda-inicial.md.",
       "categoria": "gabinete",
       "prioridade": "P0",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "Registro na skill release-extensao — v1.10.0 (2026-07-18), a partir de indicação do owner",
       "tags": ["minuta", "sede-juizo", "alucinacao", "massificacao", "bug"],
       "esforco": "M",
@@ -7515,7 +7532,8 @@
       "descricao": "SINTOMA: coletor devolvia relação vazia ainda que o filtro cobrisse período com audiências sabidamente designadas. O POST retornava HTTP 200, sem erro de sessão, mas sem a tabela de resultados — e como o parser tratava 'tabela ausente' e 'tabela vazia' como a mesma coisa, a UI mostrava sempre 'Nenhum processo encontrado'.\n\nCAUSA RAIZ (três, em audiencia-pauta-coletor.ts):\n1. IDs JSF hardcoded — o corpo do POST era escrito à mão com processoAudienciaSearchForm:j_id146 e :j_id329. Esses números são RENUMERADOS a cada versão do PJe. Causa direta da quebra na virada de versão.\n2. Faltava o header X-Requested-With: XMLHttpRequest — sem ele o filtro AJAX4JSF não trata a requisição como Ajax e não dispara o action do botão Pesquisar.\n3. Bug pré-existente: o corpo enviava _link_hidden_ = processoAudienciaSearchForm:clearButton, informando ao Seam que o último link acionado foi LIMPAR, não Pesquisar.\n\nCORREÇÃO: migração para o mesmo padrão que prevjud-ssr.ts e pauta-pericia-ssr.ts já usavam — esses dois já tinham aprendido a lição; este coletor nunca fora migrado.\n- Corpo do POST vem da SERIALIZAÇÃO DO FORM REAL do HTML, não escrito à mão. Carrega automaticamente os hidden voláteis e os defaults de jurisdição/órgão da sessão (antes raspados por regex).\n- Campos resolvidos por SUFIXO ESTÁVEL (:dtInicioFromFormInputDate, :listaSituacoes, :searchButton), nunca pelo caminho completo.\n- AJAXREQUEST=_viewRoot + header X-Requested-With; clearButton removido.\n- Busca do form e da tabela com fallbacks encadeados (id exato -> sufixo -> parcial -> estrutural).\n- Tabela ausente passa a ser ERRO, não lista vazia, com pistas de diagnóstico (len, temViewState, temBotaoPesquisar, PARECE-LOGIN). Se o PJe mudar de novo, a quebra fica visível em vez de virar um falso 'nenhum processo'.\n\nLIÇÃO GENERALIZÁVEL: ID JSF numerado (j_idNNN) é volátil por construção e não deve aparecer em código. Ancorar por sufixo estável ou por estrutura. Ver AUD-13 para o remanescente encontrado nesta varredura.",
       "categoria": "audiencia",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "Registro na skill release-extensao — v1.10.0 (2026-07-18), a partir de indicação do owner",
       "tags": ["audiencia", "pauta", "coletor", "registro-retroativo"],
       "esforco": "M",
@@ -7577,7 +7595,8 @@
       "descricao": "Atualização do catálogo de modelos OpenAI em PROVIDER_MODELS (src/shared/constants.ts) para a geração GPT-5.6: 'gpt-5.6-sol' (mais capaz), 'gpt-5.6-terra' (equilibrado, recomendado) e 'gpt-5.6-luna' (rápido/econômico).\n\nMigração: usuários com modelo OpenAI antigo salvo nas configurações caem em 'gpt-5.6-terra' (a versão equilibrada, marcada como recomendada). Sem esse fallback, quem tivesse a geração anterior gravada ficaria com chamadas rejeitadas pela API sem entender o motivo.\n\nSTREAM-GUARD (src/background/providers/stream-guard.ts): decorator de streaming aplicado a TODOS os provedores no registry. Resolve dois modos de falha que se manifestam igual para o usuário — indicador de digitação piscando para sempre, sem resposta:\n1. Service worker MV3 morto no meio do stream. O Chromium encerra o worker após 30s sem receber evento algum; um stream HTTP aberto mas SILENCIOSO (típico de modelo de raciocínio pensando antes do primeiro token) não dispara evento de extensão nenhum, então o worker é derrubado e o generator morre sem erro. Mitigação: keepalive chamando chrome.runtime.getPlatformInfo() a cada 20s (abaixo dos 30s do timer ocioso), API barata e sem efeito colateral em storage.\n2. Stream que nunca produz o primeiro token. Teto de 90s (generoso de propósito, para não cortar raciocínio legítimo com prompt institucional longo), abortando com erro explícito em vez de espera indefinida.\n\nO watchdog vale só até o primeiro chunk: depois disso o próprio fluxo de chunks prova que o stream está vivo, e respostas longas não devem ser interrompidas. Usa AbortController próprio encadeado ao signal externo, para cortar o fetch sem interferir no abort do caller.",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "Registro na skill release-extensao — v1.10.0 (2026-07-18), a partir de indicação do owner",
       "tags": ["openai", "modelos", "provedores", "streaming"],
       "esforco": "S",
@@ -7612,12 +7631,52 @@
       ]
     },
     {
+      "id": "BUG-28",
+      "titulo": "Fale com a Júlia respondia só pela API pública, sem sinalizar que faltava autenticar",
+      "descricao": "Encontrado pelo owner em 19/07/2026, logo após a aprovação da v1.10.0, ao instalar a extensão em navegador onde a Júlia nunca fora aberta.\n\nSINTOMA: a consulta respondia normalmente, mas apenas com jurisprudência da instância revisora (API pública, que não usa sessão). As decisões da própria unidade — a metade que motivou a feature — ficavam de fora, e a necessidade de autenticar não era sinalizada de forma acionável.\n\nCAUSA: em julia-orquestrador.ts, o aviso de sessão expirada só disparava quando NADA era lido:\n\n  const nadaLido = !recuperacao.unidade?.analisados.length && !recuperacao.revisor?.analisados.length;\n\nComo a API pública sempre responde, nadaLido era falso e o alerta nunca vinha. O painel de evidência mostrava 'Indisponível — sessão da Júlia expirada' no bloco da unidade, mas como linha de texto sem ação, seguida de uma resposta com aparência de completa.\n\nErro de enquadramento: queda de sessão foi tratada como DEGRADAÇÃO A REPORTAR quando é CONDIÇÃO A CONFRONTAR. Atinge justamente todo piloto que instala a extensão agora, em navegador onde a Júlia nunca foi aberta.\n\nCORREÇÃO (v1.10.1):\n- Bloco de reconexão com botão inserido no fio da conversa quando o escopo da unidade cai por sessão, mesmo que o revisor tenha respondido — entra ANTES da resposta.\n- Regra 6.1 no prompt de síntese: com a unidade indisponível por sessão, a resposta ABRE avisando que reflete apenas a instância revisora.\n- Texto do bloco no formulário reescrito: em vez de 'sessão expirada', diz o que se perde ('as decisões da sua unidade ficam de fora').",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Achado do owner em 19/07/2026, após aprovação da v1.10.0",
+      "tags": ["julia", "sessao", "degradacao-silenciosa", "bug", "pilotos"],
+      "esforco": "S",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "Em navegador sem a Júlia autenticada, a consulta exibe bloco de reconexão com botão antes da resposta",
+        "A resposta do modelo abre avisando que só a instância revisora foi consultada",
+        "O bloco do formulário explica a consequência, não só o estado da sessão",
+        "Consulta com sessão viva não exibe nenhum desses avisos",
+        "Smoke em navegador limpo (perfil novo, sem sessão da Júlia)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aberto no mesmo dia da aprovação da v1.10.0. Correção implementada na sessão; aguarda build e empacotamento na v1.10.1."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Correção pronta e empacotada na REL-1.10.1. Broadcast aos pilotos da v1.10.0 foi deliberadamente segurado até esta versão sair — comunicar a feature com a degradação silenciosa ativa daria primeira impressão de resposta pela metade justamente a quem instala agora."
+        }
+      ]
+    },
+    {
       "id": "REL-1.10.0",
       "titulo": "Release v1.10.0 — Fale com a Júlia, Painel de Perícias (Pauta) e melhorias em PREVJUD, Audiência e provedores",
       "descricao": "Bundle da release v1.10.0, consolidando trabalho de várias sessões que estava no working tree sem publicação:\n\n- PES-05: Fale com a Júlia — pesquisa de jurisprudência do TRF5 no chat (perfil Gabinete), com análise dupla unidade x instância revisora.\n- GES-11: Painel de Perícias (Pauta) — páginas novas no webpack (pauta-pericia-painel, pauta-pericia-dashboard).\n- GES-10 (já lançado na v1.8.0): melhorias no coletor, painel e dashboard de Ordens PREVJUD.\n- BUG-27: sede do juízo nas minutas deixa de ser inferida pelo LLM (corrige minutas fechadas em 'Maracanaú/CE' fora do Ceará).\n- AUD-12: correção na coleta das pautas de audiência.\n- INFRA-22: modelos OpenAI GPT-5.6 (Sol/Terra/Luna) e stream-guard.\n\nBump 1.9.0 -> 1.10.0 (minor). Sem novas dependências, sem novas permissões, sem novos hosts.\n\nRESSALVA DE PROCESSO: cinco das seis frentes vieram de sessões anteriores e não foram revisadas na sessão que empacotou o release. GES-11, AUD-12 e INFRA-22 foram descritos pelo owner na própria sessão do release, com a causa raiz do AUD-12 registrada em detalhe. Resta pendente apenas o comportamento do stream-guard (INFRA-22), a ser anotado antes de esse card ir a lancado. A varredura feita a partir da lição do AUD-12 abriu o AUD-13 (dívida latente, fora deste release).",
       "categoria": "infra",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-19T00:00:00.000Z",
       "origem": "skill release-extensao — sessão 2026-07-18",
       "tags": ["release", "extensao", "cws", "julia", "pauta-pericia", "prevjud", "audiencia"],
       "esforco": "XS",
@@ -7650,6 +7709,53 @@
           "autor": "claude-code/sessao-2026-07-18",
           "data": "2026-07-18T00:00:00.000Z",
           "comando": "Versões bumpadas, build local OK, validação do dist aprovada (manifest 1.10.0, BACKEND_URL preservada, endpoints da Júlia no bundle, painéis novos com HTML e JS), zip com manifest.json na raiz. Aguarda upload à CWS + aprovação + smoke + broadcast + tag."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Aprovada pela CWS em 19/07/2026 (revisão levou horas, não dias). Commit b79e63d (código) + ab10f02 (Kanban) em origin/main; sync do KV feito. Broadcast aos pilotos SEGURADO por decisão do owner: o BUG-28, achado logo após a aprovação, fazia a Júlia responder só pela API pública sem sinalizar em navegador não autenticado — comunicar assim daria primeira impressão de resposta pela metade. Vai junto com a v1.10.1."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Em produção. Tag v1.10.0 e Release no GitHub a criar junto com a v1.10.1."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.10.1",
+      "titulo": "Release v1.10.1 — sinalização de sessão não autenticada no Fale com a Júlia",
+      "descricao": "Patch sobre a v1.10.0, empacotado no mesmo dia da aprovação dela.\n\n- BUG-28: em navegador sem a Júlia autenticada, a consulta respondia apenas pela API pública (instância revisora) sem sinalizar de forma acionável que faltava autenticar. O aviso de sessão só disparava quando NADA era lido, e como a API pública sempre responde, ele nunca vinha.\n\nCorreções: bloco de reconexão com botão inserido antes da resposta quando o escopo da unidade cai por sessão; regra 6.1 no prompt de síntese, obrigando a resposta a abrir com o aviso; texto do formulário reescrito para dizer a consequência ('as decisões da sua unidade ficam de fora') em vez do estado ('sessão expirada').\n\nBump 1.10.0 -> 1.10.1 (patch). Sem novas dependências, permissões ou hosts.\n\nO broadcast aos pilotos da v1.10.0 foi segurado para sair com esta versão — o público a comunicar é exatamente o que instala em navegador novo, onde o defeito se manifesta.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "skill release-extensao — sessão 2026-07-19",
+      "tags": ["release", "extensao", "cws", "julia", "hotfix"],
+      "esforco": "XS",
+      "depende": ["BUG-28"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.10.1; dist/manifest.json em 1.10.1",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "zip versoes/dist v1.10.1.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main",
+        "Smoke em navegador limpo, sem sessão da Júlia: aviso de autenticação aparece antes da resposta",
+        "Pilotos comunicados (broadcast represado da v1.10.0 + esta correção)",
+        "Tags git v1.10.0 e v1.10.1 + Releases no GitHub"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-19T00:00:00.000Z",
+      "atualizadoEm": "2026-07-19T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-19",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-19",
+          "data": "2026-07-19T00:00:00.000Z",
+          "comando": "Card aberto na skill release-extensao. Bump 1.10.0 -> 1.10.1 (patch). Decisão do owner: subir a correção imediatamente e comunicar os pilotos só depois dela, já que a revisão da CWS leva horas."
         }
       ]
     }

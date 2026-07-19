@@ -388,6 +388,10 @@ ${dataIndice}
     r.comparacaoPossivel
       ? 'Os dois escopos têm documentos lidos — a comparação é possível.'
       : 'ATENÇÃO: os dois escopos NÃO estão disponíveis. É PROIBIDO afirmar alinhamento ou divergência entre unidade e instância revisora. Apresente o que há e declare explicitamente que a comparação não foi possível.'
+  }${
+    r.unidade?.indisponivel?.motivo === 'sessao'
+      ? '\n\n6.1. **ABRA A RESPOSTA AVISANDO** que as decisões da própria unidade não foram consultadas porque a Júlia não está autenticada neste navegador, e que o que segue reflete apenas a instância revisora. Isso vem ANTES de qualquer análise — quem lê precisa saber que está vendo metade antes de formar juízo, não depois.'
+      : ''
   }
 
 7. **Fundamentação e desfecho são coisas distintas.** A tese está na

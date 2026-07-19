@@ -611,14 +611,27 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
 
       case JULIA_PORT_MSG.EVIDENCIA: {
         termosUsados = String(msg.termoUsado ?? termosUsados);
+        const ev = msg.evidencia as Evidencia;
         // Entra ANTES da resposta: o usuário vê a base antes de ler qualquer
         // afirmação construída sobre ela.
-        chat.addCustomBubble(
-          renderEvidencia(
-            msg.evidencia as Evidencia,
-            String(msg.termoUsado ?? pergunta)
-          )
-        );
+        chat.addCustomBubble(renderEvidencia(ev, String(msg.termoUsado ?? pergunta)));
+
+        // Sessão caída derruba SÓ o escopo da unidade — o revisor usa a API
+        // pública e responde sempre. Sem este bloco, a consulta seguia e
+        // produzia resposta de aparência completa sobre metade da evidência,
+        // com a falta anunciada apenas como uma linha no painel.
+        //
+        // É o caso de todo navegador onde a Júlia nunca foi aberta, ou seja, de
+        // todo piloto que instala a extensão agora. Precisa ser confronto, não
+        // nota de rodapé.
+        if (ev.unidade?.indisponivel === 'sessao') {
+          chat.addCustomBubble(
+            blocoReconectar(
+              'As decisões da sua unidade NÃO entraram nesta resposta: a Júlia não está autenticada neste navegador. O que vem abaixo vale apenas para a instância revisora.',
+              () => window.open(URL_LOGIN_JULIA, '_blank', 'noopener')
+            )
+          );
+        }
         break;
       }
 
@@ -996,6 +1009,9 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
     }
     listaUnidades.textContent = 'Carregando unidades…';
     try {
+      // Esta chamada é também a sonda de sessão do formulário: é a primeira
+      // coisa que toca a API autenticada, então uma sessão morta aparece aqui,
+      // antes de o usuário escrever a pergunta.
       const resp = (await chrome.runtime.sendMessage({
         channel: MESSAGE_CHANNELS.JULIA_ORGAOS_JULGADORES,
         payload: { orgao: c.orgao, instancias: c.instancias }
@@ -1009,7 +1025,7 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
         listaUnidades.appendChild(
           resp?.sessaoExpirada
             ? blocoReconectar(
-                'Sessão da Júlia expirada — sem ela não há acesso ao acervo da unidade.',
+                'A Júlia não está autenticada neste navegador. Sem isso, a consulta responde apenas pela instância revisora — as decisões da sua unidade ficam de fora.',
                 () => void carregarUnidades()
               )
             : el(
