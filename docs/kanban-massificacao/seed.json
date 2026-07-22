@@ -7981,7 +7981,8 @@
       "descricao": "Recurso dirigido ao MAGISTRADO no momento de analisar uma minuta. Com a minuta aberta no editor do PJe (Badon/ProseMirror, CKEditor 4 nas instalações antigas) OU na visualização somente-leitura do documento (div.folha), a extensão lê o conteúdo, confronta com o banco de decisões via Júlia e apresenta na barra lateral — no mesmo formato do Fale com a Júlia (streaming, painel de evidência, citações [n] clicáveis) — um relatório preditivo de 5 blocos: Prognóstico qualitativo de manutenção/reforma (proibido percentual/probabilidade numérica), Divergências ponto a ponto por tese, Precedentes favoráveis e contrários, Sugestões de reforço ou distinção, e Limites da base.\n\nReuso máximo do subsistema PES-05: mesma porta JULIA_STREAM com discriminador START_ANALISE; extração de teses da minuta (LLM) em vez de pergunta; recuperação nos dois escopos (unidade autenticada + revisor por rito); prompt de síntese próprio com as travas anti-alucinação herdadas. Base = revisora + própria unidade, degradando para só-revisor sem sessão da Júlia. No 2º grau (pjett) vira 'aderência ao entendimento do colegiado'.\n\nAção de REESCRITA (START_REESCRITA): o magistrado escolhe uma ou mais sugestões e a minuta é reescrita aplicando SÓ elas — prompt de literalidade estrita (texto e formatação preservados fora dos pontos alterados; citações por extenso, nunca [n]). A minuta reescrita preserva negrito, itálico e recuos de citação: htmlParaMarkdown converte o HTML capturado em Markdown (recuo → blocos '> '), e o Inserir no PJe (renderForPJe) devolve os recuos como blockquotes aninhados do ProseMirror. Rodapé da bolha reescrita: Copiar / Inserir no PJe / Baixar .doc / Analisar a minuta de novo (reinicia o ciclo).\n\nDescobertas técnicas de campo (TRF5, diagnóstico por chrome.scripting.executeScript allFrames no SW): o painel-usuario-interno embute #ngFrame cross-origin (frontend-prd.trf5.jus.br), e o conteúdo do Badon vive num iframe about:blank DENTRO de shadow root do componente do editor. Duas defesas: match_origin_as_fallback:true no content script (injeta no frame about:blank) + travessia de shadow roots na descida por iframes. Leitura viaja por broadcast a todos os frames (MINUTA_LER/MINUTA_LER_PERFORM) — só responde o frame que tem minuta. Gate minutaSuficiente(): editores exigem 200 chars; a folha exige só texto não vazio.\n\nBug corrigido de tabela (afetava também o PES-05): instanciasPublicas (default ['G2'] do inferirContexto) sobrepunha mapearOrgaoRevisor no recuperar() — unidade JEF era confrontada com o TRF5 em vez da Turma Recursal + TRU. Fix: o orquestrador só repassa instanciasPublicas no modo público.\n\nSem novas permissões de host (https://*.jus.br/* já cobria a Júlia e o PJe). Único acréscimo no manifest: match_origin_as_fallback no content script. Doc: docs/analise-preditiva-minutas.md.",
       "categoria": "pesquisa",
       "prioridade": "P1",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-22T00:00:00.000Z",
       "origem": "Pedido do owner em 21/07/2026 — recurso para o magistrado ao analisar minutas, sobre a base da Júlia (PES-05)",
       "tags": ["julia", "jurisprudencia", "trf5", "minuta", "analise-preditiva", "gabinete", "rag", "reescrita"],
       "esforco": "L",
@@ -8014,6 +8015,20 @@
           "autor": "claude-code/sessao-2026-07-21",
           "data": "2026-07-21T00:00:00.000Z",
           "comando": "Implementação concluída e testada em produção-evolutiva pelo owner. Iterações da sessão: (1) leitura do editor como espelho da escrita; (2) diagnóstico do editor em iframe cross-origin e depois about:blank sob shadow root — resolvido com match_origin_as_fallback + travessia de shadow roots + broadcast cross-frame; (3) bug do revisor (JEF confrontado com TRF5) corrigido no repasse de instanciasPublicas; (4) botões de ação no padrão do chat; (5) reescrita com sugestões, com literalidade de texto e formatação; (6) leitura da visualização somente-leitura (div.folha) com gate de conteúdo próprio para viabilizar teste na evolutiva. Aguarda empacotamento na REL-1.11.0."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-22",
+          "data": "2026-07-22T00:00:00.000Z",
+          "comando": "Empacotada na REL-1.11.0, aprovada e publicada pela CWS em 22/07/2026. Smoke test do owner OK em navegador real (v1.11.0, fluxo de análise preditiva ponta a ponta). Pilotos comunicados por broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-22",
+          "data": "2026-07-22T00:00:00.000Z",
+          "comando": "Em produção desde a aprovação da v1.11.0."
         }
       ]
     },
@@ -8026,7 +8041,8 @@
       "origem": "skill release-extensao — sessão 2026-07-21",
       "tags": ["release", "extensao", "cws", "julia", "minuta", "analise-preditiva"],
       "esforco": "XS",
-      "coluna": "qa",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-22T00:00:00.000Z",
       "depende": ["PES-07"],
       "aceitacao": [
         "manifest.json e package.json em 1.11.0; dist/manifest.json em 1.11.0",
@@ -8056,6 +8072,20 @@
           "autor": "claude-code/sessao-2026-07-21",
           "data": "2026-07-21T00:00:00.000Z",
           "comando": "Versões bumpadas (package.json + manifest.json em 1.11.0), BACKEND_URL validada intacta. Aguarda build local, validação do dist, empacotamento e upload à CWS."
+        },
+        {
+          "tipo": "aprovado",
+          "autor": "claude-code/sessao-2026-07-22",
+          "data": "2026-07-22T00:00:00.000Z",
+          "comando": "Aprovada e publicada pela CWS em 22/07/2026. Build local OK; dist validado (manifest 1.11.0, match_origin_as_fallback presente, BACKEND_URL preservada, START_ANALISE/START_REESCRITA no bundle, símbolos da feature no content.js); zip com manifest.json na raiz; commit 87796e3 em origin/main; sync do KV feito. Smoke test do owner OK. Pilotos comunicados por broadcast Resend."
+        },
+        {
+          "tipo": "movido",
+          "de": "qa",
+          "para": "lancado",
+          "autor": "claude-code/sessao-2026-07-22",
+          "data": "2026-07-22T00:00:00.000Z",
+          "comando": "Em produção. Tag v1.11.0 e Release no GitHub criados na sequência."
         }
       ]
     }
