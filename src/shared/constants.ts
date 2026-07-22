@@ -220,6 +220,21 @@ export const MESSAGE_CHANNELS = {
   INSERT_IN_PJE_EDITOR: 'paidegua/insert-in-pje-editor',
   /** Background → content (outras tabs): executa inserção local. */
   INSERT_IN_PJE_EDITOR_PERFORM: 'paidegua/insert-in-pje-editor-perform',
+  /**
+   * Content (topo) → background: pede a leitura da minuta no editor do PJe.
+   *
+   * Existe porque no TRF5 o painel do usuário embute um iframe cross-origin
+   * (`frontend-prd.trf5.jus.br`) e o editor vive lá dentro — o DOM é
+   * inalcançável do frame de topo. O background reenvia à mesma aba
+   * (`MINUTA_LER_PERFORM`) e cada frame verifica localmente.
+   */
+  MINUTA_LER: 'paidegua/minuta-ler',
+  /**
+   * Background → content (todos os frames da MESMA aba): lê a minuta local.
+   * Só responde o frame que tem minuta com conteúdo; os demais ficam calados
+   * para não vencer a corrida da primeira resposta com um "não".
+   */
+  MINUTA_LER_PERFORM: 'paidegua/minuta-ler-perform',
   /** Content → background: pergunta se há pasta de modelos configurada. */
   TEMPLATES_HAS_CONFIG: 'paidegua/templates/has-config',
   /** Content → background: busca templates por relevância (BM25). */
@@ -868,6 +883,18 @@ export const CHAT_PORT_MSG = {
  */
 export const JULIA_PORT_MSG = {
   START: 'start',
+  /**
+   * Análise preditiva de minutas: mesma porta e mesmos eventos de saída do
+   * "Fale com Júlia" — muda apenas a entrada (o texto da minuta em vez de
+   * uma pergunta) e os prompts. Um discriminador de partida basta.
+   */
+  START_ANALISE: 'start-analise',
+  /**
+   * Reescrita da minuta aplicando sugestões escolhidas da análise preditiva.
+   * Uma única chamada de LLM em streaming — sem recuperação na Júlia: os
+   * precedentes citados nas sugestões já vêm no payload.
+   */
+  START_REESCRITA: 'start-reescrita',
   /**
    * Refaz apenas a síntese, reaproveitando a evidência já recuperada.
    *

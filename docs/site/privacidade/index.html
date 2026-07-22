@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de Privacidade — pAIdegua · Inovajus / JFCE</title>
+<meta name="description" content="Política de privacidade da extensão pAIdegua — quais dados são tratados, com que finalidade e sob quais bases legais, em conformidade com a LGPD e com a Resolução CNJ 615/2025.">
+<link rel="icon" href="../assets/logo.png">
+<link rel="stylesheet" href="../assets/site.css?v=3">
+</head>
+<body>
+<div class="govbr-strip"></div>
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="site-header__brand" href="../">
+      <img class="site-header__logo" src="../assets/logo.png" alt="pAIdegua">
+      <span>pAIdegua</span>
+    </a>
+    <span class="site-header__tag">Privacidade</span>
+    <nav class="site-header__nav">
+      <a href="../">Início</a>
+      <a href="../manual/">Manual</a>
+      <a class="btn" href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">Instalar</a>
+    </nav>
+  </div>
+</header>
+
+<div class="doc-layout">
+  <main class="manual-content">
+    <h1>Política de Privacidade</h1>
+    <p class="manual-meta">Versão da extensão <strong>1.10.2</strong> · Atualizada em 19/07/2026 · <strong>Inovajus / JFCE</strong></p>
+
+    <p class="manual-lede">A extensão <strong>pAIdegua</strong> é desenvolvida pelo <strong>Laboratório de Inovação da Justiça Federal do Ceará (Inovajus / JFCE)</strong> e destina-se ao uso institucional por magistrados e servidores da Justiça Federal da 5ª Região. Este documento descreve quais dados a extensão trata, com que finalidade e sob quais bases legais, em conformidade com a <strong>Lei nº 13.709/2018 (LGPD)</strong> e com a <strong>Resolução CNJ nº 615/2025</strong>.</p>
+
+    <blockquote>A ferramenta está em <strong>uso experimental</strong>, restrito a pilotos previamente autorizados pelo Inovajus. Veja as <a href="../#governanca">condições de uso e governança</a>.</blockquote>
+
+    <h2 id="controlador">1. Identificação do controlador</h2>
+    <ul>
+      <li><strong>Controlador:</strong> Justiça Federal de 1º Grau no Ceará — Inovajus / JFCE</li>
+      <li><strong>Contato:</strong> <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></li>
+      <li><strong>Endereço:</strong> Praça Murilo Borges, s/n — Centro, Fortaleza/CE</li>
+    </ul>
+
+    <h2 id="natureza">2. Natureza da extensão</h2>
+    <p>O pAIdegua é uma <strong>plataforma institucional de apoio à atividade e à gestão judicial no PJe</strong>. Atua em dois eixos:</p>
+    <ul>
+      <li><strong>Atividade jurisdicional individual</strong> — triagem inicial de processos, validação do cadastro das partes, etiquetas inteligentes, anonimização, geração de minutas com modelos da própria unidade, consulta a fluxos processuais, pesquisa de jurisprudência e especializações por matéria (criminal, audiência, perícia).</li>
+      <li><strong>Gestão judicial coletiva</strong> — painel de indicadores da unidade, controle de prazos em massa, acompanhamento das ordens PREVJUD enviadas ao INSS, painel de perícias e triagem em lote.</li>
+    </ul>
+    <p><strong>Toda decisão jurídica permanece exclusivamente humana.</strong> O apoio inteligente utiliza modelos de IA dos provedores Anthropic, OpenAI e Google, com chave de API configurada localmente pelo próprio usuário. Nenhum conteúdo de processo é persistido em servidor do Inovajus.</p>
+    <p>A extensão classifica-se como <strong>ferramenta de baixo risco</strong> segundo o Anexo da Resolução CNJ 615/2025 (itens BR4 e BR8 — produção de textos de apoio e anonimização).</p>
+
+    <h2 id="dados">3. Dados tratados</h2>
+
+    <h3 id="dados-locais">3.1 Dados armazenados no seu navegador</h3>
+    <p>Ficam exclusivamente em <code>chrome.storage.local</code>, <strong>sem transmissão a qualquer servidor do Inovajus</strong>:</p>
+    <ul>
+      <li>Chave de API do provedor de IA escolhido, com proteção compatível com o isolamento que o navegador oferece a extensões;</li>
+      <li>Preferências de configuração (perfil de trabalho, modelo preferido, parâmetros de preparo de digitalizados);</li>
+      <li>Critérios personalizados de triagem e instruções customizadas;</li>
+      <li>Cadastro local de peritos (nome, etiquetas vinculadas, assuntos preferenciais);</li>
+      <li>Pasta local com modelos de minuta, opcionalmente indicada pelo usuário;</li>
+      <li>Registros de diagnóstico das últimas varreduras, sem conteúdo de processos, exibidos apenas na tela de Diagnóstico.</li>
+    </ul>
+    <p><strong>Conteúdo de processos judiciais não é persistido</strong> nesse armazenamento. Os dados dos painéis (Triagem, Gestão, Perícias, Prazos na Fita, Ordens PREVJUD, Validação de cadastro) permanecem em armazenamento de sessão e são descartados ao fechar o navegador ou a aba do painel.</p>
+
+    <h3 id="dados-backend">3.2 Dados tratados pelo serviço de autenticação</h3>
+    <p>O uso da extensão exige login. O serviço do Inovajus é um <strong>Cloudflare Worker</strong> em <code>https://kanban.paidegua.ia.br/api/auth/extension</code>, que recebe e trata:</p>
+    <ul>
+      <li><strong>E-mail institucional</strong> — comparado com a lista de autorização mantida pelo Inovajus. A lista reside no Cloudflare KV e é administrada pela equipe; cada membro precisa estar marcado como ativo e habilitado para a extensão;</li>
+      <li><strong>Código numérico de uso único</strong> (6 dígitos), enviado à caixa institucional para confirmar a posse do endereço. É válido por 10 minutos, serve uma única vez e é descartado após o uso. O envio é feito pela Resend, provedor de e-mail transacional, a partir do domínio <code>paidegua.ia.br</code>;</li>
+      <li><strong>Token de sessão</strong> — sequência aleatória de 32 bytes, sem significado próprio, gerada após a confirmação do código. Fica armazenada no seu navegador; o serviço mantém apenas a correspondência entre o token e o e-mail, com validade de 90 dias.</li>
+    </ul>
+    <p>O serviço <strong>não armazena</strong> conteúdo de processos, documentos, instruções ou respostas da IA. Os únicos registros mantidos são o cadastro do usuário na lista de autorização (e-mail, nome, papel, situação e datas administrativas) e os códigos temporários, descartados após o uso ou em até 10 minutos.</p>
+    <p>A extensão revalida a sessão a cada 12 horas de uso ativo, exclusivamente para verificar se o acesso foi revogado. O Inovajus pode revogar o acesso a qualquer momento, marcando o membro como inativo ou retirando sua habilitação — na revalidação seguinte a extensão faz logout automático.</p>
+
+    <h3 id="dados-ia">3.3 Dados transmitidos aos provedores de IA</h3>
+    <p>Quando você aciona uma funcionalidade que usa inteligência artificial (resumir, gerar minuta, analisar processo, sugerir etiquetas), o conteúdo selecionado é transmitido <strong>diretamente do seu navegador</strong> ao provedor escolhido, autenticado com a sua chave de API:</p>
+    <ul>
+      <li><strong>Anthropic Claude</strong> — <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">política de privacidade</a></li>
+      <li><strong>OpenAI</strong> — <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">política de privacidade</a></li>
+      <li><strong>Google Gemini</strong> — <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">política de privacidade</a></li>
+    </ul>
+    <p>O Inovajus <strong>não intermedeia</strong> essa transmissão e não recebe o conteúdo enviado. Aplica-se a política de privacidade do provedor escolhido.</p>
+
+    <h4 id="anonimizacao">Anonimização — como funciona de fato</h4>
+    <blockquote><strong>A anonimização depende de ação sua.</strong> Nas ações de resumo e de minuta, o conteúdo é enviado ao provedor <em>como extraído dos autos</em>, salvo se você acionar antes o botão <strong>Anonimizar autos</strong>. Não há anonimização automática nesse caminho.</blockquote>
+    <p>Quando acionada, a anonimização substitui por marcadores genéricos os dados que seguem padrão reconhecível — CPF, CNPJ, RG, CEP, telefone, e-mail e dados bancários — e pode substituir os nomes das partes pelo respectivo papel processual.</p>
+    <p>Dois fluxos aplicam a anonimização <strong>automaticamente</strong>, sem depender de comando:</p>
+    <ul>
+      <li>a <strong>pesquisa de jurisprudência</strong> (Fale com a Júlia);</li>
+      <li>os <strong>indicadores de gestão e a triagem em lote</strong>, em que número do processo e nomes das partes são ocultados antes do envio.</li>
+    </ul>
+    <p>A <strong>Validação de cadastro</strong> não envia nada a provedor de IA: opera apenas por regras locais, dentro do navegador.</p>
+
+    <h4 id="treinamento">Restrição contratual de treinamento</h4>
+    <p>Recomenda-se o uso de chave de API vinculada a plano <strong>Enterprise</strong>, <strong>Business</strong> ou equivalente, que assegure contratualmente que os dados trafegados <strong>não sejam utilizados para treinamento</strong> de modelos comerciais (art. 19, II, da Resolução CNJ 615/2025). Cabe ao usuário verificar essa condição junto ao provedor da chave que utiliza.</p>
+
+    <h3 id="dados-julia">3.4 Consulta à jurisprudência (Júlia — TRF5)</h3>
+    <p>A funcionalidade <strong>Fale com a Júlia</strong> consulta a base de jurisprudência do TRF5. Nessa consulta:</p>
+    <ul>
+      <li>a extensão <strong>não armazena credenciais</strong> — utiliza a sessão que você já abriu na Júlia, no próprio navegador;</li>
+      <li>documentos marcados como <strong>sigilosos são descartados</strong> antes de qualquer exibição, e não são enviados a provedor de IA;</li>
+      <li>o texto é anonimizado antes de ser submetido ao modelo de IA;</li>
+      <li>sem sessão autenticada na Júlia, a consulta permanece restrita ao acervo público de 2º grau.</li>
+    </ul>
+
+    <h2 id="finalidades">4. Finalidades e bases legais</h2>
+    <table>
+      <thead><tr><th>Finalidade</th><th>Base legal (LGPD)</th></tr></thead>
+      <tbody>
+        <tr><td>Autenticar o servidor ou magistrado autorizado a usar a extensão</td><td>Art. 7º, II — cumprimento de obrigação legal/regulatória; e art. 7º, V — execução de políticas públicas</td></tr>
+        <tr><td>Apoio à confecção de atos judiciais e à triagem processual</td><td>Art. 7º, III — execução de políticas públicas pelo Poder Judiciário</td></tr>
+        <tr><td>Anonimização de dados sensíveis dos autos</td><td>Art. 7º, IX — legítimo interesse, com adoção de salvaguarda compatível</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="compartilhamento">5. Compartilhamento</h2>
+    <p>O pAIdegua <strong>não compartilha dados pessoais</strong> com terceiros além do descrito nos itens 3.3 e 3.4, sempre por iniciativa do usuário. Não há compartilhamento com finalidade de publicidade, análise comportamental ou perfilamento.</p>
+
+    <h2 id="telemetria">6. Telemetria</h2>
+    <p>O Inovajus <strong>não coleta telemetria de uso</strong>. Não há contador de execuções, registro de funcionalidades acionadas nem identificador único de instalação enviado a servidores do Inovajus. A única comunicação recorrente com o Inovajus é a revalidação da sessão a cada 12 horas, descrita no item 3.2.</p>
+    <p>A funcionalidade <strong>Mapas de Jornada</strong> registra o caminho percorrido nas varreduras para fins de diagnóstico. Vem <strong>desligada por padrão</strong>, depende de ativação expressa, grava apenas no seu navegador e <strong>nunca envia esses registros</strong> — nem ao Inovajus, nem a terceiros. Pode ser desligada a qualquer momento.</p>
+
+    <h2 id="retencao">7. Retenção</h2>
+    <ul>
+      <li><strong>Dados locais:</strong> mantidos até que você desinstale a extensão, limpe os dados do navegador ou use as funções de remoção da própria extensão.</li>
+      <li><strong>Lista de autorização:</strong> mantida enquanto o usuário integrar o grupo piloto. A revogação é feita pela equipe Inovajus e produz efeito na revalidação seguinte.</li>
+      <li><strong>Códigos de uso único:</strong> descartados após o uso ou em 10 minutos.</li>
+      <li><strong>Token de sessão:</strong> expira automaticamente em 90 dias.</li>
+    </ul>
+
+    <h2 id="direitos">8. Direitos do titular (LGPD, art. 18)</h2>
+    <p>Você pode, a qualquer tempo: confirmar a existência de tratamento; acessar seus dados; corrigir dados incompletos, inexatos ou desatualizados; solicitar anonimização, bloqueio ou eliminação de dados desnecessários; solicitar portabilidade; revogar consentimento; e obter informações sobre compartilhamento.</p>
+    <p>As solicitações devem ser dirigidas a <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a>.</p>
+
+    <h2 id="seguranca">9. Segurança</h2>
+    <ul>
+      <li>A comunicação com o serviço de autenticação ocorre exclusivamente sobre <strong>HTTPS</strong>.</li>
+      <li>O <strong>token de sessão</strong> é uma sequência aleatória de 32 bytes, sem informação embutida: sozinho, não revela e-mail, papel nem qualquer atributo do usuário. Sua validade é verificada por consulta ao registro mantido no serviço, o que permite revogação imediata.</li>
+      <li>O acesso é restrito por domínio institucional (<code>trf5.jus.br</code>, <code>jfce.jus.br</code>, <code>jfrn.jus.br</code>, <code>jfpb.jus.br</code>, <code>jfpe.jus.br</code>, <code>jfal.jus.br</code>, <code>jfse.jus.br</code>) <strong>e</strong> por autorização nominal prévia — as duas condições são exigidas cumulativamente.</li>
+      <li>A chave de API do provedor de IA permanece no armazenamento local do navegador, isolado por extensão. Recomenda-se seu uso apenas em estações institucionais de trabalho.</li>
+    </ul>
+
+    <h2 id="alteracoes">10. Alterações</h2>
+    <p>Esta política pode ser revista para refletir mudanças regulatórias ou novas funcionalidades. Alterações relevantes serão comunicadas aos usuários autorizados pelo e-mail cadastrado e refletidas na versão indicada no topo.</p>
+
+    <h2 id="conformidade">11. Conformidade normativa</h2>
+    <ul>
+      <li><strong>Lei nº 13.709/2018</strong> — Lei Geral de Proteção de Dados Pessoais (LGPD);</li>
+      <li><strong>Resolução CNJ nº 615/2025</strong> — uso de Inteligência Artificial no Poder Judiciário;</li>
+      <li><strong>Resolução CNJ nº 363/2021</strong> — no que couber;</li>
+      <li>Política institucional do TRF da 5ª Região para uso de tecnologias.</li>
+    </ul>
+
+    <hr>
+    <p style="text-align:center;color:var(--muted);font-size:14px">Dúvidas, solicitações de titular de dados ou denúncias: <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a>.</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <p><strong>Inovajus</strong> · Justiça Federal no Ceará</p>
+  <p><a href="../#governanca">Governança</a> · <a href="../manual/">Manual</a> · <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
+  <p>Uso experimental restrito a pilotos autorizados. Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
+</footer>
+</body>
+</html>

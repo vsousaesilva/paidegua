@@ -1,0 +1,14 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
+
+/assets/*
+  # Os assets têm nome fixo (site.css, manual.js) — sem hash de conteúdo.
+  # Um max-age longo faria o navegador segurar versão antiga por dias após um
+  # deploy. Com must-revalidate ele confere o ETag a cada visita e recebe 304
+  # enquanto nada mudar: sempre atualizado, e barato.
+  Cache-Control: public, max-age=0, must-revalidate

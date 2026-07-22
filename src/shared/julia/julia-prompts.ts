@@ -556,3 +556,367 @@ manteve estável no período coberto.
 **O que esta análise não permite afirmar** — os limites da base consultada.
 Sempre presente.`;
 }
+
+// ── 3. Análise preditiva de minutas ──────────────────────────────
+
+/**
+ * Extração para a análise preditiva: a entrada não é uma pergunta, é a
+ * própria MINUTA. Além dos termos de busca, o modelo decompõe a minuta em
+ * teses — insumo do confronto ponto a ponto na síntese.
+ */
+export interface AnalisePreditivaExtracao {
+  /** Consulta com operadores da Júlia. */
+  termo: string;
+  /** Rede de segurança sem operadores (mesmo papel de JuliaExtracao). */
+  termoSimples: string;
+  /** Teses jurídicas centrais da minuta (2 a 6). */
+  teses: Array<{ id: number; resumo: string; fundamento: string }>;
+  /** Sentido do dispositivo da minuta. */
+  sentido: 'procedente' | 'improcedente' | 'parcial' | 'outro' | null;
+  /** Rótulo curto do tema (ex.: "auxílio-doença — restabelecimento"). */
+  materia: string;
+}
+
+export function buildAnalisePreditivaExtracaoPrompt(
+  minutaAnonimizada: string,
+  contexto: { unidade: string; hoje: string }
+): string {
+  return `Você prepara consultas à Júlia, o sistema de pesquisa de jurisprudência do TRF5.
+
+O texto abaixo é uma MINUTA de ato judicial (sentença, decisão ou voto) em elaboração. Sua tarefa tem duas partes:
+
+1. Identificar as TESES JURÍDICAS em que a minuta se apoia — as questões de direito que decidem o caso, não os fatos do processo.
+2. Derivar termos de busca que recuperem julgados sobre as MESMAS questões, para confrontar a minuta com a jurisprudência.
+
+Unidade que elabora a minuta: ${contexto.unidade}
+Data de hoje: ${contexto.hoje}
+
+MINUTA:
+"""
+${minutaAnonimizada}
+"""
+
+A busca é LÉXICA: casa palavras, não significados. Documento que não contenha as palavras buscadas não aparece, por mais pertinente que seja. Por isso os operadores abaixo são decisivos.
+
+## Operadores da Júlia
+
+- \`$\` — truncamento. \`prorroga$\` casa prorrogação, prorrogar, prorrogado,
+  prorrogados. **Use com generosidade**: o português flexiona muito, e sem
+  truncamento a busca perde variações óbvias do mesmo conceito.
+- \`adj\` — palavras adjacentes, nesta ordem. \`auxílio adj doença\` casa a
+  expressão, não as duas palavras espalhadas pelo texto.
+- \`prox\` — palavras próximas, em qualquer ordem.
+- \`e\`, \`ou\`, \`nao\` — booleanos.
+
+Responda SOMENTE com JSON válido, neste formato:
+
+{
+  "termo": "consulta com operadores",
+  "termoSimples": "as mesmas palavras, sem operador nenhum",
+  "teses": [
+    { "id": 1, "resumo": "uma frase com a tese", "fundamento": "em que a minuta a apoia (lei, súmula, precedente, prova)" }
+  ],
+  "sentido": "procedente | improcedente | parcial | outro | null",
+  "materia": "rótulo curto do tema"
+}
+
+Regras:
+
+1. **Teses, não fatos.** "A parte estava incapacitada em 2023" é fato; "a DIB
+   deve retroagir à data do requerimento administrativo" é tese. De 2 a 6
+   teses — as que decidem o caso, na ordem de importância da minuta.
+2. **Vocabulário do documento julgado, não da minuta.** Use os termos como
+   apareceriam num acórdão sobre o mesmo tema. Nunca inclua metalinguagem nem
+   o nome da unidade.
+3. **Trunque os radicais** (\`conced$\`, \`incapacida$\`) e **agrupe expressões
+   com \`adj\`** (auxílio adj doença).
+4. **Seja enxuto.** De 2 a 5 conceitos na consulta — os que atravessam as
+   teses. Consulta longa devolve vazio; na dúvida, tire um termo.
+5. **"termoSimples"**: as mesmas palavras sem \`$\`, \`adj\`, \`prox\` ou
+   booleanos. É a rede de segurança caso a sintaxe falhe.
+6. **"sentido"**: o desfecho que a minuta dá ao pedido, lido do dispositivo.
+   Use null se a minuta não tiver dispositivo reconhecível.
+
+Nenhum texto fora do JSON.`;
+}
+
+export function parseAnalisePreditivaExtracao(
+  raw: string
+): AnalisePreditivaExtracao | null {
+  const obj = tryParseLooseJson(raw) as Record<string, unknown> | null;
+  if (!obj || typeof obj !== 'object') return null;
+
+  const termo = typeof obj.termo === 'string' ? obj.termo.trim() : '';
+  if (!termo) return null;
+
+  const simples =
+    typeof obj.termoSimples === 'string' && obj.termoSimples.trim()
+      ? obj.termoSimples.trim()
+      : removerOperadores(termo);
+
+  const tesesBrutas = Array.isArray(obj.teses) ? obj.teses : [];
+  const teses: AnalisePreditivaExtracao['teses'] = [];
+  for (const t of tesesBrutas) {
+    if (!t || typeof t !== 'object') continue;
+    const tt = t as Record<string, unknown>;
+    const resumo = typeof tt.resumo === 'string' ? tt.resumo.trim() : '';
+    if (!resumo) continue;
+    teses.push({
+      id: teses.length + 1,
+      resumo,
+      fundamento: typeof tt.fundamento === 'string' ? tt.fundamento.trim() : ''
+    });
+    if (teses.length >= 6) break;
+  }
+
+  const sentidos = ['procedente', 'improcedente', 'parcial', 'outro'] as const;
+  const sentido = sentidos.find((s) => s === obj.sentido) ?? null;
+
+  return {
+    termo,
+    termoSimples: simples,
+    teses,
+    sentido,
+    materia: typeof obj.materia === 'string' ? obj.materia.trim() : ''
+  };
+}
+
+function formatarTeses(teses: AnalisePreditivaExtracao['teses']): string {
+  if (!teses.length) {
+    return (
+      'As teses da minuta NÃO puderam ser estruturadas previamente. ' +
+      'Identifique-as você mesmo a partir do texto da minuta antes de fazer o confronto.'
+    );
+  }
+  return teses
+    .map(
+      (t) =>
+        `${t.id}. ${t.resumo}` + (t.fundamento ? ` (apoiada em: ${t.fundamento})` : '')
+    )
+    .join('\n');
+}
+
+/** Precedente entregue ao prompt de reescrita, já com a referência pronta. */
+export interface PrecedenteParaReescrita {
+  n: number;
+  referencia: string;
+  trecho: string;
+}
+
+/**
+ * Reescrita da minuta aplicando APENAS as sugestões escolhidas.
+ *
+ * A regra central é a literalidade: a tentação do modelo é "melhorar" o texto
+ * inteiro, e o magistrado pediu o oposto — o que ele já escreveu está
+ * decidido, e mudança fora do pedido é retrabalho de conferência. Por isso a
+ * regra 1 é a primeira e a mais enfática.
+ */
+export function buildReescritaMinutaPrompt(
+  minutaAnonimizada: string,
+  sugestoes: string[],
+  precedentes: PrecedenteParaReescrita[]
+): string {
+  const listaSugestoes = sugestoes
+    .map((s, i) => `${i + 1}. ${s}`)
+    .join('\n');
+
+  const blocoPrecedentes = precedentes.length
+    ? precedentes
+        .map(
+          (p) =>
+            `[${p.n}] Referência: ${p.referencia || '(sem referência montada)'}\nTrecho:\n${prepararTextoParaIA(p.trecho)}`
+        )
+        .join('\n\n---\n\n')
+    : 'Nenhum precedente fornecido — as sugestões escolhidas não citam documentos.';
+
+  return `Você reescreve uma MINUTA judicial aplicando EXCLUSIVAMENTE as sugestões listadas, para o magistrado que a assina.
+
+MINUTA ATUAL (anonimizada, em Markdown — a formatação é parte do documento):
+"""
+${minutaAnonimizada}
+"""
+
+SUGESTÕES A APLICAR (e nenhuma outra):
+${listaSugestoes}
+
+PRECEDENTES DISPONÍVEIS PARA CITAÇÃO:
+${blocoPrecedentes}
+
+## REGRAS INEGOCIÁVEIS
+
+1. **LITERALIDADE.** Fora dos pontos diretamente alcançados pelas sugestões,
+   reproduza o texto EXATAMENTE como está — mesma redação, mesma ordem de
+   parágrafos, mesmos títulos, mesma pontuação. É PROIBIDO melhorar estilo,
+   resumir, reordenar, padronizar ou corrigir qualquer coisa que as sugestões
+   não peçam. O texto atual está decidido; cada alteração não pedida vira
+   retrabalho de conferência para quem assina.
+
+2. **A FORMATAÇÃO É PARTE DA LITERALIDADE.** Preserve exatamente a marcação
+   Markdown existente: negrito (**), itálico (*), listas e — sobretudo — os
+   blocos de citação recuados (linhas iniciadas com "> "). Citação que está
+   recuada permanece recuada, com o mesmo conteúdo. Não acrescente nem remova
+   formatação do texto que não foi alterado.
+
+3. **Cada sugestão entra no ponto pertinente da fundamentação**, integrada com
+   naturalidade à redação existente — não como apêndice ao final.
+
+4. **Citação de precedente usa o material fornecido e a convenção do
+   documento**: transcreva a ementa ou o trecho pertinente como bloco recuado
+   (linhas com "> ") seguido da referência POR EXTENSO, no formato fornecido.
+   NÃO use marcadores numéricos como [3] — minuta não cita por número de
+   sistema. Só cite precedentes da lista acima.
+
+5. **Proibido inventar** precedente, dispositivo legal, fato ou prova que não
+   esteja na minuta atual ou nos precedentes fornecidos.
+
+6. **O texto foi anonimizado**: linhas de qualificação foram removidas e dados
+   pessoais mascarados. Preserve os marcadores exatamente como estão, não
+   tente reconstituir dados, e se houver o marcador
+   "[... trecho intermediário omitido ...]", mantenha-o no mesmo lugar.
+
+7. **Responda SOMENTE com o texto integral da minuta reescrita, em
+   Markdown** — sem comentários antes ou depois, sem explicar o que mudou e
+   sem cercas de código.`;
+}
+
+/**
+ * Síntese da análise preditiva: confronta a minuta com a evidência
+ * recuperada e produz o relatório de 4 blocos para o magistrado.
+ *
+ * A trava nova mais importante é a proibição de probabilidade numérica: o
+ * prognóstico é qualitativo e condicionado à base lida. "70% de chance de
+ * manutenção" seria a pior alucinação possível aqui — número inventado com
+ * aparência de estatística, lido por quem decide.
+ */
+export function buildAnalisePreditivaSintesePrompt(
+  minutaAnonimizada: string,
+  extracao: AnalisePreditivaExtracao,
+  r: JuliaRecuperacao,
+  /**
+   * `'publica'` no 2º grau: não há "instância revisora" a antecipar — o
+   * relatório vira aderência ao entendimento do próprio colegiado.
+   */
+  modo: 'dupla' | 'publica' = 'dupla'
+): string {
+  const dataIndice = r.dataIndice
+    ? `O índice da Júlia foi atualizado pela última vez em ${r.dataIndice}. Decisões posteriores não constam.`
+    : 'A data de atualização do índice não pôde ser obtida.';
+
+  const publica = modo === 'publica';
+  const tituloPrognostico = publica
+    ? 'Aderência ao entendimento do colegiado'
+    : 'Prognóstico';
+
+  const documentos = publica
+    ? formatarEscopo(r.revisor, tituloEscopo('JURISPRUDÊNCIA CONSULTADA', r.revisor), 0)
+    : `${formatarEscopo(r.unidade, tituloEscopo('DECISÕES DA PRÓPRIA UNIDADE (primeiro grau)', r.unidade), 0)}
+
+${formatarEscopo(r.revisor, tituloEscopo('DECISÕES DA INSTÂNCIA QUE REVISA A UNIDADE', r.revisor), r.unidade?.analisados.length ?? 0)}`;
+
+  return `Você é o pAIdegua analisando uma MINUTA em elaboração contra a jurisprudência recuperada da Júlia (TRF5), para o magistrado que a revisa antes de assinar.
+
+Use EXCLUSIVAMENTE os documentos fornecidos. Você não tem outra fonte, e não deve recorrer a conhecimento próprio sobre o tema.
+
+MINUTA SOB ANÁLISE${extracao.materia ? ` (tema: ${extracao.materia})` : ''}:
+"""
+${minutaAnonimizada}
+"""
+
+TESES IDENTIFICADAS NA MINUTA:
+${formatarTeses(extracao.teses)}
+
+${dataIndice}
+
+## REGRAS INEGOCIÁVEIS
+
+1. **Base contada.** Sempre informe quantos documentos foram encontrados e
+   quantos foram efetivamente lidos. Nunca escreva como se os lidos fossem o
+   universo. Se foram lidos 4 de 300, isso precisa estar visível.
+
+2. **PROIBIDO percentual ou probabilidade numérica** de manutenção ou reforma
+   ("70% de chance", "alta probabilidade estatística"). O prognóstico é
+   QUALITATIVO e sempre condicionado à base lida: "nos N acórdãos lidos, a
+   tese X foi acolhida em ...", nunca "a minuta será mantida". Com poucos
+   documentos frente ao universo, use linguagem de indício ("os julgados
+   analisados sugerem") — NUNCA "entendimento consolidado" ou "prevalece".
+
+3. **Citação por afirmação.** Toda afirmação sobre entendimento remete aos
+   documentos que a embasam, pelo número entre colchetes: [3], [7]. Numeração
+   contínua entre os blocos — cada número é único em toda a resposta. Escreva
+   apenas o número, sem markdown de link: a interface torna cada [n]
+   clicável. Vários numa citação só: [3][7]. Afirmação sem lastro em
+   documento fornecido não entra na resposta.
+
+4. **Não atribua ao órgão o que ele apenas citou.** Os documentos transcrevem
+   doutrina, súmulas e acórdãos de outros tribunais. Distinga "o acórdão
+   adota a tese X" de "o acórdão cita precedente do STJ no sentido de X".
+   Quando não for possível distinguir, diga que não é possível.
+
+5. **Divergência se relata, não se resolve.** Se os documentos apontam em
+   direções diferentes, apresente a divergência e quem sustenta cada posição.
+   Divergência no tempo depende do intervalo: com documentos concentrados em
+   poucos meses, NÃO avalie evolução do entendimento — diga que o período não
+   permite. Divergência entre decisões da mesma época é dissenso, não
+   evolução.
+${
+    publica
+      ? ''
+      : `
+6. **Comparação entre escopos só com os dois lados.** ${
+          r.comparacaoPossivel
+            ? 'Os dois escopos têm documentos lidos — a comparação é possível.'
+            : 'ATENÇÃO: os dois escopos NÃO estão disponíveis. É PROIBIDO afirmar alinhamento ou divergência entre unidade e instância revisora. Apresente o que há e declare explicitamente que a comparação não foi possível.'
+        }${
+          r.unidade?.indisponivel?.motivo === 'sessao'
+            ? '\n\n6.1. **ABRA A RESPOSTA AVISANDO** que as decisões da própria unidade não foram consultadas porque a Júlia não está autenticada neste navegador, e que a análise reflete apenas a instância revisora. Isso vem ANTES de qualquer avaliação — quem lê precisa saber que está vendo metade antes de formar juízo.'
+            : ''
+        }
+`
+  }
+7. **Ausência de evidência não é convergência nem divergência.** Se nenhum
+   documento tratar de uma tese da minuta, escreva "não localizei julgados
+   sobre este ponto na base consultada" — e nada além disso.
+
+8. **PROIBIDO inventar precedente.** Só os documentos fornecidos existem.
+
+9. **Sugestões com lastro.** Cada sugestão de reforço ou distinção deve citar
+   [n] ou declarar-se expressamente como sugestão redacional sem lastro em
+   precedente.
+
+10. **Fundamentação e desfecho são coisas distintas.** A tese está na
+    fundamentação/ementa; o dispositivo indica apenas o resultado.
+
+11. **Escreva para o magistrado, não para o sistema.** Nada de rótulos
+    internos deste prompt ("Escopo 1", "escopo revisor", "extração"), nomes
+    de parâmetro nem funcionamento da consulta. Refira-se aos órgãos pelo
+    nome ou como "a unidade" e "a instância revisora". Tom técnico e direto —
+    quem lê decide, não precisa de rodeios.
+
+## DOCUMENTOS
+
+${documentos}
+
+## FORMATO DA RESPOSTA
+
+Use exatamente estes títulos, omitindo apenas seções sem qualquer dado:
+
+**${tituloPrognostico}** — avaliação qualitativa de como ${
+    publica
+      ? 'a minuta se alinha ao que o colegiado vem decidindo'
+      : 'a instância revisora tende a receber a minuta'
+  }, sempre abrindo com a base ("com base em N de M acórdãos lidos...").
+
+**Divergências ponto a ponto** — para CADA tese da minuta: a tese → o que os
+julgados vêm decidindo sobre ela [n] → convergência, divergência ou "sem
+julgado localizado".
+
+**Precedentes favoráveis e contrários** — duas listas ("Favoráveis à minuta"
+e "Contrários à minuta"), cada item com [n] e uma linha explicando o porquê.
+
+**Sugestões de reforço ou distinção** — como robustecer a fundamentação:
+citar precedente favorável ainda não citado [n]; distinguir expressamente o
+caso do precedente contrário [n]; ajustes redacionais (declarados como tal).
+
+**O que esta análise não permite afirmar** — os limites da base consultada.
+Sempre presente.`;
+}

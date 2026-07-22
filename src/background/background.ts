@@ -24,13 +24,17 @@ import {
   type ProviderId
 } from '../shared/constants';
 import {
+  executarAnalisePreditiva,
   executarConsultaJulia,
+  executarReescritaMinuta,
   listarOrgaosJulgadoresUnidos,
   loginAssistidoJulia,
   mensagemErroJulia,
   retentarSinteseJulia,
   verificarAcessoJulia,
-  type JuliaStartPayload
+  type AnalisePreditivaStartPayload,
+  type JuliaStartPayload,
+  type ReescritaStartPayload
 } from './julia-orquestrador';
 import type {
   JuliaInstanciaAutenticada,
@@ -760,6 +764,14 @@ function dispatchMessage(
       case MESSAGE_CHANNELS.INSERT_IN_PJE_EDITOR:
         void handleInsertInPJeEditor(
           message.payload as { html: string; plain: string; actionId?: string },
+          sender,
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_CHANNELS.MINUTA_LER:
+        void handleLerMinuta(
+          message.payload as { somenteDeteccao?: boolean },
           sender,
           sendResponse
         );
@@ -2764,6 +2776,38 @@ async function handleTemplatesSearch(
  *
  * Devolve o primeiro frame que aceitou a inserção, ou erro agregado.
  */
+/**
+ * Relay da leitura de minuta: reenvia o pedido a TODOS os frames da aba de
+ * origem e devolve a primeira resposta.
+ *
+ * Diferente da inserção (que varre outras abas), aqui o alvo é a MESMA aba:
+ * o sidebar está no frame de topo e o editor num iframe — no TRF5,
+ * cross-origin (`frontend-prd.trf5.jus.br`), inalcançável por DOM. O
+ * `tabs.sendMessage` sem `frameId` entrega a todos os frames; só responde o
+ * que tem minuta com conteúdo, então a primeira resposta é a certa. Nenhum
+ * frame respondendo, a porta fecha sem resposta e o catch vira "sem minuta".
+ */
+async function handleLerMinuta(
+  payload: { somenteDeteccao?: boolean } | undefined,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) {
+    sendResponse({ ok: false });
+    return;
+  }
+  try {
+    const resposta = await chrome.tabs.sendMessage(tabId, {
+      channel: MESSAGE_CHANNELS.MINUTA_LER_PERFORM,
+      payload: payload ?? {}
+    });
+    sendResponse(resposta ?? { ok: false });
+  } catch {
+    sendResponse({ ok: false });
+  }
+}
+
 async function handleInsertInPJeEditor(
   payload: { html: string; plain: string; actionId?: string },
   _sender: chrome.runtime.MessageSender,
@@ -3360,13 +3404,21 @@ chrome.runtime.onConnect.addListener((port) => {
       return;
     }
     if (msg.type === JULIA_PORT_MSG.START) {
-      void handleJuliaStart(port, msg.payload as JuliaStartPayload);
-    } else if (msg.type === JULIA_PORT_MSG.RETENTAR_SINTESE) {
+      void handleJuliaStart(port, msg.payload as JuliaStartPayload, 'consulta');
+    } else if (msg.type === JULIA_PORT_MSG.START_ANALISE) {
       void handleJuliaStart(
         port,
-        msg.payload as JuliaStartPayload,
-        /* somenteSintese */ true
+        msg.payload as AnalisePreditivaStartPayload,
+        'analise'
       );
+    } else if (msg.type === JULIA_PORT_MSG.START_REESCRITA) {
+      void handleJuliaStart(
+        port,
+        msg.payload as ReescritaStartPayload,
+        'reescrita'
+      );
+    } else if (msg.type === JULIA_PORT_MSG.RETENTAR_SINTESE) {
+      void handleJuliaStart(port, msg.payload as JuliaStartPayload, 'sintese');
     } else if (msg.type === JULIA_PORT_MSG.ABORT) {
       activeJulia.get(port)?.abort();
     }
@@ -3400,9 +3452,16 @@ async function handleJuliaOrgaosJulgadores(
 
 async function handleJuliaStart(
   port: chrome.runtime.Port,
-  payload: JuliaStartPayload,
-  /** Refaz só a síntese, sem nova varredura na Júlia. */
-  somenteSintese = false
+  payload:
+    | JuliaStartPayload
+    | AnalisePreditivaStartPayload
+    | ReescritaStartPayload,
+  /**
+   * Qual fluxo executar na porta compartilhada: consulta comum, análise
+   * preditiva de minuta, reescrita da minuta com as sugestões escolhidas, ou
+   * só refazer a última síntese (sem nova varredura).
+   */
+  fluxo: 'consulta' | 'analise' | 'reescrita' | 'sintese'
 ): Promise<void> {
   activeJulia.get(port)?.abort();
   const controller = new AbortController();
@@ -3434,9 +3493,13 @@ async function handleJuliaStart(
       signal: controller.signal,
       emitir: (m: Record<string, unknown>) => port.postMessage(m)
     };
-    await (somenteSintese
+    await (fluxo === 'sintese'
       ? retentarSinteseJulia(ctx)
-      : executarConsultaJulia(payload, ctx));
+      : fluxo === 'analise'
+        ? executarAnalisePreditiva(payload as AnalisePreditivaStartPayload, ctx)
+        : fluxo === 'reescrita'
+          ? executarReescritaMinuta(payload as ReescritaStartPayload, ctx)
+          : executarConsultaJulia(payload as JuliaStartPayload, ctx));
   } catch (error: unknown) {
     if ((error as { name?: string }).name === 'AbortError') {
       port.postMessage({ type: JULIA_PORT_MSG.DONE });

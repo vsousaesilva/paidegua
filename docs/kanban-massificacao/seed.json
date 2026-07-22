@@ -7974,6 +7974,90 @@
           "comando": "Em produção. Restam o smoke em navegador limpo e o broadcast represado, que cobre as duas versões."
         }
       ]
+    },
+    {
+      "id": "PES-07",
+      "titulo": "Análise preditiva de minutas — confronto da minuta em edição com a jurisprudência revisora, via Júlia (perfil Gabinete)",
+      "descricao": "Recurso dirigido ao MAGISTRADO no momento de analisar uma minuta. Com a minuta aberta no editor do PJe (Badon/ProseMirror, CKEditor 4 nas instalações antigas) OU na visualização somente-leitura do documento (div.folha), a extensão lê o conteúdo, confronta com o banco de decisões via Júlia e apresenta na barra lateral — no mesmo formato do Fale com a Júlia (streaming, painel de evidência, citações [n] clicáveis) — um relatório preditivo de 5 blocos: Prognóstico qualitativo de manutenção/reforma (proibido percentual/probabilidade numérica), Divergências ponto a ponto por tese, Precedentes favoráveis e contrários, Sugestões de reforço ou distinção, e Limites da base.\n\nReuso máximo do subsistema PES-05: mesma porta JULIA_STREAM com discriminador START_ANALISE; extração de teses da minuta (LLM) em vez de pergunta; recuperação nos dois escopos (unidade autenticada + revisor por rito); prompt de síntese próprio com as travas anti-alucinação herdadas. Base = revisora + própria unidade, degradando para só-revisor sem sessão da Júlia. No 2º grau (pjett) vira 'aderência ao entendimento do colegiado'.\n\nAção de REESCRITA (START_REESCRITA): o magistrado escolhe uma ou mais sugestões e a minuta é reescrita aplicando SÓ elas — prompt de literalidade estrita (texto e formatação preservados fora dos pontos alterados; citações por extenso, nunca [n]). A minuta reescrita preserva negrito, itálico e recuos de citação: htmlParaMarkdown converte o HTML capturado em Markdown (recuo → blocos '> '), e o Inserir no PJe (renderForPJe) devolve os recuos como blockquotes aninhados do ProseMirror. Rodapé da bolha reescrita: Copiar / Inserir no PJe / Baixar .doc / Analisar a minuta de novo (reinicia o ciclo).\n\nDescobertas técnicas de campo (TRF5, diagnóstico por chrome.scripting.executeScript allFrames no SW): o painel-usuario-interno embute #ngFrame cross-origin (frontend-prd.trf5.jus.br), e o conteúdo do Badon vive num iframe about:blank DENTRO de shadow root do componente do editor. Duas defesas: match_origin_as_fallback:true no content script (injeta no frame about:blank) + travessia de shadow roots na descida por iframes. Leitura viaja por broadcast a todos os frames (MINUTA_LER/MINUTA_LER_PERFORM) — só responde o frame que tem minuta. Gate minutaSuficiente(): editores exigem 200 chars; a folha exige só texto não vazio.\n\nBug corrigido de tabela (afetava também o PES-05): instanciasPublicas (default ['G2'] do inferirContexto) sobrepunha mapearOrgaoRevisor no recuperar() — unidade JEF era confrontada com o TRF5 em vez da Turma Recursal + TRU. Fix: o orquestrador só repassa instanciasPublicas no modo público.\n\nSem novas permissões de host (https://*.jus.br/* já cobria a Júlia e o PJe). Único acréscimo no manifest: match_origin_as_fallback no content script. Doc: docs/analise-preditiva-minutas.md.",
+      "categoria": "pesquisa",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "Pedido do owner em 21/07/2026 — recurso para o magistrado ao analisar minutas, sobre a base da Júlia (PES-05)",
+      "tags": ["julia", "jurisprudencia", "trf5", "minuta", "analise-preditiva", "gabinete", "rag", "reescrita"],
+      "esforco": "L",
+      "depende": ["PES-05"],
+      "aceitacao": [
+        "Botão 'Análise preditiva da minuta' na seção Pesquisa, só no perfil Gabinete, habilitado quando há minuta no editor OU na visualização",
+        "Lê o editor Badon (todas as páginas), CKEditor 4, e a visualização somente-leitura (div.folha) — inclusive quando o editor vive em iframe about:blank sob shadow root (match_origin_as_fallback + broadcast cross-frame)",
+        "Relatório de 5 blocos com painel de evidência (base contada) e citações [n] clicáveis; prognóstico qualitativo sem percentual",
+        "Unidade JEF confrontada com a Turma Recursal + TRU (não com o TRF5) — correção do instanciasPublicas",
+        "Anonimização local da minuta antes do LLM; degradação graciosa sem sessão da Júlia",
+        "Reescrita aplicando só as sugestões escolhidas, preservando texto e formatação (recuos de citação → blockquote no Inserir no PJe)",
+        "Rodapé da análise: Baixar .doc / Copiar / Analisar sugestões / Analisar de novo; rodapé da reescrita: Copiar / Inserir no PJe / Baixar .doc / Analisar de novo",
+        "build.bat OK; testado em produção-evolutiva pelo owner (perfil de magistrado)"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-21T00:00:00.000Z",
+      "atualizadoEm": "2026-07-21T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-21",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-21",
+          "data": "2026-07-21T00:00:00.000Z",
+          "comando": "Card aberto na sessão de implementação. Escopo definido com o owner: recurso do magistrado ao analisar minutas, sobre a base da Júlia (PES-05); apresentação na sidebar; base revisora + própria unidade; relatório de 5 blocos; reescrita a partir das sugestões escolhidas."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-21",
+          "data": "2026-07-21T00:00:00.000Z",
+          "comando": "Implementação concluída e testada em produção-evolutiva pelo owner. Iterações da sessão: (1) leitura do editor como espelho da escrita; (2) diagnóstico do editor em iframe cross-origin e depois about:blank sob shadow root — resolvido com match_origin_as_fallback + travessia de shadow roots + broadcast cross-frame; (3) bug do revisor (JEF confrontado com TRF5) corrigido no repasse de instanciasPublicas; (4) botões de ação no padrão do chat; (5) reescrita com sugestões, com literalidade de texto e formatação; (6) leitura da visualização somente-leitura (div.folha) com gate de conteúdo próprio para viabilizar teste na evolutiva. Aguarda empacotamento na REL-1.11.0."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.11.0",
+      "titulo": "Release v1.11.0 — Análise preditiva de minutas (perfil Gabinete)",
+      "descricao": "Bundle da release v1.11.0.\n\n- PES-07: Análise preditiva de minutas — a minuta em edição (ou em visualização) confrontada com a jurisprudência da própria unidade e da instância revisora, via Júlia; relatório de 5 blocos na sidebar; reescrita a partir das sugestões escolhidas, com literalidade de texto e formatação.\n\nInclui a correção do instanciasPublicas que também afetava o Fale com a Júlia (PES-05): unidade JEF passa a ser confrontada com a Turma Recursal + TRU, não com o TRF5.\n\nBump 1.10.2 -> 1.11.0 (minor, feature nova). Sem novas dependências. Sem novos hosts. Única mudança no manifest: match_origin_as_fallback:true no content script content.js — necessário para ler o editor Badon quando ele é renderizado em iframe about:blank (caso do painel-usuario-interno do TRF5).",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "origem": "skill release-extensao — sessão 2026-07-21",
+      "tags": ["release", "extensao", "cws", "julia", "minuta", "analise-preditiva"],
+      "esforco": "XS",
+      "coluna": "qa",
+      "depende": ["PES-07"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.11.0; dist/manifest.json em 1.11.0",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/background.js contém START_ANALISE e START_REESCRITA; dist/content.js contém o botão de análise preditiva",
+        "dist/manifest.json contém match_origin_as_fallback no content script",
+        "zip versoes/dist v1.11.0.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main",
+        "Aprovação CWS + smoke do owner + pilotos comunicados -> mover para lancado",
+        "Tag git v1.11.0 + Release no GitHub criada"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-21T00:00:00.000Z",
+      "atualizadoEm": "2026-07-21T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-21",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-21",
+          "data": "2026-07-21T00:00:00.000Z",
+          "comando": "Card aberto na skill release-extensao. Bump 1.10.2 -> 1.11.0 confirmado com o owner (feature nova significativa)."
+        },
+        {
+          "tipo": "movido",
+          "de": "dev",
+          "para": "qa",
+          "autor": "claude-code/sessao-2026-07-21",
+          "data": "2026-07-21T00:00:00.000Z",
+          "comando": "Versões bumpadas (package.json + manifest.json em 1.11.0), BACKEND_URL validada intacta. Aguarda build local, validação do dist, empacotamento e upload à CWS."
+        }
+      ]
     }
   ]
 }

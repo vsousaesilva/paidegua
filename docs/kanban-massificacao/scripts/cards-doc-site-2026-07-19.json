@@ -1,0 +1,131 @@
+[
+  {
+    "id": "DOC-01",
+    "titulo": "Atualizar manual da extensão para a v1.10.2",
+    "descricao": "O manual estava na v1.6.1 (13/05/2026) enquanto a extensão já estava na 1.10.2 — quatro funcionalidades não documentadas e uma descrita de forma incorreta. Documentadas: Validação de cadastro (Secretaria), Ordens PREVJUD (Gestão), Painel de Perícias (Gestão) e Fale com a Júlia (Gabinete). Corrigido o Controle Metas CNJ, que o manual anunciava como ativo mas está com display:none no sidebar.ts (MET-07, em revisão) — usuários procurariam um botão inexistente. Acrescentadas 6 entradas de solução de problemas e retirado o jargão técnico existente (HTTP 403 / Probe Keycloak), por orientação de que o manual é lido por usuários de níveis muito diferentes.",
+    "categoria": "atendimento",
+    "prioridade": "P1",
+    "coluna": "lancado",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["manual", "documentacao", "site"],
+    "esforco": "M",
+    "depende": [],
+    "aceitacao": [
+      "Manual publicado em https://paidegua.ia.br/manual/ na versão 1.10.2",
+      "Seções de Validação de cadastro, Ordens PREVJUD, Painel de Perícias e Fale com a Júlia presentes",
+      "Metas CNJ descrito como temporariamente indisponível",
+      "Todos os links do índice lateral resolvem para headings existentes",
+      "Fonte única em docs/site/manual/index.html; .md e .html legados viraram ponteiros"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  },
+  {
+    "id": "DOC-02",
+    "titulo": "Publicar site institucional em paidegua.ia.br",
+    "descricao": "Site estático (página inicial + manual + política) publicado no domínio raiz via Cloudflare Pages, em repositório separado `vsousaesilva/paidegua-site`, para não acoplar a publicação ao ciclo de release da extensão. Inclui _headers com CSP restritiva, 404 estilizado, robots.txt e sitemap.xml. O subdomínio kanban.paidegua.ia.br não foi afetado. Runbook em docs/site/DEPLOY.md.\n\nIncidentes resolvidos durante a implantação: (1) o projeto Pages estava desconectado da conta Git — o app Cloudflare Pages no GitHub não tinha acesso ao repositório novo, e os pushes chegavam ao GitHub sem disparar deploy; (2) o _headers inicial definia cache de 7 dias para /assets/*, que têm nome fixo sem hash — o HTML novo subiu referenciando CSS velho e a página apareceu sem estilo. Corrigido com must-revalidate e versionamento por query string (?v=N).",
+    "categoria": "atendimento",
+    "prioridade": "P1",
+    "coluna": "lancado",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["site", "cloudflare-pages", "dns", "infra"],
+    "esforco": "M",
+    "depende": [],
+    "aceitacao": [
+      "https://paidegua.ia.br e /manual/ no ar com certificado válido",
+      "kanban.paidegua.ia.br segue funcionando, login e OTP inclusive",
+      "404 responde com status correto e página estilizada",
+      "Deploy automático a cada push em main"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  },
+  {
+    "id": "DOC-03",
+    "titulo": "Seção de governança na página inicial do site",
+    "descricao": "Seção destacada logo abaixo do hero declarando: uso experimental, restrito a pilotos previamente cadastrados; dupla verificação de acesso (autorização prévia na lista do Inovajus E código de uso único por e-mail, cumulativos); natureza de medida assecuratória de observância à governança da Seção Judiciária do Ceará; e condicionamento da permanência do piloto e da divulgação em massa na 5ª Região à observância das normas sobre desenvolvimento e uso de aplicações. Traz ainda duas colunas contrapondo o que a ferramenta faz e o que não faz, para fins de segurança, Res. CNJ 615/2025 e LGPD.\n\nDuas afirmações preexistentes do site foram corrigidas por contradizerem a seção: o hero dizia 'sem enviar dados sensíveis para fora da Justiça' (o conteúdo É enviado ao provedor de IA) e o cartão Privacidade repetia o mesmo. Na coluna 'não faz' evitou-se a formulação 'não altera dados no PJe', que seria falsa — a extensão insere etiqueta, minuta e encerra expediente; o texto declara que não pratica atos por conta própria, sempre por comando explícito do usuário.",
+    "categoria": "conformidade",
+    "prioridade": "P1",
+    "coluna": "lancado",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["governanca", "cnj-615", "lgpd", "site"],
+    "esforco": "S",
+    "depende": ["DOC-02"],
+    "aceitacao": [
+      "Seção visível em https://paidegua.ia.br/#governanca",
+      "Linkada no menu do topo e no rodapé",
+      "Nenhuma afirmação do site contradiz o comportamento real do software"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  },
+  {
+    "id": "DOC-04",
+    "titulo": "Corrigir responsividade do site em telas de telefone",
+    "descricao": "O site tinha um único breakpoint (900px), pensado para tablet. Em ~375px o cabeçalho — altura fixa e flex sem quebra — estourava a largura e produzia rolagem horizontal na página inteira. Criado breakpoint de 600px: encolhe marca e navegação, oculta o link Governança do topo (a seção é a primeira da página e segue no rodapé), empilha os botões do hero em largura total para toque, reduz espaçamentos e tipografia, e faz a tabela do manual rolar na horizontal em vez de espremer colunas. Acrescentada quebra de palavra para caminhos e endereços longos.\n\nTambém corrigidos dois defeitos de visibilidade de botão: `.btn` tinha `color: #fff !important`, que vencia as variantes de fundo claro e produzia texto branco sobre branco (o !important era desnecessário — `.btn` já vence `a` por especificidade); e o botão da faixa azul definia cor por estilo inline, que não tem :hover — ao passar o mouse o fundo escurecia e o texto escuro sumiria.",
+    "categoria": "ergonomia",
+    "prioridade": "P2",
+    "coluna": "lancado",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["responsivo", "mobile", "css", "site"],
+    "esforco": "S",
+    "depende": ["DOC-02"],
+    "aceitacao": [
+      "Sem rolagem horizontal abaixo de 600px na página inicial e no manual",
+      "Botões do hero legíveis e empilhados em largura total no telefone",
+      "Tabela de perfis do manual rola na horizontal sem espremer colunas"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  },
+  {
+    "id": "DOC-05",
+    "titulo": "Revisar e publicar a política de privacidade (v1.10.2)",
+    "descricao": "A política estava na v1.2.1, em markdown não publicado, e continha DUAS afirmações que o código contradiz — grave num documento apresentado a regulador:\n\n(1) ANONIMIZAÇÃO: afirmava que 'antes do envio aos provedores, a extensão executa rotina de anonimização'. Falso. `handleAnonimizar` só roda no clique do botão 'Anonimizar autos'; Resumir e Minutar enviam o conteúdo como extraído dos autos se o usuário não acionar. A aplicação automática existe apenas em dois fluxos: pesquisa na Júlia (shared/julia/julia-prompts.ts) e triagem/indicadores de gestão (shared/triagem-anonymize.ts).\n\n(2) TOKEN DE SESSÃO: afirmava que 'o JWT é assinado com chave privada (HS256)'. Isso descrevia o backend legado em Apps Script. O worker.js atual gera token opaco de 32 bytes aleatórios (generateToken()), validado por consulta ao KV (ext-token:<token>, TTL 90 dias); o campo se chama `jwt` apenas por compatibilidade com a extensão.\n\nAlém disso: atualizada para a v1.10.2, incluídos PREVJUD, Validação de cadastro, Painel de Perícias e a consulta à Júlia (nova seção 3.4 — não armazena credenciais, descarta sigilosos, anonimiza antes do LLM), e esclarecido que o Mapas de Jornada é telemetria local opt-in que nunca é enviada.",
+    "categoria": "conformidade",
+    "prioridade": "P1",
+    "coluna": "lancado",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["lgpd", "cnj-615", "privacidade", "site"],
+    "esforco": "M",
+    "depende": ["DOC-02"],
+    "aceitacao": [
+      "Política publicada em https://paidegua.ia.br/privacidade/",
+      "Afirmações sobre anonimização e sobre o token de sessão correspondem ao código",
+      "Fonte única em docs/site/privacidade/index.html; docs/index.md virou ponteiro",
+      "Linkada no rodapé de todas as páginas do site"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  },
+  {
+    "id": "DOC-06",
+    "titulo": "Atualizar a URL da política de privacidade na Chrome Web Store",
+    "descricao": "O campo de política de privacidade no painel da Chrome Web Store deve apontar para https://paidegua.ia.br/privacidade/. Enquanto não for trocado, o listing aponta para o documento antigo (v1.2.1), que contém as duas afirmações incorretas corrigidas em DOC-05 — anonimização automática e assinatura HS256 do token.\n\nAntes de trocar, verificar qual URL consta hoje no campo, para saber se algum endereço fica órfão: o docs/index.md tinha front matter de GitHub Pages, mas o repositório da extensão é privado e não foi possível confirmar se aquela página chegou a existir.",
+    "categoria": "conformidade",
+    "prioridade": "P1",
+    "coluna": "spec",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["lgpd", "chrome-web-store", "publicacao"],
+    "esforco": "S",
+    "depende": ["DOC-05"],
+    "aceitacao": [
+      "Campo de política no painel da CWS aponta para https://paidegua.ia.br/privacidade/",
+      "Registrado qual era a URL anterior e se ela permanece acessível"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  },
+  {
+    "id": "DOC-07",
+    "titulo": "Corrigir docs/plano-julia-funcionalidades.md — diz não implementado, mas está em produção",
+    "descricao": "O documento docs/plano-julia-funcionalidades.md, datado de 18/07/2026, registra status 'planejamento, não implementado. Requer aprovação'. Isso não corresponde à v1.10.2: o botão 'Fale com a Júlia' está no sidebar.ts com handler ativo (handleFaleComJulia em content.ts), e a funcionalidade foi documentada no manual e na política de privacidade como existente.\n\nÉ preciso confirmar se a funcionalidade foi de fato liberada aos pilotos ou se está em produção sem a aprovação que o próprio documento condiciona. Se liberada, atualizar o status do documento; se não, avaliar se o botão deveria estar visível nesta versão — e, em caso negativo, corrigir também o manual e a política, que hoje a descrevem como disponível.",
+    "categoria": "pesquisa",
+    "prioridade": "P2",
+    "coluna": "triagem",
+    "origem": "sessão de 19/07/2026",
+    "tags": ["julia", "documentacao", "governanca"],
+    "esforco": "S",
+    "depende": [],
+    "aceitacao": [
+      "Definido se a funcionalidade está liberada aos pilotos e sob qual aprovação",
+      "docs/plano-julia-funcionalidades.md com status coerente com a versão publicada",
+      "Manual e política de privacidade coerentes com a decisão"
+    ],
+    "owner": "vsousaesilva@jfce.jus.br"
+  }
+]

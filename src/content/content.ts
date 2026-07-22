@@ -101,6 +101,12 @@ import {
   type JuliaContextoUnidade
 } from './julia/julia-chat';
 import {
+  abrirFormularioAnalise,
+  abrirSeletorSugestoes,
+  lerMinutaEmQualquerFrame,
+  repetirAnalise
+} from './julia/analise-preditiva';
+import {
   dispensarTarefaContextual,
   instalarDetectorTarefaContextual
 } from './fluxos/tarefa-contextual-detector';
@@ -174,7 +180,13 @@ import {
   type DadosPdfExtraidos
 } from '../shared/criminal-ai-prompts';
 import { renderForPJe, stripMarkdown } from './ui/markdown';
-import { detectPJeEditor, insertIntoPJeEditor, ensureTipoDocumentoSelected } from './ckeditor-bridge';
+import {
+  detectPJeEditor,
+  ensureTipoDocumentoSelected,
+  insertIntoPJeEditor,
+  minutaSuficiente,
+  readFromPJeEditor
+} from './ckeditor-bridge';
 import { downloadWordDocument, suggestMinutaFilename } from '../shared/docx-export';
 import type { SaveTemplatePayload } from '../shared/templates-save';
 import {
@@ -919,6 +931,56 @@ function buildChatBubbleActions(): ChatBubbleAction[] {
         void handleEncaminharEmenda(html, (msg, kind) =>
           mounted?.sidebar.setGlobalNotice(msg, kind ?? 'info')
         );
+      }
+    },
+    // ── Ações da bolha de análise preditiva de minutas ──
+    {
+      id: 'analise-download-doc',
+      label: 'Baixar .doc',
+      title: 'Salvar a análise preditiva como arquivo do Word (.doc)',
+      onClick: (html, _markdown) => {
+        const filename = suggestMinutaFilename(
+          memory.detection?.numeroProcesso ?? null,
+          'analise-preditiva'
+        );
+        try {
+          downloadWordDocument(html, filename);
+          mounted?.sidebar.setGlobalNotice(`Arquivo "${filename}" baixado.`, 'info');
+          window.setTimeout(() => mounted?.sidebar.setGlobalNotice('', 'info'), 2000);
+        } catch (error: unknown) {
+          mounted?.sidebar.setGlobalNotice(
+            `Falha ao gerar .doc: ${errorMessage(error)}`,
+            'error'
+          );
+        }
+      }
+    },
+    {
+      id: 'analise-sugestoes',
+      label: 'Analisar sugestões de reforço ou distinção',
+      title:
+        'Escolher uma ou mais sugestões da análise e reescrever a minuta ' +
+        'aplicando apenas elas — o restante do texto permanece literal.',
+      onClick: (_html, markdown) => {
+        if (!abrirSeletorSugestoes(markdown)) {
+          mounted?.sidebar.setGlobalNotice(
+            'Nenhuma análise preditiva anterior nesta sessão.',
+            'error'
+          );
+        }
+      }
+    },
+    {
+      id: 'analise-de-novo',
+      label: 'Analisar a minuta de novo',
+      title: 'Refazer a análise preditiva sobre o estado atual do editor',
+      onClick: (_html, _markdown) => {
+        if (!repetirAnalise()) {
+          mounted?.sidebar.setGlobalNotice(
+            'Nenhuma análise preditiva anterior nesta sessão.',
+            'error'
+          );
+        }
       }
     }
   ];
@@ -2724,6 +2786,39 @@ function wireSidebarEvents(sidebar: SidebarController): void {
     event.preventDefault();
     void handleFaleComJulia();
   });
+
+  els.analisePreditivaButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    void handleAnalisePreditiva();
+  });
+
+  // Gating do botão de análise preditiva: habilita quando há minuta com
+  // conteúdo no editor — deste frame ou de outro (no TRF5 o editor vive num
+  // iframe cross-origin, e a checagem viaja por mensagem). A checagem força
+  // layout (innerText) no frame do editor, então é espaçada e só roda com a
+  // sidebar aberta — fechada, não há botão visível a atualizar. Perfis fora
+  // do Gabinete escondem o botão via CSS, e habilitar botão oculto é inócuo.
+  let checandoMinuta = false;
+  const atualizarBotaoAnalise = (): void => {
+    if (checandoMinuta) return;
+    checandoMinuta = true;
+    void (async () => {
+      try {
+        const habilitado = (await lerMinutaEmQualquerFrame(true)) !== null;
+        els.analisePreditivaButton.disabled = !habilitado;
+        els.analisePreditivaButton.title = habilitado
+          ? 'Analisa a minuta aberta no editor contra as decisões da sua unidade e da instância revisora'
+          : 'Abra uma minuta no editor do PJe (tela minutar) para habilitar';
+      } finally {
+        checandoMinuta = false;
+      }
+    })();
+  };
+  atualizarBotaoAnalise();
+  window.setInterval(() => {
+    if (!mounted?.sidebar.isOpen()) return;
+    atualizarBotaoAnalise();
+  }, 3000);
 }
 
 /**
@@ -3778,6 +3873,66 @@ async function handleFaleComJulia(): Promise<void> {
 }
 
 /**
+ * Handler do botão "Análise preditiva da minuta" — perfil Gabinete.
+ *
+ * Espelho do `handleFaleComJulia`: mesma inferência de contexto, mesma chave
+ * 1G/2G derivada do host e a mesma porta de entrada quando falta sessão da
+ * Júlia. O que muda é o formulário e a execução, que vêm de
+ * `julia/analise-preditiva.ts` — a entrada não é uma pergunta, é a minuta
+ * lida do editor.
+ */
+async function handleAnalisePreditiva(): Promise<void> {
+  if (!mounted || !memory.settings) return;
+  const settings = memory.settings;
+  const chat = ensureChatMounted();
+  const shadow = mountShell().shadow;
+  const contexto = await inferirContexto();
+
+  const modo: 'dupla' | 'publica' =
+    memory.detection?.grau === '2g' ? 'publica' : 'dupla';
+
+  const abrir = (ctx: JuliaContextoUnidade): void => {
+    void abrirFormularioAnalise({
+      chat,
+      shadow,
+      contexto: ctx,
+      modo,
+      provider: settings.activeProvider,
+      model: settings.models[settings.activeProvider]
+    });
+  };
+
+  if (modo === 'publica') {
+    abrir(contexto);
+    return;
+  }
+
+  // Mesma sonda do "Fale com a Júlia": a expectativa é confrontar com a base
+  // da própria unidade, e montar o formulário sem sessão gastaria uma chamada
+  // de LLM para entregar metade da análise.
+  const aguarde = chat.addSystemText('Verificando acesso à Júlia…');
+  const acesso = await verificarAcesso(contexto);
+  aguarde.remove();
+
+  if (acesso === 'autenticado') {
+    abrir(contexto);
+    return;
+  }
+
+  chat.addCustomBubble(
+    renderPortaEntrada({
+      acesso,
+      contexto,
+      shadow,
+      onLiberado: () => abrir(contexto),
+      // Sem sessão, o escopo da unidade volta indisponível e o próprio
+      // relatório abre avisando que reflete só a instância revisora.
+      onSomenteRevisor: () => abrir(contexto)
+    })
+  );
+}
+
+/**
  * Handler do `GESTAO_RUN_COLETA` — disparado pelo background quando a
  * aba-painel confirma a seleção. Executa a varredura no contexto desta
  * aba (PJe), reporta progresso e devolve o payload final ao background
@@ -4707,6 +4862,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok, kind: detection.kind });
     } catch (error: unknown) {
       sendResponse({ ok: false, error: errorMessage(error) });
+    }
+    return false;
+  }
+
+  // Leitura da minuta (análise preditiva): o background reenvia o pedido do
+  // sidebar a TODOS os frames desta aba. Só responde o frame que tem minuta
+  // com conteúdo — os demais ficam calados (sem sendResponse), para não
+  // vencer a corrida da primeira resposta com um "não". É o caminho que
+  // funciona no TRF5, onde o editor vive num iframe cross-origin
+  // (frontend-prd) e o DOM dele é inalcançável do frame de topo.
+  if (message.channel === MESSAGE_CHANNELS.MINUTA_LER_PERFORM) {
+    try {
+      const payload = (message.payload ?? {}) as { somenteDeteccao?: boolean };
+      const conteudo = readFromPJeEditor();
+      if (!minutaSuficiente(conteudo)) {
+        return false;
+      }
+      // Na detecção (polling do botão) o texto fica de fora: mandar ~100k
+      // caracteres pelo canal a cada 3s seria desperdício.
+      sendResponse(
+        payload.somenteDeteccao ? { ...conteudo, text: '', html: '' } : conteudo
+      );
+    } catch {
+      /* sem resposta — outro frame pode ter o editor */
     }
     return false;
   }

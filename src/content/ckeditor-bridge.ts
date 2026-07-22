@@ -139,6 +139,12 @@ export type PJeEditorKind =
   | 'ckeditor4-iframe'
   | 'contenteditable'
   | 'textarea'
+  /**
+   * Visualização somente-leitura do documento (`div.folha`) — o outro modo
+   * pelo qual o magistrado enxerga a minuta no PJe. Só existe para LEITURA
+   * (análise preditiva); a inserção nunca mira este alvo.
+   */
+  | 'folha-visualizacao'
   | 'none';
 
 export interface PJeEditorDetection {
@@ -468,4 +474,278 @@ function insertIntoTextarea(textarea: HTMLTextAreaElement, plain: string): boole
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Leitura da minuta (análise preditiva)
+// ---------------------------------------------------------------------------
+
+/**
+ * Abaixo deste tamanho o conteúdo é tratado como "sem minuta" — editor
+ * recém-aberto, vazio ou com apenas o cabeçalho automático do PJe.
+ */
+export const MINUTA_MIN_CHARS = 200;
+
+/**
+ * Teto de leitura (~25k tokens). Minutas acima disso são truncadas
+ * preservando início (relatório) e fim (dispositivo), que concentram o
+ * que interessa à análise.
+ */
+export const MINUTA_MAX_CHARS = 100_000;
+
+export interface PJeEditorContent {
+  ok: boolean;
+  kind: PJeEditorKind;
+  /** Texto puro (innerText — preserva quebras visuais de parágrafo). */
+  text: string;
+  /** HTML bruto do editor, apenas para depuração/uso futuro. */
+  html: string;
+  chars: number;
+  /** true quando o texto foi cortado no teto MINUTA_MAX_CHARS. */
+  truncado: boolean;
+  /** Quantas "páginas" ProseMirror foram concatenadas (diagnóstico Badon). */
+  paginas: number;
+}
+
+const CONTEUDO_VAZIO: PJeEditorContent = {
+  ok: false,
+  kind: 'none',
+  text: '',
+  html: '',
+  chars: 0,
+  truncado: false,
+  paginas: 0
+};
+
+/**
+ * O conteúdo lido é suficiente para análise?
+ *
+ * Editores exigem o piso de `MINUTA_MIN_CHARS`: um editor recém-aberto tem
+ * poucos caracteres, e habilitar o botão ali seria ruído. A visualização
+ * `folha` não — se há texto renderizado, há um documento de verdade (folha
+ * em branco não tem texto algum). De quebra, o piso alto na `folha`
+ * inviabilizaria qualquer teste no ambiente evolutiva, onde o conteúdo dos
+ * documentos foi substituído por um aviso curto do administrador.
+ */
+export function minutaSuficiente(c: PJeEditorContent): boolean {
+  if (!c.ok) return false;
+  return c.kind === 'folha-visualizacao'
+    ? c.chars > 0
+    : c.chars >= MINUTA_MIN_CHARS;
+}
+
+/**
+ * Iframes de um documento, incluindo os escondidos em shadow roots ABERTOS.
+ *
+ * Não é excesso de zelo: no PJe ng2 (TRF5), o componente do editor Badon cria
+ * o iframe do conteúdo (`about:blank`) dentro de um shadow root — um
+ * `querySelectorAll('iframe')` comum no frame pai devolve zero e o editor
+ * fica invisível para a varredura. Shadow root FECHADO continua inalcançável
+ * por aqui; esse caso é coberto pelo `match_origin_as_fallback` do manifest,
+ * que injeta o content script dentro do próprio frame `about:blank`.
+ */
+function coletarIframesComShadow(root: ParentNode): HTMLIFrameElement[] {
+  const out = Array.from(root.querySelectorAll('iframe'));
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    const sombra = (el as HTMLElement).shadowRoot;
+    if (sombra) out.push(...coletarIframesComShadow(sombra));
+  }
+  return out;
+}
+
+/**
+ * Documento de topo do frame atual + documentos de iframes same-origin,
+ * recursivamente (em largura, na ordem do DOM).
+ *
+ * Indispensável para a LEITURA: no Painel do usuário do PJe
+ * (`painel-usuario-interno`), a tarefa — e com ela o editor da minuta — é
+ * renderizada dentro de iframes aninhados, e a sidebar vive no frame de topo.
+ * Um `querySelectorAll` no `document` de topo nunca encontra o editor, mesmo
+ * com ele visível na tela. A escrita não tem esse problema porque chega por
+ * mensagem a todos os frames e cada instância tenta localmente; a leitura do
+ * gating roda só onde a sidebar está.
+ *
+ * Iframe cross-origin lança ao tocar `contentDocument` — capturado e ignorado
+ * (o botão simplesmente não habilita, mesmo comportamento da inserção).
+ */
+function coletarDocumentosAcessiveis(): Document[] {
+  const docs: Document[] = [];
+  const fila: Document[] = [document];
+  // Teto defensivo: páginas do PJe têm poucos iframes; dezenas indicam algo
+  // patológico e não vale a pena varrer.
+  const MAX_DOCS = 20;
+  while (fila.length && docs.length < MAX_DOCS) {
+    const doc = fila.shift();
+    if (!doc || docs.includes(doc)) continue;
+    docs.push(doc);
+    for (const iframe of coletarIframesComShadow(doc)) {
+      try {
+        const interno = iframe.contentDocument;
+        if (interno) fila.push(interno);
+      } catch {
+        /* cross-origin */
+      }
+    }
+  }
+  return docs;
+}
+
+/**
+ * Lê o conteúdo da minuta aberta no editor do PJe — espelho de leitura de
+ * `insertIntoPJeEditor`. Ao contrário da escrita (que mira a última página
+ * visível do Badon, onde está o cursor), a leitura precisa do documento
+ * INTEIRO: coleta todas as páginas ProseMirror na ordem do DOM e concatena.
+ * Se o Badon usar um único contenteditable, o resultado é idêntico
+ * (`paginas: 1`).
+ *
+ * A varredura cobre o documento atual e os iframes same-origin — ver
+ * `coletarDocumentosAcessiveis`.
+ */
+export function readFromPJeEditor(): PJeEditorContent {
+  const docs = coletarDocumentosAcessiveis();
+
+  // Cada fonte só "vence" se tiver TEXTO. Um editor Badon presente no DOM
+  // porém vazio (componente montado com o editor fechado, ou minuta ainda em
+  // branco) não pode encerrar a busca — a mesma tela pode ter a visualização
+  // `folha` com o documento inteiro logo ao lado.
+  const pm = collectProseMirrorPages(docs);
+  if (pm.length > 0) {
+    const text = pm.map((el) => el.innerText).join('\n\n').trim();
+    if (text) {
+      const html = pm.map((el) => el.innerHTML).join('\n');
+      return montarConteudo('badon-prosemirror', text, html, pm.length);
+    }
+  }
+
+  for (const doc of docs) {
+    for (const iframe of Array.from(
+      doc.querySelectorAll<HTMLIFrameElement>('iframe.cke_wysiwyg_frame')
+    )) {
+      try {
+        const body = iframe.contentDocument?.body;
+        const text = body?.innerText.trim();
+        if (body && text) {
+          return montarConteudo('ckeditor4-iframe', text, body.innerHTML, 1);
+        }
+      } catch {
+        /* cross-origin — segue procurando */
+      }
+    }
+  }
+
+  // Visualização somente-leitura (`div.folha`): o PJe renderiza o documento
+  // assinado/salvo nesse contêiner quando a tela não está em modo de edição.
+  // Para a análise preditiva o conteúdo vale tanto quanto o do editor — o
+  // magistrado frequentemente analisa a minuta por esta visão. Uma `folha`
+  // por página; concatenamos na ordem do DOM, como no Badon.
+  for (const doc of docs) {
+    const folhas = Array.from(doc.querySelectorAll<HTMLElement>('div.folha'));
+    if (folhas.length) {
+      const text = folhas.map((f) => f.innerText).join('\n\n').trim();
+      if (text) {
+        const html = folhas.map((f) => f.innerHTML).join('\n');
+        return montarConteudo('folha-visualizacao', text, html, folhas.length);
+      }
+    }
+  }
+
+  for (const doc of docs) {
+    const editable = encontrarContentEditableEm(doc);
+    const text = editable?.innerText.trim();
+    if (editable && text) {
+      return montarConteudo('contenteditable', text, editable.innerHTML, 1);
+    }
+  }
+
+  for (const doc of docs) {
+    const textarea = encontrarTextareaEm(doc);
+    const text = textarea?.value.trim();
+    if (textarea && text) {
+      return montarConteudo('textarea', text, '', 1);
+    }
+  }
+
+  return CONTEUDO_VAZIO;
+}
+
+/**
+ * Todas as páginas ProseMirror na ordem dos documentos varridos. Inclui o
+ * fallback de `contenteditable=""` usado por alguns wrappers (mesma
+ * tolerância de `findProseMirrorEditor`).
+ */
+function collectProseMirrorPages(docs: Document[]): HTMLElement[] {
+  for (const doc of docs) {
+    const strict = Array.from(
+      doc.querySelectorAll<HTMLElement>('.ProseMirror[contenteditable="true"]')
+    );
+    if (strict.length > 0) return strict;
+    const loose = Array.from(doc.querySelectorAll<HTMLElement>('.ProseMirror')).filter(
+      (el) => el.isContentEditable
+    );
+    if (loose.length > 0) return loose;
+  }
+  return [];
+}
+
+/** Como `findContentEditable`, mas num documento específico. */
+function encontrarContentEditableEm(doc: Document): HTMLElement | null {
+  const candidates = Array.from(
+    doc.querySelectorAll<HTMLElement>('[contenteditable="true"], [contenteditable=""]')
+  );
+  for (const el of candidates) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 200 && rect.height > 80) {
+      return el;
+    }
+  }
+  return null;
+}
+
+/** Como `findFocusableTextarea`, mas num documento específico e sem exigir foco. */
+function encontrarTextareaEm(doc: Document): HTMLTextAreaElement | null {
+  const active = doc.activeElement;
+  if (active instanceof HTMLTextAreaElement) {
+    return active;
+  }
+  for (const t of Array.from(doc.querySelectorAll<HTMLTextAreaElement>('textarea'))) {
+    const rect = t.getBoundingClientRect();
+    if (rect.width > 200 && rect.height > 60 && !t.disabled && !t.readOnly) {
+      return t;
+    }
+  }
+  return null;
+}
+
+function montarConteudo(
+  kind: PJeEditorKind,
+  text: string,
+  html: string,
+  paginas: number
+): PJeEditorContent {
+  const truncado = text.length > MINUTA_MAX_CHARS;
+  const finalText = truncado ? truncarPreservandoExtremos(text, MINUTA_MAX_CHARS) : text;
+  return {
+    ok: finalText.length > 0,
+    kind,
+    text: finalText,
+    html,
+    chars: finalText.length,
+    truncado,
+    paginas
+  };
+}
+
+/**
+ * Trunca preservando início e fim do texto — o relatório e o dispositivo
+ * ficam nas extremidades da minuta; o miolo é o que menos falta faz.
+ *
+ * Exportada porque a análise preditiva aplica o mesmo teto à versão
+ * FORMATADA da minuta (markdown derivado do HTML), que é maior que o texto.
+ */
+export function truncarPreservandoExtremos(text: string, maxChars: number): string {
+  const marcador = '\n\n[... trecho intermediário omitido ...]\n\n';
+  const orcamento = maxChars - marcador.length;
+  const inicio = Math.ceil(orcamento * 0.6);
+  const fim = orcamento - inicio;
+  return text.slice(0, inicio) + marcador + text.slice(text.length - fim);
 }

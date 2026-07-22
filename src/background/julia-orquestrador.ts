@@ -28,12 +28,19 @@ import { LOG_PREFIX, JULIA_ETAPA, JULIA_PORT_MSG } from '../shared/constants';
 import type { ProviderId } from '../shared/constants';
 import { SYSTEM_PROMPT } from '../shared/prompts';
 import {
+  buildAnalisePreditivaExtracaoPrompt,
+  buildAnalisePreditivaSintesePrompt,
   buildJuliaExtracaoPrompt,
   buildJuliaSintesePrompt,
+  buildReescritaMinutaPrompt,
+  parseAnalisePreditivaExtracao,
   parseJuliaExtracaoResponse,
+  prepararTextoParaIA,
   removerOperadores,
   termosDePergunta,
-  type JuliaExtracao
+  type AnalisePreditivaExtracao,
+  type JuliaExtracao,
+  type PrecedenteParaReescrita
 } from '../shared/julia/julia-prompts';
 import { recuperar, type JuliaRecuperacao } from '../shared/julia/julia-rag';
 import type { JuliaDocumento } from '../shared/julia/julia-types';
@@ -472,7 +479,12 @@ export async function executarConsultaJulia(
       orgaosJulgadores: payload.orgaosJulgadores,
       dataInicial: extracao.dataInicial ?? undefined,
       dataFinal: extracao.dataFinal ?? undefined,
-      instanciasPublicas: payload.instanciasPublicas,
+      // Só no modo público: `instanciasPublicas` SOBREPÕE a derivação por
+      // rito no RAG, e o contexto padrão da interface traz `['G2']` — passar
+      // sempre fazia unidade JEF ser confrontada com o TRF5 em vez da Turma
+      // Recursal (o `mapearOrgaoRevisor` nunca chegava a rodar).
+      instanciasPublicas:
+        payload.modo === 'publica' ? payload.instanciasPublicas : undefined,
       // No modo público não há escopo de unidade a consultar — a base
       // autenticada do 2º grau só cobre o que a pública já cobre.
       escopos:
@@ -538,16 +550,32 @@ export async function executarConsultaJulia(
   // Guardada para permitir refazer só a síntese. A recuperação custou dezenas
   // de requisições ao servidor do TRF5; perdê-la por falha de cota do provedor
   // de IA seria desperdiçar recurso institucional por problema alheio a ele.
-  ultimaRecuperacao = { payload, recuperacao };
+  ultimaRecuperacao = { tipo: 'consulta', payload, recuperacao };
 
   await sintetizar(payload, recuperacao, ctx);
 }
 
-/** Última recuperação bem-sucedida, para refazer a síntese sem nova varredura. */
-let ultimaRecuperacao: {
-  payload: JuliaStartPayload;
-  recuperacao: JuliaRecuperacao;
-} | null = null;
+/**
+ * Última recuperação bem-sucedida, para refazer a síntese sem nova varredura.
+ *
+ * União discriminada porque a porta é compartilhada entre a consulta comum e a
+ * análise preditiva: o `RETENTAR_SINTESE` da interface é único, e é o
+ * background que sabe qual foi o último fluxo executado.
+ */
+let ultimaRecuperacao:
+  | {
+      tipo: 'consulta';
+      payload: JuliaStartPayload;
+      recuperacao: JuliaRecuperacao;
+    }
+  | {
+      tipo: 'analise';
+      payload: AnalisePreditivaStartPayload;
+      minutaAnonimizada: string;
+      extracao: AnalisePreditivaExtracao;
+      recuperacao: JuliaRecuperacao;
+    }
+  | null = null;
 
 /** Refaz a síntese sobre a evidência já recuperada. */
 export async function retentarSinteseJulia(ctx: JuliaContexto): Promise<void> {
@@ -558,13 +586,26 @@ export async function retentarSinteseJulia(ctx: JuliaContexto): Promise<void> {
     });
     return;
   }
-  const { payload, recuperacao } = ultimaRecuperacao;
+  const anterior = ultimaRecuperacao;
   ctx.emitir({
     type: JULIA_PORT_MSG.EVIDENCIA,
-    evidencia: resumirEvidencia(recuperacao),
-    termoUsado: payload.termosManuais ?? payload.pergunta
+    evidencia: resumirEvidencia(anterior.recuperacao),
+    termoUsado:
+      anterior.tipo === 'consulta'
+        ? (anterior.payload.termosManuais ?? anterior.payload.pergunta)
+        : anterior.extracao.termo
   });
-  await sintetizar(payload, recuperacao, ctx);
+  if (anterior.tipo === 'consulta') {
+    await sintetizar(anterior.payload, anterior.recuperacao, ctx);
+  } else {
+    await sintetizarAnalise(
+      anterior.payload,
+      anterior.minutaAnonimizada,
+      anterior.extracao,
+      anterior.recuperacao,
+      ctx
+    );
+  }
 }
 
 async function sintetizar(
@@ -594,6 +635,288 @@ async function sintetizar(
     // variação aqui vira afirmação inventada.
     temperature: Math.min(ctx.temperature, 0.3),
     maxTokens: ctx.maxTokens,
+    signal: ctx.signal
+  });
+
+  for await (const chunk of generator) {
+    if (ctx.signal.aborted) break;
+    ctx.emitir({ type: JULIA_PORT_MSG.CHUNK, delta: chunk.delta });
+  }
+  ctx.emitir({ type: JULIA_PORT_MSG.DONE });
+}
+
+// ── Análise preditiva de minutas ─────────────────────────────────
+
+export interface AnalisePreditivaStartPayload {
+  /** Texto cru lido do editor do PJe — a anonimização acontece aqui, no background. */
+  minutaTexto: string;
+  /** A leitura cortou o texto no teto? A síntese precisa saber que viu parte. */
+  minutaTruncada: boolean;
+  orgao: JuliaOrgao;
+  instancias: JuliaInstanciaAutenticada[];
+  orgaosJulgadores?: string[];
+  /** `'publica'` no 2º grau: aderência ao próprio colegiado, sem confronto. */
+  modo?: 'dupla' | 'publica';
+  instanciasPublicas?: JuliaInstancia[];
+  /** Termos escritos pelo usuário — substituem os termos extraídos, não as teses. */
+  termosManuais?: string;
+  provider: ProviderId;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+/**
+ * Teto para a extração de teses da minuta.
+ *
+ * Maior que o da consulta comum (30s): a entrada não é uma pergunta de duas
+ * linhas, é uma minuta que pode ter dezenas de páginas.
+ */
+const TIMEOUT_EXTRACAO_ANALISE_MS = 60_000;
+
+/**
+ * Extrai teses e termos de busca da minuta.
+ *
+ * Diferente da consulta comum, termos manuais NÃO pulam o LLM: eles substituem
+ * apenas a consulta de busca — as teses continuam vindo da extração, porque o
+ * confronto ponto a ponto depende delas.
+ */
+async function extrairDaMinuta(
+  payload: AnalisePreditivaStartPayload,
+  minutaAnonimizada: string,
+  ctx: JuliaContexto
+): Promise<AnalisePreditivaExtracao> {
+  // Rede de segurança local: um trecho a ~40% do texto — depois do cabeçalho e
+  // do relatório, onde a fundamentação costuma começar — rende termos melhores
+  // que as primeiras linhas ("PODER JUDICIÁRIO", autuação, relatório).
+  const inicioFundamentacao = Math.floor(minutaAnonimizada.length * 0.4);
+  const termosLocais = termosDePergunta(
+    minutaAnonimizada.slice(inicioFundamentacao, inicioFundamentacao + 2_000)
+  );
+  const fallback: AnalisePreditivaExtracao = {
+    termo: termosLocais,
+    termoSimples: termosLocais,
+    teses: [],
+    sentido: null,
+    materia: ''
+  };
+
+  let extracao: AnalisePreditivaExtracao;
+  try {
+    const provider = getProvider(payload.provider);
+    const prompt = buildAnalisePreditivaExtracaoPrompt(minutaAnonimizada, {
+      unidade: `${payload.orgao} / ${payload.instancias.join(' + ')}${payload.orgaosJulgadores?.length ? ` / ${payload.orgaosJulgadores.join(', ')}` : ''}`,
+      hoje: new Date().toISOString().slice(0, 10)
+    });
+
+    const bruto = await gerarTextoCompleto(
+      provider.sendMessage({
+        apiKey: ctx.apiKey,
+        model: payload.model,
+        systemPrompt:
+          'Você decompõe minutas judiciais em teses e parâmetros de busca. Responde apenas JSON.',
+        messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+        temperature: 0,
+        // As teses ocupam mais espaço que os filtros da consulta comum.
+        maxTokens: 1500,
+        signal: comPrazo(ctx.signal, TIMEOUT_EXTRACAO_ANALISE_MS),
+        responseFormat: 'json'
+      })
+    );
+
+    extracao = parseAnalisePreditivaExtracao(bruto) ?? fallback;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError' && !ctx.signal.aborted) {
+      console.warn(`${LOG_PREFIX} julia: extração da minuta excedeu o prazo; usando termos locais.`);
+      extracao = fallback;
+    } else if (ctx.signal.aborted) {
+      throw err;
+    } else {
+      console.warn(`${LOG_PREFIX} julia: extração da minuta falhou, usando termos locais:`, err);
+      extracao = fallback;
+    }
+  }
+
+  if (payload.termosManuais?.trim()) {
+    const manual = payload.termosManuais.trim();
+    return { ...extracao, termo: manual, termoSimples: removerOperadores(manual) };
+  }
+  return extracao;
+}
+
+export async function executarAnalisePreditiva(
+  payload: AnalisePreditivaStartPayload,
+  ctx: JuliaContexto
+): Promise<void> {
+  const { emitir } = ctx;
+
+  emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.EXTRAINDO });
+
+  // Anonimização ANTES de qualquer chamada de LLM — mesma política aplicada
+  // aos documentos da Júlia. O texto cru da minuta não sai do navegador.
+  const minutaAnonimizada = prepararTextoParaIA(payload.minutaTexto);
+  const extracao = await extrairDaMinuta(payload, minutaAnonimizada, ctx);
+
+  emitir({
+    type: JULIA_PORT_MSG.PROGRESSO,
+    etapa: JULIA_ETAPA.BUSCANDO,
+    detalhe: extracao.termo
+  });
+
+  const buscarCom = (termo: string): Promise<JuliaRecuperacao> =>
+    recuperar({
+      termo,
+      orgao: payload.orgao,
+      instancias: payload.instancias,
+      orgaosJulgadores: payload.orgaosJulgadores,
+      // Só no modo público — ver comentário homólogo em `executarConsultaJulia`.
+      instanciasPublicas:
+        payload.modo === 'publica' ? payload.instanciasPublicas : undefined,
+      // O confronto com o revisor é a razão de ser da análise — sempre ligado.
+      escopos:
+        payload.modo === 'publica'
+          ? { unidade: false, revisor: true }
+          : { unidade: true, revisor: true },
+      signal: comPrazo(ctx.signal, TIMEOUT_RECUPERACAO_MS)
+    });
+
+  const semResultado = (r: JuliaRecuperacao): boolean =>
+    !r.unidade?.analisados.length && !r.revisor?.analisados.length;
+
+  let termoUsado = extracao.termo;
+  let recuperacao = await buscarCom(termoUsado);
+
+  if (semResultado(recuperacao) && extracao.termoSimples !== termoUsado) {
+    emitir({
+      type: JULIA_PORT_MSG.PROGRESSO,
+      etapa: JULIA_ETAPA.BUSCANDO,
+      detalhe: extracao.termoSimples
+    });
+    const segunda = await buscarCom(extracao.termoSimples);
+    if (!semResultado(segunda)) {
+      termoUsado = extracao.termoSimples;
+      recuperacao = segunda;
+    }
+  }
+
+  emitir({
+    type: JULIA_PORT_MSG.EVIDENCIA,
+    evidencia: resumirEvidencia(recuperacao),
+    termoUsado
+  });
+
+  if (semResultado(recuperacao)) {
+    const sessaoCaiu = recuperacao.unidade?.indisponivel?.motivo === 'sessao';
+    emitir({
+      type: JULIA_PORT_MSG.ERROR,
+      error: sessaoCaiu
+        ? 'A sessão da Júlia expirou. Abra julia.trf5.jus.br, faça login e repita a análise.'
+        : `Nenhum julgado encontrado para "${termoUsado}". Repita a análise informando termos de busca manuais — o campo já vem preenchido com os que foram usados.`,
+      sessaoExpirada: sessaoCaiu
+    });
+    return;
+  }
+
+  ultimaRecuperacao = {
+    tipo: 'analise',
+    payload,
+    minutaAnonimizada,
+    extracao,
+    recuperacao
+  };
+
+  await sintetizarAnalise(payload, minutaAnonimizada, extracao, recuperacao, ctx);
+}
+
+async function sintetizarAnalise(
+  payload: AnalisePreditivaStartPayload,
+  minutaAnonimizada: string,
+  extracao: AnalisePreditivaExtracao,
+  recuperacao: JuliaRecuperacao,
+  ctx: JuliaContexto
+): Promise<void> {
+  ctx.emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.SINTETIZANDO });
+
+  const minutaComAviso = payload.minutaTruncada
+    ? `${minutaAnonimizada}\n\n[AVISO AO ANALISTA: a minuta excedeu o limite de leitura e o trecho intermediário foi omitido. Considere isso ao avaliar completude.]`
+    : minutaAnonimizada;
+
+  const provider = getProvider(payload.provider);
+  const generator = provider.sendMessage({
+    apiKey: ctx.apiKey,
+    model: payload.model,
+    systemPrompt: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: buildAnalisePreditivaSintesePrompt(
+          minutaComAviso,
+          extracao,
+          recuperacao,
+          payload.modo ?? 'dupla'
+        ),
+        timestamp: Date.now()
+      }
+    ],
+    temperature: Math.min(ctx.temperature, 0.3),
+    maxTokens: ctx.maxTokens,
+    signal: ctx.signal
+  });
+
+  for await (const chunk of generator) {
+    if (ctx.signal.aborted) break;
+    ctx.emitir({ type: JULIA_PORT_MSG.CHUNK, delta: chunk.delta });
+  }
+  ctx.emitir({ type: JULIA_PORT_MSG.DONE });
+}
+
+export interface ReescritaStartPayload {
+  /** Texto cru da minuta atual — anonimizado aqui, como nos demais fluxos. */
+  minutaTexto: string;
+  /** Sugestões escolhidas pelo magistrado, no texto em que apareceram. */
+  sugestoes: string[];
+  /** Precedentes citados nas sugestões escolhidas (trecho + referência). */
+  precedentes: PrecedenteParaReescrita[];
+  provider: ProviderId;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+/**
+ * Reescreve a minuta aplicando as sugestões escolhidas.
+ *
+ * Uma única chamada de LLM em streaming — sem tocar a Júlia: os precedentes
+ * necessários já foram recuperados na análise e viajam no payload.
+ */
+export async function executarReescritaMinuta(
+  payload: ReescritaStartPayload,
+  ctx: JuliaContexto
+): Promise<void> {
+  ctx.emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.SINTETIZANDO });
+
+  const provider = getProvider(payload.provider);
+  const generator = provider.sendMessage({
+    apiKey: ctx.apiKey,
+    model: payload.model,
+    systemPrompt: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: buildReescritaMinutaPrompt(
+          prepararTextoParaIA(payload.minutaTexto),
+          payload.sugestoes,
+          payload.precedentes
+        ),
+        timestamp: Date.now()
+      }
+    ],
+    // Ainda mais baixa que a síntese: a tarefa é reprodução literal com
+    // enxertos pontuais — variação aqui é infidelidade ao texto.
+    temperature: Math.min(ctx.temperature, 0.2),
+    // A saída é a minuta INTEIRA: o teto das configurações (pensado para
+    // respostas de chat) pode não comportá-la.
+    maxTokens: Math.max(ctx.maxTokens, 8192),
     signal: ctx.signal
   });
 

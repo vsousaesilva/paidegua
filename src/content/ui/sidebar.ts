@@ -108,6 +108,12 @@ export interface SidebarElements {
    * o acervo da unidade, não sobre os autos em tela.
    */
   faleComJuliaButton: HTMLButtonElement;
+  /**
+   * Botão "Análise preditiva da minuta" (seção Pesquisa) — **só no perfil
+   * Gabinete**. Nasce desabilitado: o content script o habilita quando detecta
+   * uma minuta com conteúdo no editor do PJe (tela minutar).
+   */
+  analisePreditivaButton: HTMLButtonElement;
   providerLabel: HTMLElement;
   globalNotice: HTMLElement;
 }
@@ -711,6 +717,7 @@ export function mountSidebar(
       <div data-profile-section="gabinete" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gabinete" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Pesquisa</div>
       <button type="button" data-profile-section="gabinete" data-paidegua="fale-com-julia" title="Consulta a jurisprudência do TRF5 na Júlia e compara o entendimento da sua unidade com o da instância revisora" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Fale com a Júlia</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">O que a sua unidade e o TRF5 vêm decidindo</span></span></button>
+      <button type="button" disabled data-profile-section="gabinete" data-paidegua="analise-preditiva" title="Abra uma minuta no editor do PJe (tela minutar) para habilitar" style="min-height: 48px; padding-top: 6px; padding-bottom: 6px;"><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.15;"><span>Análise preditiva da minuta</span><span style="font-size: 11px; font-style: italic; font-weight: 400; color: var(--paidegua-text-muted);">Como a revisão tende a receber esta minuta</span></span></button>
     </div>
 
     <div class="paidegua-sidebar__notice" data-paidegua="global-notice"></div>
@@ -777,6 +784,7 @@ export function mountSidebar(
   const metasCnjButton = q<HTMLButtonElement>('metas-cnj');
   const consultorFluxosButton = q<HTMLButtonElement>('consultor-fluxos');
   const faleComJuliaButton = q<HTMLButtonElement>('fale-com-julia');
+  const analisePreditivaButton = q<HTMLButtonElement>('analise-preditiva');
   const profileSelect = q<HTMLSelectElement>('profile-select');
   const bodyEl = q<HTMLElement>('body');
   const textarea = q<HTMLTextAreaElement>('input');
@@ -837,6 +845,7 @@ export function mountSidebar(
     metasCnjButton,
     consultorFluxosButton,
     faleComJuliaButton,
+    analisePreditivaButton,
     providerLabel,
     globalNotice
   };

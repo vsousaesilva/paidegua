@@ -6,7 +6,7 @@
 <title>Manual — pAIdegua · Inovajus / JFCE</title>
 <meta name="description" content="Manual de instalação e uso da extensão pAIdegua, plataforma de apoio à atividade judicial no PJe — triagem, minutas, pauta de audiência e perícia, controle criminal, comunicação, Metas CNJ, Painel Gerencial e Prazos na Fita.">
 <link rel="icon" href="../assets/logo.png">
-<link rel="stylesheet" href="../assets/site.css">
+<link rel="stylesheet" href="../assets/site.css?v=3">
 </head>
 <body>
 <div class="govbr-strip"></div>
@@ -58,10 +58,11 @@
           <li><a href="#ferramentas-gabinete">5.3 Gabinete</a></li>
           <li><a href="#ferramentas-secretaria">5.4 Secretaria</a></li>
           <li><a href="#ferramentas-gestao">5.5 Gestão</a></li>
-          <li><a href="#consultor-fluxos">5.6 Consultor de Fluxos</a></li>
-          <li><a href="#icones-linha">5.7 Ícones por linha</a></li>
-          <li><a href="#chat-livre">5.8 Chat livre</a></li>
-          <li><a href="#acoes-minuta">5.9 Ações em respostas</a></li>
+          <li><a href="#fale-com-julia">5.6 Fale com a Júlia</a></li>
+          <li><a href="#consultor-fluxos">5.7 Consultor de Fluxos</a></li>
+          <li><a href="#icones-linha">5.8 Ícones por linha</a></li>
+          <li><a href="#chat-livre">5.9 Chat livre</a></li>
+          <li><a href="#acoes-minuta">5.10 Ações em respostas</a></li>
         </ul>
       </li>
       <li><a href="#parte-6-modelos">6. Pasta de modelos</a></li>
@@ -71,8 +72,8 @@
 
   <main class="manual-content">
     <h1>Manual de Instalação e Uso</h1>
-    <p class="manual-meta">Versão <strong>1.6.1</strong> · Atualizado em 13/05/2026 · Mantido pelo <strong>Inovajus / JFCE</strong></p>
-    <p class="manual-lede">Plataforma de apoio à atividade e à gestão judicial no PJe — triagem inteligente, minutas com IA, pauta de audiência e perícia, controle criminal (Sigcrim), Central de Comunicação, Metas CNJ, Painel Gerencial, Prazos na Fita, Consultor de Fluxos e chat livre sobre os autos. Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
+    <p class="manual-meta">Versão <strong>1.10.2</strong> · Atualizado em 19/07/2026 · Mantido pelo <strong>Inovajus / JFCE</strong></p>
+    <p class="manual-lede">Plataforma de apoio à atividade e à gestão judicial no PJe — triagem inteligente, validação de cadastro, minutas com IA, pauta de audiência e perícia, controle criminal (Sigcrim), Central de Comunicação, Painel Gerencial, Prazos na Fita, Ordens PREVJUD, Painel de Perícias, pesquisa de jurisprudência com a Júlia, Consultor de Fluxos e chat livre sobre os autos. Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
 
     <h2 id="parte-1-instalacao">PARTE 1 — Instalação</h2>
 
@@ -200,13 +201,14 @@
     <table>
       <thead><tr><th>Perfil</th><th>Foco</th><th>Disponível em</th><th>Ferramentas principais</th></tr></thead>
       <tbody>
-        <tr><td><strong>Gabinete</strong> (padrão)</td><td>Análise dos autos e produção de minutas</td><td>Todos os graus</td><td>Resumir, Resumir em áudio, Anonimizar, Minutar (triagem automática), Minutas com modelo, Audiência pAIdegua</td></tr>
-        <tr><td><strong>Secretaria</strong></td><td>Triagem, pauta e organização</td><td>1º grau apenas</td><td>Analisar tarefas, Analisar o processo, Inserir etiquetas mágicas, Audiência pAIdegua, Perícias pAIdegua, Central de Comunicação, Sigcrim</td></tr>
-        <tr><td><strong>Gestão</strong></td><td>Visão da diretoria de secretaria</td><td>Todos os graus</td><td>Painel Gerencial, Prazos na Fita, Controle Metas CNJ</td></tr>
+        <tr><td><strong>Gabinete</strong> (padrão)</td><td>Análise dos autos e produção de minutas</td><td>Todos os graus</td><td>Resumir, Resumir em áudio, Anonimizar, Minutar (triagem automática), Minutas com modelo, Audiência pAIdegua, Fale com a Júlia</td></tr>
+        <tr><td><strong>Secretaria</strong></td><td>Triagem, pauta e organização</td><td>1º grau apenas</td><td>Analisar tarefas, Validação de cadastro, Analisar o processo, Inserir etiquetas mágicas, Audiência pAIdegua, Perícias pAIdegua, Central de Comunicação, Sigcrim</td></tr>
+        <tr><td><strong>Gestão</strong></td><td>Visão da diretoria de secretaria</td><td>Todos os graus</td><td>Painel Gerencial, Prazos na Fita, Ordens PREVJUD, Painel de Perícias</td></tr>
       </tbody>
     </table>
     <p>O perfil padrão é definido em <strong>Geral → Perfil de trabalho</strong>; a troca na sessão corrente é feita pelo seletor no cabeçalho do painel lateral. Em instâncias de 2º grau e turma recursal, o perfil Secretaria não está disponível e o seletor oculta essa opção.</p>
     <p>Há ainda a seção <strong>Conhecimento</strong>, sem perfil específico, que dá acesso ao <strong>Consultor de Fluxos</strong>.</p>
+    <blockquote>As ferramentas de Gestão <strong>Ordens PREVJUD</strong> e <strong>Painel de Perícias</strong> só existem no 1º grau. O <strong>Controle Metas CNJ</strong> está temporariamente indisponível nesta versão (ver 5.5).</blockquote>
 
     <h2 id="parte-5-painel">PARTE 5 — Painel lateral e ferramentas</h2>
 
@@ -292,6 +294,28 @@
     <p><strong>Gerar ato de emenda à inicial:</strong> quando a análise indica necessidade de emenda, a extensão oferece a geração da minuta diretamente no chat. A bolha traz o botão <strong>Encaminhar e inserir no PJe</strong> (no lugar de <strong>Inserir no PJe</strong>), que encaminha a tarefa e insere o texto da minuta no editor da nova tarefa em uma única ação.</p>
     <blockquote>Antes do primeiro uso da Triagem Inteligente, revise os critérios e o catálogo de etiquetas no popup. Esses ajustes alimentam tanto os prompts quanto a comparação das etiquetas com o processo, e definem o resultado.</blockquote>
 
+    <h4 id="validacao-cadastro">Validação de cadastro</h4>
+    <p>Botão ao lado de <strong>Analisar tarefas</strong>, no grupo Painel. Confere, de uma vez, o cadastro das partes dos processos que estão nas tarefas de triagem e aponta o que está errado ou faltando — antes que o problema chegue à sentença.</p>
+    <p>A conferência é feita por regras fixas, sempre iguais: <strong>não usa inteligência artificial</strong> e não depende do provedor que você configurou. O resultado é o mesmo toda vez que você roda.</p>
+    <p>O que a extensão verifica em cada processo:</p>
+    <ul>
+      <li><strong>Autor</strong> — CPF ausente; advogado não vinculado; autor menor de idade sem representante legal cadastrado; autor menor sem o MPF incluído.</li>
+      <li><strong>INSS</strong> — CNPJ diferente do correto; INSS cadastrado em <em>Outros interessados</em> quando deveria estar no polo passivo.</li>
+      <li><strong>CEAB</strong> — ausente ou cadastrada de forma incorreta.</li>
+      <li><strong>Polo passivo</strong> — sem ninguém cadastrado.</li>
+      <li><strong>Órgãos públicos</strong> — cadastrados sem a respectiva procuradoria.</li>
+      <li><strong>Representantes</strong> — vinculados a parte que não é a autora.</li>
+      <li><strong>Valor da causa</strong> — ausente ou zerado.</li>
+    </ul>
+    <ol>
+      <li>No Painel do usuário do PJe, abra a <strong>Triagem Inteligente</strong> e clique em <strong>Validação de cadastro</strong>.</li>
+      <li>A extensão percorre as tarefas de triagem e confere cada processo. Acompanhe o progresso.</li>
+      <li>Abre o relatório <strong>Validação de cadastro</strong>, com os processos separados entre regulares e com pendências. Cada pendência traz o título do problema e a orientação de correção.</li>
+      <li>Quando for o caso, é possível gerar a partir dali a <strong>minuta</strong> correspondente, já indicando o cadastro correto (por exemplo, o CNPJ certo do INSS).</li>
+    </ol>
+    <blockquote>Processos que a extensão não conseguir ler aparecem marcados como <em>erro de leitura</em> em bloco próprio — não são contados como regulares nem como irregulares. Vale reprocessá-los depois.</blockquote>
+    <p>Uma verificação fica de fora desse lote: saber se o <strong>assunto cadastrado combina com o pedido da inicial</strong>. Essa exige leitura da petição e é feita processo a processo, pelo <strong>Analisar o processo</strong>.</p>
+
     <h4 id="pericias">Perícias pAIdegua</h4>
     <p>Disponível apenas em 1º grau. Acelera a montagem da pauta de perícia agrupando os processos por perito cadastrado.</p>
     <ol>
@@ -350,10 +374,42 @@
     <p>Se a interrupção for antiga (mais de 30 minutos), geralmente vale começar do zero para capturar movimentações novas.</p>
     <p><strong>Encerrar expedientes em lote.</strong> Última coluna da tabela. Um clique no ícone de lixeira executa, em aba invisível, o mesmo fluxo que o PJe normalmente exige em três cliques + confirmação. Estados do botão: pronto · executando · sucesso · erro · nada a fazer. Múltiplos cliques entram em fila — um por vez, evitando que disputem a mesma aba/sessão.</p>
 
-    <h4 id="metas-cnj">Controle Metas CNJ</h4>
-    <p>Em homologação. Materializa acervo persistente de processos classificados pelas cinco metas mensuráveis do CNJ 2026 (Meta 2 — antiguidade &gt; 15 anos, Meta 4 — improbidade e crimes administrativos, Meta 6 — ambientais, Meta 7 — indígenas/quilombolas/racismo, Meta 10 — subtração internacional de crianças). Detecta status automático (julgado/baixado) via hierarquia de movimentos da TPU. Permite acompanhamento mensal/semanal do cumprimento sem re-varrer tudo. Configuração avançada feita atualmente pelo Inovajus — fale conosco pelo Suporte para ativar.</p>
+    <h4 id="ordens-prevjud">Ordens PREVJUD pAIdegua</h4>
+    <p>Disponível em 1º grau. Reúne num só painel as <strong>ordens de implantação de benefício enviadas ao INSS</strong> (a tabela "Intimações INSS" que o PJe mostra processo a processo), para acompanhar o que o INSS já cumpriu e o que está parado.</p>
+    <ol>
+      <li>No Painel do usuário do PJe, clique em <strong>Ordens PREVJUD pAIdegua</strong>.</li>
+      <li>Escolha a <strong>etiqueta</strong> que delimita os processos a consultar e, se quiser, marque as <strong>situações a ignorar</strong> — por exemplo, deixar de fora as ordens já cumpridas para ver só o que falta.</li>
+      <li>Clique em <strong>Iniciar coleta</strong>. O painel abre logo no começo e vai se preenchendo enquanto a consulta avança; não é preciso esperar terminar para começar a olhar.</li>
+      <li>Ao final, o painel lista cada ordem com a situação, o serviço pedido, a data de envio e o prazo, com o documento da intimação a um clique.</li>
+    </ol>
+    <p>As situações possíveis de uma ordem são: <em>Ordem PrevJud cadastrada</em>, <em>Em elaboração</em>, <em>Recebida pelo INSS</em>, <em>Recebida com erro</em>, <em>Ordem cumprida</em>, <em>Respondida com justificativa</em>, <em>Falha no envio ao PrevJud</em> e <em>Erro no PrevJud (tentativas excedidas)</em>.</p>
+    <blockquote><em>Respondida com justificativa</em> continua contando como <strong>pendente</strong>, de propósito: o INSS respondeu, mas não implantou — a vara ainda precisa analisar o caso.</blockquote>
+    <p><strong>Etiquetar em lote.</strong> A partir do painel é possível aplicar nos processos a etiqueta <strong>Prevjud - [situação]</strong> correspondente, de uma vez só, para que a situação de cada ordem fique visível no próprio PJe.</p>
+    <p><strong>Exportar.</strong> O painel gera uma planilha do Excel com tudo o que está sendo exibido, para relatórios e reuniões.</p>
 
-    <h3 id="consultor-fluxos">5.6 Seção Conhecimento — Consultor de Fluxos</h3>
+    <h4 id="painel-pericias-gestao">Painel de Perícias pAIdegua</h4>
+    <p>Disponível em 1º grau. Traz o relatório de perícias do PJe já filtrado pela sua unidade, para a gestão enxergar a pauta inteira: quantas perícias há, em que situação estão, quais laudos faltam e quanto está empenhado em honorários.</p>
+    <ol>
+      <li>No Painel do usuário do PJe, clique em <strong>Painel de Perícias pAIdegua</strong>.</li>
+      <li>Ajuste o período e os demais filtros oferecidos e clique em <strong>Iniciar coleta</strong>.</li>
+      <li>O painel abre com as perícias organizadas, mostrando situação, valores e laudos pendentes.</li>
+    </ol>
+    <blockquote>Não confunda com o <strong>Perícias pAIdegua</strong> do perfil Secretaria: aquele monta a pauta por perito para <em>designar</em> perícias; este dá à gestão a visão do conjunto já designado.</blockquote>
+
+    <h4 id="metas-cnj">Controle Metas CNJ</h4>
+    <p><strong>Temporariamente indisponível.</strong> A funcionalidade está em revisão pelo Inovajus e o botão não aparece no painel lateral nesta versão. Quando voltar, ela organiza um acervo dos processos enquadrados nas metas mensuráveis do CNJ 2026 (Meta 2 — processos com mais de 15 anos, Meta 4 — improbidade e crimes administrativos, Meta 6 — ambientais, Meta 7 — indígenas, quilombolas e racismo, Meta 10 — subtração internacional de crianças), identificando sozinha o que já foi julgado ou baixado. Para saber da previsão de retorno, fale com o Inovajus pelo <strong>Suporte</strong>.</p>
+
+    <h3 id="fale-com-julia">5.6 Seção Pesquisa — Fale com a Júlia</h3>
+    <p>Disponível no perfil <strong>Gabinete</strong>. A Júlia é a base de jurisprudência do TRF5. O botão <strong>Fale com a Júlia</strong> consulta essa base e mostra, lado a lado, <strong>o que a sua unidade vem decidindo</strong> e <strong>o que a instância revisora vem decidindo</strong> sobre o mesmo tema — útil para conferir se o entendimento local está alinhado antes de minutar.</p>
+    <ol>
+      <li>Clique em <strong>Fale com a Júlia</strong>, na seção <strong>Pesquisa</strong> do painel lateral.</li>
+      <li>Confirme ou ajuste as instâncias e unidades sugeridas e informe os termos da pesquisa.</li>
+      <li>O resultado aparece no próprio fio da conversa. Ao encerrar, o botão <strong>Iniciar outra consulta</strong> reaproveita as escolhas anteriores.</li>
+    </ol>
+    <p>No <strong>2º grau</strong>, a consulta usa apenas o acervo público do TRF5. No <strong>1º grau</strong> e na Turma Recursal, além do acervo público a extensão consulta também a base interna da Júlia — para isso é preciso <strong>já estar logado na Júlia</strong> no mesmo navegador. Se não estiver, a pesquisa continua funcionando, só que restrita ao acervo público.</p>
+    <blockquote>A extensão <strong>não guarda a sua senha da Júlia</strong> — ela apenas aproveita a sessão que você já abriu. Documentos sigilosos são descartados automaticamente e nunca chegam ao painel nem ao provedor de IA.</blockquote>
+
+    <h3 id="consultor-fluxos">5.7 Seção Conhecimento — Consultor de Fluxos</h3>
     <p>Disponível em qualquer perfil. Botão <strong>Consultor de fluxos</strong> na seção <strong>Conhecimento</strong> do painel lateral, com o subtítulo <em>Como o processo caminha no PJe</em>. Abre uma nova aba com chat dedicado sobre os 210 fluxos do PJe (JEF, EF, Comum, Shared).</p>
     <p>Usos típicos: <em>"Como funciona o JEF previdenciário?"</em>, <em>"Explique o fluxo OPPER da Vara de Execução"</em>, <em>"O que acontece após a tarefa de conclusão para sentença?"</em>.</p>
     <p>A interface tem três áreas: ações rápidas predefinidas + busca textual no catálogo · chat com a IA · diagrama Mermaid do fluxo conversado (renderizado sob demanda).</p>
@@ -364,8 +420,8 @@
     </ul>
     <p>A troca de modo reinicia a conversa atual. Tudo opera dentro do navegador — não há envio de dados de processo concretos para fora.</p>
 
-    <h3 id="icones-linha">5.7 Painéis comuns — ícones por linha</h3>
-    <p>Em todas as listas de processo dos dashboards (Triagem Inteligente, Painel Gerencial, Prazos na Fita, Audiência, Perícias) há três ícones ao lado de cada número de processo:</p>
+    <h3 id="icones-linha">5.8 Painéis comuns — ícones por linha</h3>
+    <p>Em todas as listas de processo dos painéis (Triagem Inteligente, Validação de cadastro, Painel Gerencial, Prazos na Fita, Ordens PREVJUD, Painel de Perícias, Audiência, Perícias) há três ícones ao lado de cada número de processo:</p>
     <ol>
       <li><strong>Hiperlink para os autos</strong> — abre o processo em nova aba.</li>
       <li><strong>Copiar CNJ</strong> — copia apenas o número CNJ, removendo prefixos como <code>PJEC</code>, <code>JEF</code>, <code>PROCAUT</code>.</li>
@@ -373,7 +429,7 @@
     </ol>
     <p>A janela popup do <strong>Abrir tarefa</strong> é nomeada por processo; cliques subsequentes na mesma linha reaproveitam a aba aberta. Se o popup for bloqueado, libere o endereço do PJe no ícone de popup bloqueado da barra de endereços. Quando a coleta daquela linha não conseguiu todos os identificadores necessários, o ícone simplesmente não aparece — é intencional, para evitar abrir tarefa errada.</p>
 
-    <h3 id="chat-livre">5.8 Chat livre</h3>
+    <h3 id="chat-livre">5.9 Chat livre</h3>
     <p>A área de chat na parte inferior do painel permite perguntas livres sobre o processo carregado:</p>
     <ul>
       <li><em>Qual o pedido principal do autor?</em></li>
@@ -384,7 +440,7 @@
     </ul>
     <p>O chat também suporta entrada por voz pelo botão do microfone. Se o provedor selecionado tem API de transcrição (OpenAI Whisper, Gemini), o áudio é enviado para transcrição remota; caso contrário, a extensão cai para o <strong>Web Speech API local</strong> do navegador. Com Anthropic, a transcrição via API não está disponível — use o Web Speech ou selecione OpenAI / Gemini.</p>
 
-    <h3 id="acoes-minuta">5.9 Ações disponíveis em cada resposta / minuta</h3>
+    <h3 id="acoes-minuta">5.10 Ações disponíveis em cada resposta / minuta</h3>
     <p>Abaixo de cada resposta da IA (em especial minutas) aparecem botões de ação rápida:</p>
     <ul>
       <li><strong>Copiar</strong> — copia a resposta (markdown) para a área de transferência.</li>
@@ -440,7 +496,7 @@
 
     <p><strong>Atualização da extensão.</strong> A atualização é automática — o navegador atualiza o pAIdegua silenciosamente quando o Inovajus publica uma nova versão na Chrome Web Store. Para forçar a verificação, acesse <code>chrome://extensions</code> ou <code>edge://extensions</code>, ligue o <strong>Modo do desenvolvedor</strong> e clique em <strong>Atualizar</strong> no topo da página.</p>
 
-    <p><strong>Painel Gerencial, Prazos na Fita ou Sigcrim abrem vazios ou com erro "Sem credenciais de acesso".</strong> Abra o Painel do usuário do PJe e clique em qualquer tarefa antes de acionar os botões — essa primeira interação captura a chave de sessão. Se a sessão do PJe tiver expirado, refaça o login. Em varreduras longas, o pAIdegua renova a sessão automaticamente em segundo plano. Se a coleta parar, abra a página de <strong>Diagnóstico</strong> para conferir bloqueios (HTTP 403) ou problema de sessão (Probe Keycloak).</p>
+    <p><strong>Um painel abre vazio ou com erro "Sem credenciais de acesso".</strong> Vale para Painel Gerencial, Prazos na Fita, Sigcrim, Ordens PREVJUD, Painel de Perícias e Validação de cadastro. Abra o Painel do usuário do PJe e clique em qualquer tarefa antes de acionar o botão — essa primeira interação libera o acesso de que a extensão precisa. Se a sessão do PJe tiver expirado, refaça o login. Em coletas longas, o pAIdegua renova a sessão sozinho, em segundo plano. Se mesmo assim a coleta parar, abra a página de <strong>Diagnóstico</strong> (rodapé do popup): ela mostra em qual ponto houve bloqueio, e essa informação ajuda o Inovajus a resolver o caso.</p>
 
     <p><strong>Varredura de Prazos na Fita parou no meio.</strong> O trabalho já feito fica salvo. Volte ao Painel do usuário, clique de novo em <strong>Prazos na Fita</strong>, selecione as mesmas tarefas, e quando aparecer o aviso <em>"Detectei uma varredura anterior interrompida"</em>, escolha <strong>OK</strong> para continuar. Se a interrupção for antiga (mais de 30 minutos), comece do zero.</p>
 
@@ -458,6 +514,16 @@
 
     <p><strong>Sigcrim não inicia ou não classifica corretamente.</strong> Confirme na aba <strong>Geral → Sigcrim</strong> que a matrícula e a vara estão preenchidas. Para casos atípicos, abra o Suporte com o número do processo (sem dados pessoais).</p>
 
+    <p><strong>Ordens PREVJUD não traz nenhuma ordem.</strong> Confira se a etiqueta escolhida realmente agrupa processos com ordem enviada ao INSS e se você não deixou marcada, em <strong>situações a ignorar</strong>, justamente a situação que queria ver. Processos sem ordem cadastrada simplesmente não aparecem.</p>
+
+    <p><strong>A coleta das Ordens PREVJUD está demorando.</strong> É esperado em etiquetas com muitos processos. O painel abre no começo e vai se preenchendo — você pode acompanhar o resultado parcial sem esperar o fim.</p>
+
+    <p><strong>Etiquetar em lote falhou em alguns processos.</strong> Em geral é uma etiqueta com o mesmo nome já cadastrada de forma diferente no PJe (por exemplo, com outra combinação de maiúsculas). Reporte ao Inovajus pelo Suporte informando a situação que falhou.</p>
+
+    <p><strong>Validação de cadastro marca processos como "erro de leitura".</strong> Significa que a extensão não conseguiu abrir os autos daquele processo — normalmente sessão expirada ou instabilidade do PJe. Rode a validação de novo; esses processos costumam ser lidos na segunda tentativa.</p>
+
+    <p><strong>Fale com a Júlia só mostra resultados do 2º grau.</strong> A consulta ao acervo interno exige que você <strong>já esteja logado na Júlia</strong> no mesmo navegador. Abra a Júlia em outra aba, faça login e repita a consulta.</p>
+
     <hr>
 
     <p style="text-align:center;color:var(--muted);font-size:14px"><strong>Dúvidas?</strong> Use o link <strong>Suporte</strong> no rodapé do popup ou envie e-mail para <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a>.</p>
@@ -466,10 +532,10 @@
 
 <footer class="site-footer">
   <p><strong>Inovajus</strong> · Justiça Federal no Ceará</p>
-  <p><a href="https://paidegua.ia.br">paidegua.ia.br</a> · <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
+  <p><a href="../">Início</a> · <a href="../privacidade/">Privacidade</a> · <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
   <p>Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
 </footer>
 
-<script src="../assets/manual.js"></script>
+<script src="../assets/manual.js?v=2"></script>
 </body>
 </html>

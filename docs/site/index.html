@@ -6,7 +6,7 @@
 <title>pAIdegua · Inovajus / JFCE</title>
 <meta name="description" content="pAIdegua — plataforma de apoio à atividade e à gestão judicial no PJe, mantida pelo Inovajus / JFCE. Triagem inteligente, minutas com IA, pauta de audiência e perícia, controle criminal, Metas CNJ e mais.">
 <link rel="icon" href="assets/logo.png">
-<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/site.css?v=3">
 </head>
 <body>
 <div class="govbr-strip"></div>
@@ -18,6 +18,7 @@
     </a>
     <span class="site-header__tag">Inovajus · JFCE</span>
     <nav class="site-header__nav">
+      <a href="#governanca">Governança</a>
       <a href="manual/">Manual</a>
       <a class="btn" href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">Instalar</a>
     </nav>
@@ -28,7 +29,7 @@
   <div class="hero__inner">
     <p class="hero__eyebrow">Inovajus · Justiça Federal no Ceará</p>
     <h1>IA, automação e gestão dentro do PJe.</h1>
-    <p class="lead">O pAIdegua é uma extensão para Chrome / Edge que integra inteligência artificial, triagem inteligente, pauta de audiência e perícia, controle criminal, Metas CNJ, Painel Gerencial e Prazos na Fita — diretamente ao PJe, sem instalar software fora do navegador e sem enviar dados sensíveis para fora da Justiça.</p>
+    <p class="lead">O pAIdegua é uma extensão para Chrome / Edge que integra inteligência artificial, triagem inteligente, validação de cadastro, pauta de audiência e perícia, controle criminal, ordens PREVJUD, Painel Gerencial e Prazos na Fita — diretamente ao PJe, sem instalar software fora do navegador e sem armazenar conteúdo de processos fora da sua estação.</p>
     <div class="hero__ctas">
       <a class="btn btn--primary" href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">Instalar na Chrome Web Store</a>
       <a class="btn btn--secondary" href="manual/">Ler o manual</a>
@@ -36,9 +37,60 @@
   </div>
 </section>
 
+<section class="governanca" id="governanca">
+  <div class="governanca__inner">
+    <span class="governanca__badge">Uso experimental — piloto controlado</span>
+    <h2>Em que condições o pAIdegua está sendo usado</h2>
+
+    <p>O pAIdegua encontra-se em <strong>fase experimental</strong>. Seu uso é restrito a <strong>pilotos previamente cadastrados</strong> pelo Inovajus — não há acesso aberto, tampouco autocadastro. O ingresso no grupo piloto é ato do Laboratório de Inovação, registrado e revogável a qualquer tempo.</p>
+
+    <p>O acesso é protegido por <strong>dupla verificação</strong>: o endereço precisa constar previamente da lista de autorização mantida pelo Inovajus <em>e</em>, a cada novo acesso, ser confirmado por código de uso único enviado à caixa institucional do próprio servidor ou magistrado. A posse do endereço, isoladamente, não basta; a autorização prévia, isoladamente, também não.</p>
+
+    <div class="governanca__destaque">
+      <p style="margin:0"><strong>Essas restrições são deliberadas.</strong> Constituem medida assecuratória de completa observância à governança da Seção Judiciária do Ceará, permitindo avaliação controlada da ferramenta antes de qualquer ampliação de público.</p>
+    </div>
+
+    <p>A <strong>permanência do uso pelos pilotos</strong> e a eventual <strong>divulgação para uso em massa</strong> por servidores e magistrados da Justiça Federal da 5ª Região ficam condicionadas à observância das normas específicas sobre desenvolvimento e uso de aplicações no âmbito do Poder Judiciário. Enquanto essa conformidade não estiver integralmente demonstrada, o piloto permanece restrito.</p>
+
+    <h2 style="font-size:20px;margin-top:36px">O que a ferramenta faz — e o que não faz</h2>
+    <p>Para que não haja dúvida quanto ao tratamento de dados, à segurança e à conformidade com a <strong>Resolução CNJ nº 615/2025</strong> e com a <strong>LGPD</strong>:</p>
+
+    <div class="governanca__grid">
+      <div class="governanca__col governanca__col--faz">
+        <h3>O pAIdegua faz</h3>
+        <ul>
+          <li>Opera <strong>dentro do navegador</strong> da estação de trabalho, sem instalar programa no computador nem servidor intermediário.</li>
+          <li>Exige <strong>login institucional com dupla verificação</strong> a cada sessão.</li>
+          <li>Oferece <strong>anonimização sob comando</strong>: o botão <em>Anonimizar autos</em> substitui CPF, RG, e-mail, telefone e dados bancários por marcadores antes de você enviar o conteúdo à IA. A pesquisa na Júlia e os indicadores de gestão já aplicam essa anonimização automaticamente.</li>
+          <li>Envia o conteúdo selecionado <strong>diretamente da sua estação ao provedor de IA</strong>, autenticado pela chave de API do próprio usuário.</li>
+          <li>Mantém chave de API, configurações e cadastros <strong>apenas no seu navegador</strong>.</li>
+          <li>Produz <strong>texto de apoio</strong>, sempre submetido à conferência e à revisão humana.</li>
+          <li>Permite ao Inovajus <strong>revogar o acesso imediatamente</strong>, encerrando a sessão do usuário.</li>
+        </ul>
+      </div>
+      <div class="governanca__col governanca__col--naofaz">
+        <h3>O pAIdegua não faz</h3>
+        <ul>
+          <li><strong>Não decide.</strong> Nenhum ato judicial é praticado pela ferramenta; a decisão permanece exclusivamente humana.</li>
+          <li><strong>Não pratica atos no PJe por conta própria</strong> — cada inserção de etiqueta, minuta ou encerramento de expediente decorre de comando explícito do usuário.</li>
+          <li><strong>Não armazena conteúdo de processos</strong> em servidor do Inovajus. O conteúdo dos autos permanece na sua sessão e é descartado ao fechar o navegador.</li>
+          <li><strong>Não coleta telemetria de uso.</strong> Não há contador de execuções nem registro de funcionalidades acionadas.</li>
+          <li><strong>Não compartilha dados</strong> com terceiros além do provedor de IA acionado pelo próprio usuário.</li>
+          <li><strong>Não anonimiza sozinho</strong> o conteúdo enviado à IA nas ações de resumo e minuta: essa proteção é acionada por você, pelo botão <em>Anonimizar autos</em>, antes do envio.</li>
+          <li><strong>Não substitui</strong> os sistemas oficiais nem dispensa a conferência do que é produzido.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="governanca__nota"><strong>Sobre o envio à inteligência artificial.</strong> A geração de resumos e minutas depende, por natureza, de enviar o conteúdo selecionado ao provedor escolhido (Anthropic, OpenAI ou Google). Esse envio parte da sua estação, com a sua chave — o Inovajus não intermedeia nem recebe esse conteúdo. Quando o caso exigir, use o botão <em>Anonimizar autos</em> antes de acionar a IA. Cabe ao usuário utilizar chave vinculada a plano corporativo que vede contratualmente o uso dos dados para treinamento de modelos, conforme o art. 19, II, da Resolução CNJ 615/2025. A ferramenta enquadra-se como de <strong>baixo risco</strong> no Anexo da mesma Resolução (itens BR4 e BR8).</p>
+
+    <p class="governanca__nota">Dúvidas, solicitações de titular de dados ou pedidos de esclarecimento sobre governança: <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a>.</p>
+  </div>
+</section>
+
 <section class="section">
   <div class="section__inner">
-    <h2>O que o pAIdegua faz</h2>
+    <h2>O que o pAIdegua é capaz de fazer</h2>
     <div class="cards">
       <div class="card">
         <h3>Resumir, minutar e anonimizar</h3>
@@ -47,6 +99,18 @@
       <div class="card">
         <h3>Triagem Inteligente</h3>
         <p>Análise dos autos guiada pelos critérios da NT 1/2025 do CLI-JFCE, com sugestão de etiquetas mágicas a partir do catálogo da unidade.</p>
+      </div>
+      <div class="card">
+        <h3>Validação de cadastro</h3>
+        <p>Confere de uma vez o cadastro das partes dos processos em triagem — CPF, advogado, INSS, CEAB, procuradorias e valor da causa — por regras fixas, sem IA.</p>
+      </div>
+      <div class="card">
+        <h3>Ordens PREVJUD</h3>
+        <p>Reúne num painel as ordens de implantação enviadas ao INSS, com situação e prazo de cada uma, etiquetagem em lote e exportação para Excel.</p>
+      </div>
+      <div class="card">
+        <h3>Fale com a Júlia</h3>
+        <p>Pesquisa na jurisprudência do TRF5 e compara o que a sua unidade vem decidindo com o entendimento da instância revisora.</p>
       </div>
       <div class="card">
         <h3>Audiência e Perícia</h3>
@@ -62,7 +126,7 @@
       </div>
       <div class="card">
         <h3>Gestão</h3>
-        <p>Painel Gerencial com indicadores da unidade, Prazos na Fita com encerramento em lote, Controle de Metas CNJ. Foco em quem dirige a secretaria.</p>
+        <p>Painel Gerencial com indicadores da unidade, Prazos na Fita com encerramento em lote e Painel de Perícias com valores e laudos pendentes. Foco em quem dirige a secretaria.</p>
       </div>
       <div class="card">
         <h3>Consultor de Fluxos</h3>
@@ -70,7 +134,7 @@
       </div>
       <div class="card">
         <h3>Privacidade</h3>
-        <p>Operação dentro do navegador, em conformidade com a Resolução CNJ 615/2025 e a LGPD. Dados sensíveis dos autos não saem da Justiça.</p>
+        <p>Operação dentro do navegador, em conformidade com a Resolução CNJ 615/2025 e a LGPD. Anonimização disponível sob comando e nenhum conteúdo de processo armazenado em servidor do Inovajus.</p>
       </div>
     </div>
   </div>
@@ -80,15 +144,15 @@
   <div class="section__inner" style="text-align:center">
     <h2 style="color:#fff;margin-bottom:12px">Você foi liberado(a) para o piloto?</h2>
     <p style="color:#E6ECF5;max-width:600px;margin:0 auto 24px">Se o Inovajus já autorizou seu e-mail institucional, instale a extensão e faça login com o seu próprio endereço. O acesso é por código de uso único enviado por e-mail.</p>
-    <a class="btn btn--primary" style="background:#fff;color:#0C326F" href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">Instalar agora →</a>
+    <a class="btn btn--invert" href="https://chromewebstore.google.com/detail/belangijcipajlpcofhljhgjeemkbofk" target="_blank" rel="noopener">Instalar agora →</a>
     <p style="margin-top:24px;font-size:14px;color:rgba(255,255,255,0.78)">Não foi liberado(a) ainda? Fale com a equipe Inovajus pelo Suporte da extensão ou em <a href="mailto:inovajus@jfce.jus.br" style="color:var(--yellow)">inovajus@jfce.jus.br</a>.</p>
   </div>
 </section>
 
 <footer class="site-footer">
   <p><strong>Inovajus</strong> · Justiça Federal no Ceará</p>
-  <p><a href="manual/">Manual</a> · <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
-  <p>Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
+  <p><a href="#governanca">Governança</a> · <a href="manual/">Manual</a> · <a href="privacidade/">Privacidade</a> · <a href="mailto:inovajus@jfce.jus.br">inovajus@jfce.jus.br</a></p>
+  <p>Uso experimental restrito a pilotos autorizados. Operação em conformidade com a LGPD e a Resolução CNJ 615/2025.</p>
 </footer>
 
 </body>

@@ -989,6 +989,22 @@ export interface JuliaExecOpcoes {
   /** Termos escritos à mão; vazio deixa o background derivar da pergunta. */
   termosManuais?: string;
   /**
+   * Análise preditiva de minuta: quando presente, o que vai ao background é o
+   * texto da minuta (`START_ANALISE`), e `pergunta` vira apenas o rótulo
+   * exibido no fio da conversa. Todo o resto do fluxo — etapas, evidência,
+   * streaming, citações, retentativa — é o mesmo da consulta comum.
+   */
+  analise?: { minutaTexto: string; minutaTruncada: boolean };
+  /**
+   * Chamado quando a análise preditiva termina com sucesso, com o material
+   * que as ações do rodapé da bolha precisam (os botões do chat são
+   * registrados na montagem, então o estado viaja por aqui, não por closure).
+   */
+  onAnaliseDone?: (info: {
+    termosUsados: string;
+    citaveis: Map<number, DocumentoCitado>;
+  }) => void;
+  /**
    * Refaz só a síntese sobre a evidência já recuperada, sem consultar a Júlia
    * de novo. Usado quando a falha foi do provedor de IA (cota, rede).
    */
@@ -1024,8 +1040,19 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
 
   const statusNode = chat.addSystemText('');
   const statusTexto = document.createElement('span');
-  statusTexto.textContent = 'Interpretando a pergunta…';
+  statusTexto.textContent = opts.analise
+    ? 'Lendo a minuta…'
+    : 'Interpretando a pergunta…';
   statusNode.appendChild(statusTexto);
+
+  // A etapa de extração muda de natureza na análise preditiva — o rótulo
+  // acompanha, senão o usuário lê "Interpretando a pergunta" sem ter feito uma.
+  const etapaTexto: Record<string, string> = opts.analise
+    ? {
+        ...ETAPA_TEXTO,
+        [JULIA_ETAPA.EXTRAINDO]: 'Lendo a minuta e identificando as teses…'
+      }
+    : ETAPA_TEXTO;
 
   // Botão de cancelar dentro da própria linha de status. `consultarJulia` já
   // devolvia uma função de aborto, mas ninguém a usava — na prática não havia
@@ -1093,7 +1120,9 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'paidegua-julia-form__btn';
-    btn.textContent = 'Iniciar outra consulta';
+    btn.textContent = opts.analise
+      ? 'Analisar a minuta de novo'
+      : 'Iniciar outra consulta';
     btn.addEventListener('click', () => {
       bolha.remove();
       opts.onNovaConsulta?.(contexto, termosUsados);
@@ -1106,7 +1135,7 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
     switch (msg.type) {
       case JULIA_PORT_MSG.PROGRESSO: {
         const etapa = String(msg.etapa ?? '');
-        statusTexto.textContent = ETAPA_TEXTO[etapa] ?? 'Processando…';
+        statusTexto.textContent = etapaTexto[etapa] ?? 'Processando…';
         break;
       }
 
@@ -1152,7 +1181,20 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
       case JULIA_PORT_MSG.CHUNK: {
         if (!assistantAberto) {
           statusNode.remove();
-          chat.beginAssistantMessage({ allowedActionIds: ['copiar'] });
+          chat.beginAssistantMessage({
+            // Na análise preditiva o rodapé da bolha carrega as ações da
+            // feature (registradas em `buildChatBubbleActions`), na ordem
+            // pedida pelo owner. Na consulta comum, nenhum id registrado
+            // casa — a bolha sai sem botões, comportamento histórico.
+            allowedActionIds: opts.analise
+              ? [
+                  'analise-download-doc',
+                  'copy',
+                  'analise-sugestoes',
+                  'analise-de-novo'
+                ]
+              : ['copiar']
+          });
           assistantAberto = true;
         }
         chat.appendAssistantDelta(String(msg.delta ?? ''));
@@ -1163,7 +1205,14 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
         if (assistantAberto) {
           chat.endAssistantMessage();
           ativarCitacoes();
-          oferecerNovaConsulta();
+          if (opts.analise) {
+            // O material das ações do rodapé (docs citáveis, termos usados)
+            // sai por aqui; "Analisar a minuta de novo" virou ação da bolha,
+            // então a bolha avulsa não é oferecida no sucesso.
+            opts.onAnaliseDone?.({ termosUsados, citaveis });
+          } else {
+            oferecerNovaConsulta();
+          }
         }
         encerrar();
         break;
@@ -1184,7 +1233,7 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
             // reenviar sozinho gastaria tokens sem ele pedir.
             chat.addCustomBubble(
               blocoReconectar(
-                `${erro} Depois de entrar, clique novamente em "Consultar a Júlia".`,
+                `${erro} Depois de entrar, clique novamente em "${opts.analise ? 'Analisar a minuta' : 'Consultar a Júlia'}".`,
                 () => window.open(URL_LOGIN_JULIA, '_blank', 'noopener')
               )
             );
@@ -1247,22 +1296,34 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
 
   btnCancelar.addEventListener('click', cancelar);
 
+  const payloadBase = {
+    orgao: contexto.orgao,
+    instancias: contexto.instancias,
+    orgaosJulgadores: contexto.orgaosJulgadores,
+    modo: opts.modo ?? 'dupla',
+    instanciasPublicas: contexto.instanciasPublicas,
+    termosManuais: opts.termosManuais,
+    provider: opts.provider,
+    model: opts.model
+  };
+
   port.postMessage({
     type: opts.retentarSintese
       ? JULIA_PORT_MSG.RETENTAR_SINTESE
-      : JULIA_PORT_MSG.START,
-    payload: {
-      pergunta,
-      orgao: contexto.orgao,
-      instancias: contexto.instancias,
-      orgaosJulgadores: contexto.orgaosJulgadores,
-      compararComRevisor: contexto.compararComRevisor,
-      modo: opts.modo ?? 'dupla',
-      instanciasPublicas: contexto.instanciasPublicas,
-      termosManuais: opts.termosManuais,
-      provider: opts.provider,
-      model: opts.model
-    }
+      : opts.analise
+        ? JULIA_PORT_MSG.START_ANALISE
+        : JULIA_PORT_MSG.START,
+    payload: opts.analise
+      ? {
+          ...payloadBase,
+          minutaTexto: opts.analise.minutaTexto,
+          minutaTruncada: opts.analise.minutaTruncada
+        }
+      : {
+          ...payloadBase,
+          pergunta,
+          compararComRevisor: contexto.compararComRevisor
+        }
   });
 
   return cancelar;
@@ -1306,6 +1367,7 @@ const INSTANCIAS_PUBLICAS: Array<{ id: JuliaInstancia; rotulo: string }> = [
  */
 export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
   ensureStyle(opts.shadow);
+  const analise = opts.variante === 'analise';
 
   const c: JuliaContextoUnidade = {
     ...opts.contexto,
@@ -1316,12 +1378,20 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
   };
 
   const root = el('div', 'paidegua-julia-form');
-  root.appendChild(el('div', 'paidegua-julia__titulo', 'Fale com a Júlia'));
+  root.appendChild(
+    el(
+      'div',
+      'paidegua-julia__titulo',
+      analise ? 'Análise preditiva da minuta' : 'Fale com a Júlia'
+    )
+  );
   root.appendChild(
     el(
       'div',
       'paidegua-julia-form__hint',
-      'Pesquisa a jurisprudência do TRF5, das Turmas Recursais e da TRU.'
+      analise
+        ? 'Confronta a minuta aberta no editor com a jurisprudência do colegiado escolhido.'
+        : 'Pesquisa a jurisprudência do TRF5, das Turmas Recursais e da TRU.'
     )
   );
 
@@ -1347,12 +1417,16 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
   }
   root.appendChild(chips);
 
-  root.appendChild(el('div', 'paidegua-julia-form__label', 'Sua pergunta ou tema'));
   const ta = document.createElement('textarea');
   ta.className = 'paidegua-julia-form__textarea';
   ta.rows = 3;
   ta.placeholder = 'Ex.: pensão por morte a companheira em união estável';
-  root.appendChild(ta);
+  if (!analise) {
+    root.appendChild(
+      el('div', 'paidegua-julia-form__label', 'Sua pergunta ou tema')
+    );
+    root.appendChild(ta);
+  }
 
   root.appendChild(
     el('div', 'paidegua-julia-form__label', 'Termos de busca (opcional)')
@@ -1360,7 +1434,9 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
   const termos = document.createElement('input');
   termos.type = 'text';
   termos.className = 'paidegua-julia-form__input';
-  termos.placeholder = 'Em branco: derivados da pergunta';
+  termos.placeholder = analise
+    ? 'Em branco: derivados das teses da minuta'
+    : 'Em branco: derivados da pergunta';
   termos.value = opts.termosIniciais ?? '';
   root.appendChild(termos);
   root.appendChild(
@@ -1371,11 +1447,13 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
     )
   );
 
+  if (opts.blocoExtra) root.appendChild(opts.blocoExtra);
+
   const acoes = el('div', 'paidegua-julia-form__acoes');
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'paidegua-julia-form__btn';
-  btn.textContent = 'Consultar a Júlia';
+  btn.textContent = analise ? 'Analisar a minuta' : 'Consultar a Júlia';
   acoes.appendChild(btn);
   root.appendChild(acoes);
 
@@ -1384,14 +1462,14 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
 
   function atualizar(): void {
     const semAcervo = !c.instanciasPublicas?.length;
-    btn.disabled = semAcervo || !ta.value.trim();
+    btn.disabled = semAcervo || (!analise && !ta.value.trim());
     aviso.textContent = semAcervo ? 'Selecione ao menos um acervo.' : '';
   }
 
   ta.addEventListener('input', atualizar);
   btn.addEventListener('click', () => {
     const pergunta = ta.value.trim();
-    if (!pergunta || !c.instanciasPublicas?.length) return;
+    if ((!analise && !pergunta) || !c.instanciasPublicas?.length) return;
     btn.disabled = true;
     ta.disabled = true;
     opts.onConsultar(
@@ -1601,9 +1679,24 @@ export interface SeletorOpcoes {
   /** Pré-preenche o campo de termos — usado ao refazer uma consulta. */
   termosIniciais?: string;
   /**
+   * `'analise'` monta o formulário da análise preditiva de minutas: mesma
+   * seleção de escopo (seccional, instâncias, unidades), mas sem o campo de
+   * pergunta — a entrada é a minuta lida do editor — e sem o marcador de
+   * comparação, que ali é sempre ligada. Reuso em vez de duplicação: o bloco
+   * de unidades embute a sonda de sessão e não deve existir duas vezes.
+   */
+  variante?: 'consulta' | 'analise';
+  /**
+   * Bloco extra entre os campos e o botão — a variante `'analise'` injeta o
+   * resumo da minuta detectada e o aviso de privacidade.
+   */
+  blocoExtra?: HTMLElement;
+  /**
    * `reabilitar` devolve o formulário ao estado editável. O chamador **deve**
    * invocá-lo ao fim da consulta, inclusive em erro — senão uma sessão expirada
    * deixa o formulário travado e obriga a reabrir tudo para tentar de novo.
+   *
+   * Na variante `'analise'`, `pergunta` chega vazia.
    */
   onConsultar: (
     contexto: JuliaContextoUnidade,
@@ -1676,6 +1769,7 @@ const INSTANCIA_CHIP: Record<JuliaInstanciaAutenticada, string> = {
  */
 export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   ensureStyle(opts.shadow);
+  const analise = opts.variante === 'analise';
 
   const c: JuliaContextoUnidade = {
     ...opts.contexto,
@@ -1688,12 +1782,20 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   let recarregarUnidades: () => void = () => {};
 
   const root = el('div', 'paidegua-julia-form');
-  root.appendChild(el('div', 'paidegua-julia__titulo', 'Fale com a Júlia'));
+  root.appendChild(
+    el(
+      'div',
+      'paidegua-julia__titulo',
+      analise ? 'Análise preditiva da minuta' : 'Fale com a Júlia'
+    )
+  );
   root.appendChild(
     el(
       'div',
       'paidegua-julia-form__hint',
-      'Compara o que a sua unidade vem entendendo com o que a instância revisora vem decidindo.'
+      analise
+        ? 'Confronta a minuta aberta no editor com o que a sua unidade e a instância revisora vêm decidindo.'
+        : 'Compara o que a sua unidade vem entendendo com o que a instância revisora vem decidindo.'
     )
   );
 
@@ -1761,21 +1863,29 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   // Controle explícito da comparação. Antes isso era inferido pelo LLM a partir
   // da redação da pergunta, e "como a vara vem decidindo…" desligava o escopo
   // revisor — justamente a metade que dá valor à análise.
-  const cmpWrap = document.createElement('label');
-  cmpWrap.className = 'paidegua-julia-form__chip is-on';
-  cmpWrap.style.marginTop = '6px';
-  const cmpCb = document.createElement('input');
-  cmpCb.type = 'checkbox';
-  cmpCb.checked = c.compararComRevisor;
-  cmpCb.addEventListener('change', () => {
-    c.compararComRevisor = cmpCb.checked;
-    cmpWrap.classList.toggle('is-on', cmpCb.checked);
-  });
-  cmpWrap.appendChild(cmpCb);
-  cmpWrap.appendChild(
-    document.createTextNode('Comparar com a instância que revisa')
-  );
-  root.appendChild(cmpWrap);
+  //
+  // Na análise preditiva o marcador não aparece: o confronto com o revisor é a
+  // razão de ser da funcionalidade, e desligá-lo produziria um "prognóstico"
+  // sem a instância que o justifica.
+  if (!analise) {
+    const cmpWrap = document.createElement('label');
+    cmpWrap.className = 'paidegua-julia-form__chip is-on';
+    cmpWrap.style.marginTop = '6px';
+    const cmpCb = document.createElement('input');
+    cmpCb.type = 'checkbox';
+    cmpCb.checked = c.compararComRevisor;
+    cmpCb.addEventListener('change', () => {
+      c.compararComRevisor = cmpCb.checked;
+      cmpWrap.classList.toggle('is-on', cmpCb.checked);
+    });
+    cmpWrap.appendChild(cmpCb);
+    cmpWrap.appendChild(
+      document.createTextNode('Comparar com a instância que revisa')
+    );
+    root.appendChild(cmpWrap);
+  } else {
+    c.compararComRevisor = true;
+  }
 
   // ── Unidades (carregadas do própria Júlia)
   root.appendChild(
@@ -1900,13 +2010,17 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   void carregarUnidades();
   atualizarResumo();
 
-  // ── Pergunta
-  root.appendChild(el('div', 'paidegua-julia-form__label', 'Sua pergunta ou tema'));
+  // ── Pergunta (na análise preditiva a entrada é a minuta, não uma pergunta)
   const ta = document.createElement('textarea');
   ta.className = 'paidegua-julia-form__textarea';
   ta.rows = 3;
   ta.placeholder = 'Ex.: auxílio-doença sem pedido de prorrogação';
-  root.appendChild(ta);
+  if (!analise) {
+    root.appendChild(
+      el('div', 'paidegua-julia-form__label', 'Sua pergunta ou tema')
+    );
+    root.appendChild(ta);
+  }
 
   // ── Termos de busca (sobrepõem a derivação automática)
   root.appendChild(
@@ -1915,7 +2029,9 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   const termos = document.createElement('input');
   termos.type = 'text';
   termos.className = 'paidegua-julia-form__input';
-  termos.placeholder = 'Em branco: derivados da pergunta';
+  termos.placeholder = analise
+    ? 'Em branco: derivados das teses da minuta'
+    : 'Em branco: derivados da pergunta';
   termos.value = opts.termosIniciais ?? '';
   root.appendChild(termos);
   root.appendChild(
@@ -1926,11 +2042,13 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
     )
   );
 
+  if (opts.blocoExtra) root.appendChild(opts.blocoExtra);
+
   const acoes = el('div', 'paidegua-julia-form__acoes');
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'paidegua-julia-form__btn';
-  btn.textContent = 'Consultar a Júlia';
+  btn.textContent = analise ? 'Analisar a minuta' : 'Consultar a Júlia';
   acoes.appendChild(btn);
   root.appendChild(acoes);
 
@@ -1939,7 +2057,7 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
 
   function atualizarBotao(): void {
     const semInstancia = c.instancias.length === 0;
-    btn.disabled = semInstancia || !ta.value.trim();
+    btn.disabled = semInstancia || (!analise && !ta.value.trim());
     aviso.textContent = semInstancia
       ? 'Selecione ao menos uma instância.'
       : '';
@@ -1948,7 +2066,7 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   ta.addEventListener('input', atualizarBotao);
   btn.addEventListener('click', () => {
     const pergunta = ta.value.trim();
-    if (!pergunta || !c.instancias.length) return;
+    if ((!analise && !pergunta) || !c.instancias.length) return;
     btn.disabled = true;
     ta.disabled = true;
     opts.onConsultar(
