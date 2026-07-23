@@ -26,17 +26,18 @@ import {
   conteudoUtilLength,
   extractContents,
   getOcrPendingDocuments,
-  runOcrViaIA
+  transcreverDigitalizadosLocal
 } from '../extractor';
 
 /**
  * Caps do preparo de documentos digitalizados para o fluxo de Resumo
  * (AUD-10).
  *
- * Os documentos escaneados não são transcritos: são renderizados como
- * imagem e enviados direto à IA multimodal (OCR imagem-direto, ver
- * `runOcrViaIA`). O render custa ~2s/doc. O cap de 8 docs × 5 páginas
- * limita o tamanho do payload de imagens mandado à IA.
+ * Os escaneados passam pelo OCR local (PP-OCR, ver
+ * `transcreverDigitalizadosLocal`): o texto lido localmente entra no
+ * contexto da IA como TEXTO (mais barato e sem enviar a imagem); só o que
+ * o OCR não ler cai para imagem-direto. O cap de 8 docs × 5 páginas limita
+ * o tempo de OCR e o tamanho do payload.
  *
  * Respeitamos a setting `ocrMaxPages` do usuário se for menor que o
  * teto rígido — quem prefere processar menos páginas (ex.: 2-3) não
@@ -285,11 +286,11 @@ export async function coletarDocumentosDoProcesso(
     };
   }
 
-  // 5. Preparo dos documentos digitalizados para a IA — best-effort, COM
-  // CAP. As páginas escaneadas são renderizadas como imagem (OCR
-  // imagem-direto) e seguem para a IA multimodal anexadas à mensagem;
-  // não há transcrição. O cap em OCR_MAX_DOCS docs e OCR_MAX_PAGES_POR_DOC
-  // páginas limita o tamanho do payload de imagens. Se o render falhar, o
+  // 5. OCR local dos documentos digitalizados — best-effort, COM CAP. O
+  // PP-OCR (offscreen) lê o texto localmente; o que ler entra como TEXTO no
+  // contexto da IA (mais barato e sem enviar a imagem), o que não ler cai
+  // para imagem-direto (`paginasImagem`). O cap em OCR_MAX_DOCS docs e
+  // OCR_MAX_PAGES_POR_DOC páginas limita o tempo/payload. Se falhar, o
   // documento entra sem o conteúdo escaneado — a normalização abaixo
   // descarta docs que ficaram sem texto e sem imagem.
   try {
@@ -308,11 +309,11 @@ export async function coletarDocumentosDoProcesso(
           `(pode levar alguns minutos, mantenha esta aba aberta)...`
       );
 
-      // Timeout total: 90s/doc é folga larga — o render local roda em
-      // ~2s/doc. Soma + 30s de margem.
+      // Timeout total: 90s/doc é folga larga — o OCR local roda em ~0,8s/página
+      // em WebGPU. Soma + 30s de margem.
       const timeoutMs = totalOcr * 90_000 + 30_000;
-      const ocred = await comTimeout(
-        runOcrViaIA(
+      const { docs: ocred } = await comTimeout(
+        transcreverDigitalizadosLocal(
           pendentes,
           (ev) => {
             if (ev.type === 'ocr-document-done' || ev.type === 'ocr-document-error') {
@@ -325,7 +326,7 @@ export async function coletarDocumentosDoProcesso(
           { maxPages }
         ),
         timeoutMs,
-        'Preparo de documentos digitalizados'
+        'OCR local de documentos digitalizados'
       );
       const mapaOcr = new Map<string, ProcessoDocumento>(
         ocred.map((d) => [d.id, d])
@@ -334,7 +335,7 @@ export async function coletarDocumentosDoProcesso(
     }
   } catch (err) {
     // OCR é best-effort: se falhar OU timeout, segue com o que extraímos antes.
-    console.info(`${LOG} OCR best-effort falhou (segue sem OCR):`, err);
+    console.info(`${LOG} OCR local best-effort falhou (segue sem OCR):`, err);
     setProg('Continuando sem o reconhecimento de texto em alguns documentos...');
   }
   setProg('Finalizando coleta...');

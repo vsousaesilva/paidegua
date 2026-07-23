@@ -682,9 +682,9 @@ export function mountSidebar(
     <div class="paidegua-sidebar__toolbar">
       <button type="button" class="is-primary" data-processo-section="processo" data-paidegua="load-documents">Carregar Documentos</button>
       <button type="button" disabled style="display:none; grid-column: 1 / -1; justify-content: center;" data-paidegua="ocr-pendentes">Rodar OCR pendente</button>
+      <button type="button" disabled data-processo-section="processo" data-paidegua="anonimizar" title="Substitui CPF, CNPJ, e-mails, telefones e nomes de partes por marcadores genéricos">Anonimizar autos</button>
       <button type="button" disabled data-processo-section="processo" data-paidegua="resumir">Resumir</button>
       <button type="button" disabled data-processo-section="processo" data-paidegua="audio-summary">Resumir em áudio</button>
-      <button type="button" disabled data-processo-section="processo" data-paidegua="anonimizar" title="Substitui CPF, CNPJ, e-mails, telefones e nomes de partes por marcadores genéricos">Anonimizar autos</button>
       <button type="button" disabled data-processo-section="processo" data-paidegua="minutar">Minutar</button>
       <div data-profile-section="gabinete" data-processo-section="processo" class="paidegua-sidebar__toolbar-divider" style="grid-column: 1 / -1; height: 1px; background: var(--paidegua-border); margin: 4px 0 2px;"></div>
       <div data-profile-section="gabinete" data-processo-section="processo" class="paidegua-sidebar__toolbar-label" style="grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; color: var(--paidegua-text-muted); letter-spacing: 0.4px; margin-bottom: 2px;">Minutas com modelo</div>

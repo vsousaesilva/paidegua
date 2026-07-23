@@ -21,9 +21,11 @@ import type { ProcessoDocumento } from '../shared/types';
 import { parsePdf } from './pdf-parser';
 import {
   renderPdfToImages,
+  ocrPdf,
   type OcrOptions,
   type OcrProgress
 } from './ocr';
+import { getMotorOcr } from './ocr-motor';
 
 /** Entrada no log de diagnóstico de extração de um documento. */
 export interface DiagnosticEntry {
@@ -526,12 +528,20 @@ async function extractOne(doc: ProcessoDocumento): Promise<ExtractOneResult> {
       }
       // HTML curto sem marcador de chrome → documento-rótulo legítimo.
       // Aceita como conteúdo (o próprio texto curto É o descritor/título).
-      enriched.textoExtraido = plain;
+      //
+      // Conteúdo limpo via DOM: remove <script>/<style>/<noscript> (senão o
+      // CSS do editor Badon/ProseMirror vaza como milhares de linhas no texto)
+      // e usa textContent, que decodifica as entidades HTML (&Aacute; → Á,
+      // &nbsp; → espaço). O `plain` (strip por regex) fica só para as
+      // heurísticas de detecção de chrome acima.
+      const corpoLimpo = extrairTextoLimpoHtml(htmlDoc);
+      const conteudoFinal = corpoLimpo || plain;
+      enriched.textoExtraido = conteudoFinal;
       enriched.isScanned = false;
-      if (plain.length < 100) {
-        diag('parse-html', true, `${plain.length} chars (documento-rótulo — sem corpo próprio)`);
+      if (conteudoFinal.length < 100) {
+        diag('parse-html', true, `${conteudoFinal.length} chars (documento-rótulo — sem corpo próprio)`);
       } else {
-        diag('parse-html', true, `${plain.length} chars de texto`);
+        diag('parse-html', true, `${conteudoFinal.length} chars de texto`);
       }
       return { documento: enriched, diagnostics };
     }
@@ -544,6 +554,60 @@ async function extractOne(doc: ProcessoDocumento): Promise<ExtractOneResult> {
 
   diag('resultado-final', false, `MIME type não suportado: ${mimeType}`);
   throw new ExtractionError(`MIME type não suportado: ${mimeType}`, diagnostics);
+}
+
+/**
+ * Extrai texto legível de um documento HTML já parseado, descartando o que
+ * não é conteúdo:
+ *  - Remove os elementos `<script>`, `<style>` e `<noscript>` INTEIROS — o
+ *    strip por regex (`<[^>]+>`) só apaga as tags e deixa o CSS/JS no meio,
+ *    poluindo o texto (o editor Badon/ProseMirror embute milhares de linhas
+ *    de CSS em `<style>`).
+ *  - Usa `textContent`, que decodifica as entidades HTML (`&Aacute;` → `Á`,
+ *    `&nbsp;` → espaço) — o strip por regex as deixaria literais.
+ *
+ *  - Insere SEPARADORES antes de ler o texto: o `textContent` cru concatena
+ *    células de tabela e blocos vizinhos sem espaço ("…Prazo Pessoal" +
+ *    "JOSE EDMAR…" vira "PessoalJOSE EDMAR…"). Isso gruda tokens e faz o
+ *    regex de nomes (fronteira `\p{L}`) perder a marcação — o nome da parte
+ *    escapa da anonimização. Espaço entre células (`td`/`th`) e quebra de
+ *    linha entre blocos corrigem o gruda-tokens E melhoram a legibilidade das
+ *    tabelas (CNIS, cálculos previdenciários).
+ *
+ * `innerText` respeitaria os limites de bloco sozinho, mas depende de layout e
+ * retorna vazio em documentos destacados (criados por `DOMParser`); por isso
+ * inserimos os separadores manualmente e usamos `textContent`. Mutação de
+ * `htmlDoc` é segura: o chamador não o reutiliza após esta chamada.
+ */
+function extrairTextoLimpoHtml(htmlDoc: Document): string {
+  htmlDoc.querySelectorAll('script, style, noscript').forEach((e) => e.remove());
+
+  const body = htmlDoc.body;
+  if (body) {
+    // <br> vira quebra de linha.
+    body
+      .querySelectorAll('br')
+      .forEach((br) => br.replaceWith(htmlDoc.createTextNode('\n')));
+    // Célula de tabela: espaço ao final separa colunas na mesma linha.
+    body
+      .querySelectorAll('td, th')
+      .forEach((c) => c.appendChild(htmlDoc.createTextNode(' ')));
+    // Blocos: quebra de linha ao final separa parágrafos, linhas e itens.
+    body
+      .querySelectorAll(
+        'tr, p, div, li, h1, h2, h3, h4, h5, h6, table, section, article, blockquote, pre, ul, ol'
+      )
+      .forEach((el) => el.appendChild(htmlDoc.createTextNode('\n')));
+  }
+
+  const texto = body?.textContent ?? '';
+  return texto.replace(/ /g, ' ')
+    // Colapsa espaços/tabs/nbsp horizontais, preservando as quebras de linha.
+    .replace(/[^\S\n]+/g, ' ')
+    // Remove espaços em volta das quebras e limita a uma linha em branco.
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
@@ -676,7 +740,21 @@ export type OcrProgressHandler = (event: OcrProgressEvent) => void;
 function conteudoUtilLength(text: string | undefined): number {
   if (!text) return 0;
   return text
-    .replace(/===\s*Página\s+\d+(?:\s*\([^)]+\))?\s*===/g, '')
+    // Marcadores de página do parser (`=== Página N ===`, com `(OCR)`).
+    .replace(/===\s*Página\s+\d+(?:\s*\([^)]+\))?\s*===/g, ' ')
+    // Boilerplate de certificação/autenticação do PJe — texto real, mas que
+    // NÃO é conteúdo do documento e engana a heurística de "tem texto?"
+    // (espelha `removerBoilerplatePje` de txt-download.ts; ajustar os dois
+    // juntos). Sem isso, um laudo/procuração 100% escaneado "tem" ~70 chars de
+    // rodapé e passa por documento legível.
+    .replace(/O documento a seguir foi juntado aos autos[\s\S]*?ID do documento:\s*\d+/gi, ' ')
+    .replace(/Justi[çc]a Federal da \d+[ªa]?\s*Regi[ãa]o\s+Processo Judicial Eletr[ôo]nico[^\n]*/gi, ' ')
+    .replace(/Consulte este documento em:[^\n]*/gi, ' ')
+    .replace(/Voc[êe] pode conferir a autenticidade[\s\S]{0,140}?c[óo]digo\s+[\w-]+/gi, ' ')
+    .replace(/Autenticado por:\s*Sem dados de autentica[çc][ãa]o/gi, ' ')
+    .replace(/Anexo ID:\s*(?:\d+|\[[^\]]+\])/gi, ' ')
+    .replace(/P[áa]gina\s+\d+\s+de\s+\d+/gi, ' ')
+    .replace(/Emitido em:/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .length;
@@ -794,4 +872,281 @@ export async function runOcrViaIA(
       `(${totalPaginas} página(s)${falhas > 0 ? `, ${falhas} falha(s)` : ''}).`
   );
   return merged;
+}
+
+// ============================================================================
+// Transcrição offline sob demanda (OCR local) — completa uma "leitura pendente"
+// ============================================================================
+
+/**
+ * Cap de páginas do OCR local sob demanda. Bem menor que o `MAX_OCR_PAGES`
+ * (30) do fluxo antigo: aqui o objetivo é ler documentos pequenos e pontuais
+ * (procuração, hipossuficiência) que o usuário selecionou — não varrer anexos
+ * de dezenas de páginas. Mantém o tempo por clique na casa de segundos.
+ */
+const OCR_LOCAL_MAX_PAGES = 8;
+
+/**
+ * Piso de confiança média do Tesseract abaixo do qual a transcrição é
+ * considerada não-confiável. Texto embaralhado quebra as fronteiras de token
+ * do regex de anonimização (CPF/nome fragmentado escapa da máscara), então
+ * uma leitura ruim é REJEITADA em vez de contaminar o texto — o usuário é
+ * orientado a completar com IA multimodal.
+ */
+const OCR_LOCAL_CONFIANCA_MINIMA = 60;
+
+export interface TranscricaoOfflineResult {
+  /** True quando a transcrição passou nos portões de quantidade e confiança. */
+  ok: boolean;
+  /** Texto transcrito (com marcadores `=== Página N (OCR) ===`). */
+  texto: string;
+  /** Confiança média (0–100) reportada pelo Tesseract. */
+  confianca: number;
+  pagesProcessed: number;
+  pagesSkipped: number;
+  /** Motivo da rejeição quando `ok === false`. */
+  motivo?: string;
+}
+
+/**
+ * Transcreve UM documento digitalizado por OCR local (PP-OCR), 100% offline.
+ *
+ * Desde a migração para PP-OCR (23/07/2026), FUNCIONA também no content script:
+ * o `ocrPdf` renderiza a página localmente (pdf.js) e delega o reconhecimento ao
+ * offscreen document via background (ver `content/ocr.ts` / `content/ocr-motor.ts`).
+ * O motor Tesseract antigo NÃO rodava no realm da página (construir um `Worker`
+ * a partir de `chrome-extension://` era bloqueado pela same-origin policy) — essa
+ * limitação deixou de existir. Alternativa complementar (envio à IA multimodal)
+ * segue disponível em `prepararImagensDocumento` (Caminho A).
+ *
+ * Retorna `ok:false` (com `motivo`) quando o documento não é um PDF utilizável,
+ * quando a transcrição não tem texto útil, ou quando a confiança fica abaixo do
+ * piso — casos em que o chamador deve oferecer a leitura por IA multimodal.
+ */
+export async function transcreverPendenciaOffline(
+  doc: ProcessoDocumento,
+  options?: { maxPages?: number; onProgress?: (p: OcrProgress) => void }
+): Promise<TranscricaoOfflineResult> {
+  const vazio = { texto: '', confianca: 0, pagesProcessed: 0, pagesSkipped: 0 };
+
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, ...vazio, motivo: `falha no download: ${msg}` };
+  }
+  if (!response.ok) {
+    return { ok: false, ...vazio, motivo: `HTTP ${response.status}` };
+  }
+
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength === 0) {
+    return { ok: false, ...vazio, motivo: 'PDF retornou 0 bytes' };
+  }
+  if (!bufferIsPdf(buffer)) {
+    return { ok: false, ...vazio, motivo: 'conteúdo não é um PDF' };
+  }
+
+  let ocr: Awaited<ReturnType<typeof ocrPdf>>;
+  try {
+    ocr = await ocrPdf(buffer, options?.onProgress, {
+      maxPages: options?.maxPages ?? OCR_LOCAL_MAX_PAGES
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, ...vazio, motivo: `OCR falhou: ${msg}` };
+  }
+
+  const base = {
+    texto: ocr.text,
+    confianca: ocr.meanConfidence,
+    pagesProcessed: ocr.pagesProcessed,
+    pagesSkipped: ocr.pagesSkipped
+  };
+
+  if (conteudoUtilLength(ocr.text) < 50) {
+    return { ok: false, ...base, motivo: 'sem texto reconhecível (imagem sem texto legível)' };
+  }
+  if (ocr.meanConfidence < OCR_LOCAL_CONFIANCA_MINIMA) {
+    return {
+      ok: false,
+      ...base,
+      motivo: `baixa confiança (${Math.round(ocr.meanConfidence)}%)`
+    };
+  }
+  return { ok: true, ...base };
+}
+
+/** Prefixo do texto obtido por OCR local — sinaliza a origem (e o risco de erro). */
+const MARCADOR_OCR_LOCAL = '[Transcrito por OCR local — texto pode conter erros de reconhecimento]';
+
+export interface OcrLocalStats {
+  /** Documentos cujo texto foi extraído localmente (viram `texto-ok`). */
+  lidosLocal: number;
+  /** Documentos que o OCR local não leu com confiança → imagem-direto (IA). */
+  fallbackIA: number;
+  /** Falhas duras (download, render, PDF inválido OU erro do motor de OCR). */
+  falhas: number;
+  /** Mensagem do primeiro erro (para diagnóstico na UI, sem abrir o console). */
+  primeiroErro?: string;
+}
+
+/**
+ * OCR local-first dos documentos digitalizados pendentes (política adotada em
+ * 23/07/2026, após a migração para PP-OCR).
+ *
+ * Substitui `runOcrViaIA` no fluxo de extração. Por documento pendente:
+ *  1. baixa o PDF e renderiza as páginas UMA vez (`renderPdfToImages`);
+ *  2. roda o PP-OCR local (motor offscreen) sobre essas imagens;
+ *  3. se o texto passa nos portões de quantidade (>=50 chars úteis) e confiança
+ *     (>= `OCR_LOCAL_CONFIANCA_MINIMA`), grava em `textoExtraido` — o documento
+ *     vira `texto-ok`, entra no .txt e passa pela ANONIMIZAÇÃO antes de qualquer
+ *     IA (ganho de LGPD sobre o imagem-direto, que enviava o scan sem anonimizar);
+ *  4. senão, cai para imagem-direto reaproveitando o render já feito
+ *     (`paginasImagem`) — o documento segue disponível para leitura por IA.
+ *
+ * Reaproveita os mesmos eventos de progresso de `runOcrViaIA` (`OcrProgressEvent`),
+ * então a UI de progresso do chamador não muda.
+ */
+export async function transcreverDigitalizadosLocal(
+  docs: ProcessoDocumento[],
+  onProgress?: OcrProgressHandler,
+  options?: OcrOptions
+): Promise<{ docs: ProcessoDocumento[]; stats: OcrLocalStats }> {
+  const targets = getOcrPendingDocuments(docs);
+  const stats: OcrLocalStats = { lidosLocal: 0, fallbackIA: 0, falhas: 0 };
+  onProgress?.({ type: 'ocr-start', total: targets.length });
+
+  if (targets.length === 0) {
+    onProgress?.({ type: 'ocr-done', updated: [] });
+    return { docs, stats };
+  }
+
+  const motor = getMotorOcr();
+  const updatedMap = new Map<string, ProcessoDocumento>();
+  const t0 = performance.now();
+
+  for (let index = 0; index < targets.length; index++) {
+    const doc = targets[index]!;
+    onProgress?.({ type: 'ocr-document-start', index, documento: doc });
+    try {
+      const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength === 0) throw new Error('PDF veio com 0 bytes');
+      if (!bufferIsPdf(buffer)) throw new Error('conteúdo não é um PDF');
+
+      // Render UMA vez — servido tanto ao OCR quanto ao fallback imagem-direto.
+      const rendered = await renderPdfToImages(buffer, { maxPages: options?.maxPages });
+      if (rendered.images.length === 0) throw new Error('render não produziu imagens');
+      const paginas = rendered.images.map((img) => img.dataUrl);
+
+      const resultados = await motor.transcrever(paginas, (i, total, r) => {
+        onProgress?.({
+          type: 'ocr-page',
+          index,
+          documento: doc,
+          progress: {
+            currentPage: i + 1,
+            totalPages: total,
+            pageProgress: 1,
+            status: `recognizing (${r.backend})`
+          }
+        });
+      });
+
+      const texto = resultados
+        .map((r, i) => `=== Página ${i + 1} (OCR) ===\n${(r.text || '').trim()}`)
+        .join('\n\n');
+      const confs = resultados
+        .filter((r) => r.text.trim().length > 0)
+        .map((r) => r.confidence);
+      const meanConf =
+        confs.length > 0 ? confs.reduce((a, b) => a + b, 0) / confs.length : 0;
+
+      const leituraBoa =
+        conteudoUtilLength(texto) >= 50 && meanConf >= OCR_LOCAL_CONFIANCA_MINIMA;
+
+      let updated: ProcessoDocumento;
+      if (leituraBoa) {
+        updated = {
+          ...doc,
+          isScanned: true,
+          textoExtraido: `${MARCADOR_OCR_LOCAL}\n${texto}`,
+          // Texto disponível ⇒ a IA lê o texto (anonimizável); dispensa a imagem.
+          paginasImagem: undefined
+        };
+        stats.lidosLocal++;
+      } else {
+        // OCR local não confiável ⇒ imagem-direto, reaproveitando o render.
+        updated = { ...doc, isScanned: true, paginasImagem: paginas };
+        stats.fallbackIA++;
+      }
+      updatedMap.set(doc.id, updated);
+      onProgress?.({
+        type: 'ocr-document-done',
+        index,
+        documento: updated,
+        pagesProcessed: rendered.images.length,
+        pagesSkipped: rendered.pagesSkipped
+      });
+    } catch (err: unknown) {
+      stats.falhas++;
+      const message = err instanceof Error ? err.message : String(err);
+      if (!stats.primeiroErro) stats.primeiroErro = message;
+      console.warn(`${LOG_PREFIX} OCR local falhou no doc ${doc.id}:`, message);
+      onProgress?.({ type: 'ocr-document-error', index, documento: doc, error: message });
+    }
+  }
+
+  const merged = docs.map((d) => updatedMap.get(d.id) ?? d);
+  onProgress?.({ type: 'ocr-done', updated: Array.from(updatedMap.values()) });
+
+  const segundos = ((performance.now() - t0) / 1000).toFixed(1);
+  console.log(
+    `${LOG_PREFIX} [tempo] OCR local: ${stats.lidosLocal} lido(s), ` +
+      `${stats.fallbackIA} para IA, ${stats.falhas} falha(s) em ${segundos}s.`
+  );
+  return { docs: merged, stats };
+}
+
+/**
+ * Prepara UM documento digitalizado para leitura pela IA multimodal, sob
+ * demanda: baixa o PDF e renderiza as páginas como imagem (`paginasImagem`).
+ * NÃO transcreve — quem lê é o modelo, ao responder (OCR imagem-direto).
+ *
+ * Diferente de `runOcrViaIA`, NÃO exige `isScanned === true`: os escaneados que
+ * mais importam (laudo, procuração) chegam com o rodapé carimbado do PJe e são
+ * marcados `isScanned=false` pelo parser. Aqui o alvo é escolhido pelo usuário
+ * (clique numa pendência), então renderizamos incondicionalmente.
+ *
+ * Funciona no content script (o `renderPdfToImages` usa o fake worker do
+ * pdf.js, sem `Worker` real) — ao contrário do Tesseract. É o "Caminho A":
+ * completar a leitura via IA, com o custo de enviar o documento ao provedor.
+ */
+export async function prepararImagensDocumento(
+  doc: ProcessoDocumento,
+  options?: { maxPages?: number }
+): Promise<ProcessoDocumento> {
+  const response = await fetchWithTimeout(doc.url, DOCUMENT_FETCH_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength === 0) {
+    throw new Error('PDF retornou 0 bytes');
+  }
+  if (!bufferIsPdf(buffer)) {
+    throw new Error('conteúdo não é um PDF');
+  }
+  const rendered = await renderPdfToImages(buffer, { maxPages: options?.maxPages });
+  if (rendered.images.length === 0) {
+    throw new Error('render não produziu imagens');
+  }
+  return {
+    ...doc,
+    isScanned: true,
+    paginasImagem: rendered.images.map((img) => img.dataUrl)
+  };
 }

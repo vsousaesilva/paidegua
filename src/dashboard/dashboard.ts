@@ -18,7 +18,11 @@ import {
   podeAbrirTarefa
 } from '../shared/pje-task-popup';
 import { makeTableSortable, type TableSortColumn } from '../shared/table-sort';
-import { sanitizePayloadForLLM } from '../shared/triagem-anonymize';
+import {
+  sanitizePayloadForLLM,
+  montarTxtTriagemAnon
+} from '../shared/triagem-anonymize';
+import { baixarTxt, nomeArquivoSeguro } from '../content/txt-download';
 import type {
   TriagemDashboardPayload,
   TriagemInsightsLLM,
@@ -636,6 +640,20 @@ function buildInsightsArea(payload: TriagemDashboardPayload): HTMLElement {
   notice.textContent =
     'O número CNJ é enviado à IA (informação pública, importante para referenciar os autos nas sugestões). O polo ativo é substituído por "[POLO ATIVO]", o polo passivo só permanece se for ente público (INSS, União etc.) e CPF/CNPJ/telefone/email no texto das movimentações também são anonimizados. Datas, etiquetas, prioridade e assunto são mantidos para análise estatística.';
   wrap.appendChild(notice);
+
+  // Download do .txt exatamente com o que é enviado à IA (auditoria).
+  const dlBtn = document.createElement('button');
+  dlBtn.type = 'button';
+  dlBtn.className = 'insights__btn';
+  dlBtn.style.cssText = 'margin-top: 8px;';
+  dlBtn.textContent = '⬇ Baixar .txt anonimizado (enviado à IA)';
+  dlBtn.addEventListener('click', () => {
+    baixarTxt(
+      nomeArquivoSeguro('paidegua-triagem-anonimizada', null),
+      montarTxtTriagemAnon(sanitizePayloadForLLM(payload))
+    );
+  });
+  wrap.appendChild(dlBtn);
 
   btn.addEventListener('click', async () => {
     btn.disabled = true;

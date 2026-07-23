@@ -568,7 +568,7 @@ function coletarIframesComShadow(root: ParentNode): HTMLIFrameElement[] {
  * Iframe cross-origin lança ao tocar `contentDocument` — capturado e ignorado
  * (o botão simplesmente não habilita, mesmo comportamento da inserção).
  */
-function coletarDocumentosAcessiveis(): Document[] {
+export function coletarDocumentosAcessiveis(): Document[] {
   const docs: Document[] = [];
   const fila: Document[] = [document];
   // Teto defensivo: páginas do PJe têm poucos iframes; dezenas indicam algo

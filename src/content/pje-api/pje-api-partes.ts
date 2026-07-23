@@ -202,14 +202,26 @@ export function limparCachePartes(): void {
  *   - Conserva o `textoBruto` para diagnóstico.
  */
 export function parsearPartesDoHtml(html: string): ParteExtraida[] {
-  const partes: ParteExtraida[] = [];
   let doc: Document;
   try {
     doc = new DOMParser().parseFromString(html, 'text/html');
   } catch (err) {
     console.warn(`${LOG} DOMParser falhou:`, err);
-    return partes;
+    return [];
   }
+  return parsearPartesDoDocument(doc);
+}
+
+/**
+ * Mesma extração de partes, porém a partir de um `Document` já pronto —
+ * tipicamente o `document` VIVO da página de autos digitais. É o caminho que
+ * NÃO depende do snapshot de auth: os blocos `#poloAtivo/#poloPassivo/
+ * #outrosInteressados` já estão no cabeçalho da página aberta. Usado como fonte
+ * primária pela anonimização (não deixar nomes sem máscara quando o snapshot
+ * não foi capturado).
+ */
+export function parsearPartesDoDocument(doc: Document): ParteExtraida[] {
+  const partes: ParteExtraida[] = [];
 
   const blocos: Array<{ id: string; polo: PoloParte }> = [
     { id: 'poloAtivo', polo: 'ATIVO' },

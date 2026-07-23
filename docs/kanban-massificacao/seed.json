@@ -8088,6 +8088,106 @@
           "comando": "Em produção. Tag v1.11.0 e Release no GitHub criados na sequência."
         }
       ]
+    },
+    {
+      "id": "OCR-30",
+      "titulo": "OCR local determinístico — PP-OCR (ONNX Runtime Web/WebGPU) + política local-first na extração",
+      "descricao": "Substitui o motor de OCR (Tesseract.js) por PP-OCR (detecção DB + reconhecimento CTC) rodando em ONNX Runtime Web (WebGPU→WASM), num offscreen document. 100% local — a imagem nunca sai da máquina (CNJ/LGPD). Determinístico: sem risco de alucinação (ao contrário de modelos generativos como Florence-2/TrOCR). Mudança de política: a extração passa a ser OCR local-first — o texto lido localmente entra em textoExtraido, vira texto-ok, entra no .txt e PASSA PELA ANONIMIZAÇÃO antes de qualquer IA (ganho de LGPD sobre o imagem-direto da REL-1.6.5, que enviava o scan sem mascarar). Só o resíduo que o OCR não lê com confiança cai para imagem-direto (fallback). O OCR é parte da extração: a conclusão só é declarada após ele. Arquitetura: render continua no content (BUG-21: pdf.js trava em offscreen); recognição no offscreen via relay do background; motor único (um offscreen por extensão, uma instância PaddleOcrService quente); modelos PP-OCRv6 tiny (~6MB: det+rec+dict) embarcados em assets/paddle-ocr, nunca CDN (CSP MV3). Validado num protótipo irmão (NexIA) e no PJe real: processo cujos digitalizados caíam em 'LEITURA PENDENTE' foi lido integralmente (~0,8s/página em WebGPU). Cobertura: extração no sidebar (transcreverDigitalizadosLocal), painel criminal (ocrPdf) e Resumo da pauta de audiência AUD-10 (migrado de imagem-direto). Limpeza: Tesseract.js e libs/tesseract/* removidos do build. Doc técnico: docs/extracao-conteudo-pje.md ganhou a Seção 9 (o pivô), sem apagar a Seção 8; manual público atualizado.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "sessões 2026-07-22/23 — pedido do owner por OCR local eficaz, validado antes em protótipo (NexIA)",
+      "tags": ["ocr", "pp-ocr", "onnx", "webgpu", "offscreen", "lgpd", "local-first", "refatoracao"],
+      "esforco": "L",
+      "depende": ["REL-1.6.5", "BUG-21"],
+      "aceitacao": [
+        "dist/ contém offscreen/offscreen.{html,js} + assets/paddle-ocr/{det.onnx,rec.onnx,dict.txt} + assets/ort-*.{wasm,mjs}",
+        "manifest.json com permissão offscreen e CSP worker-src 'self'",
+        "documento que caía em 'leitura pendente' é lido localmente (validado no PJe real, backend webgpu)",
+        "texto do OCR entra no .txt e é anonimizável (aplica regex + máscara de partes)",
+        "Tesseract.js removido de package.json e as cópias libs/tesseract/* removidas do webpack",
+        "Resumo da pauta (AUD-10) usa OCR local (transcreverDigitalizadosLocal)",
+        "typecheck + build OK"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-23T00:00:00.000Z",
+      "atualizadoEm": "2026-07-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-23",
+          "data": "2026-07-23T00:00:00.000Z",
+          "comando": "Migração do OCR de Tesseract.js para PP-OCR (ONNX/WebGPU) no offscreen + política local-first na extração, com imagem-direto (REL-1.6.5) como fallback. Validado no PJe real. Limpeza do Tesseract e migração do Resumo da pauta incluídas. Aguarda empacotamento na REL-1.12.0."
+        }
+      ]
+    },
+    {
+      "id": "ANON-30",
+      "titulo": "Anonimizador 100% local — nome→papel via partes estruturadas do PJe, sem LLM (A–E)",
+      "descricao": "Refatoração do anonimizador para operar 100% local, removendo a chamada a LLM na identificação de nomes. Entregas: A — nomes para papel processual 100% local, via partes estruturadas do PJe (poloAtivo/poloPassivo/outrosInteressados do DOM + fallback API), LLM removida; B — RG preciso + dados bancários ancorados no regex; C — 'Anonimizar autos' promovido à 1ª posição da sidebar; D — TXT estruturado em três contextos: autos (anonimizado), extração (bruto) e dashboard de Triagem (o que vai à IA); E — README atualizado e prompt LLM morto (anonimizacao-nomes-processuais.md) apagado. Mantém a anonimização como ação consciente do usuário (não automática nos fluxos de resumo/minuta). Sinergia com OCR-30: o texto do OCR local agora existe e é mascarado antes de ir à IA.",
+      "categoria": "modulo",
+      "prioridade": "P1",
+      "coluna": "qa",
+      "origem": "sessão 2026-07-22 — refatoração do anonimizador",
+      "tags": ["anonimizacao", "lgpd", "cnj615", "partes", "regex", "local", "refatoracao"],
+      "esforco": "M",
+      "depende": [],
+      "aceitacao": [
+        "identificação de nomes 100% local (sem chamada a LLM); prompt morto removido",
+        "RG e dados bancários mascarados pelo regex",
+        "'Anonimizar autos' na 1ª posição da sidebar",
+        "TXT estruturado nos três contextos (autos anonimizado / extração bruto / Triagem para IA)",
+        "README atualizado",
+        "typecheck + build OK"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-23T00:00:00.000Z",
+      "atualizadoEm": "2026-07-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-23",
+          "data": "2026-07-23T00:00:00.000Z",
+          "comando": "Card aberto retrospectivamente para registrar a refatoração do anonimizador (A–E), finalizada e testada em sessão anterior (2026-07-22), a caminho da REL-1.12.0. Escopo confirmado pelo owner."
+        }
+      ]
+    },
+    {
+      "id": "REL-1.12.0",
+      "titulo": "Release v1.12.0 — OCR local PP-OCR + anonimizador local (A–E) + refinamentos Júlia/análise preditiva",
+      "descricao": "Release-pacote único (working tree sobre v1.11.0; arquivos entrelaçados entre frentes, por isso não separado em commits). Frentes: OCR-30 (OCR local determinístico PP-OCR/ONNX/WebGPU no offscreen + política local-first; imagem-direto da REL-1.6.5 vira fallback; Tesseract removido; Resumo da pauta migrado); ANON-30 (anonimizador 100% local, nome→papel via partes estruturadas, sem LLM, A–E); refinamentos pós-1.11.0 da análise preditiva de minutas + lotação do usuário na Júlia (id/escopo a confirmar com o owner). Bump 1.11.0 → 1.12.0 (minor: feature significativa + 2 deps novas: onnxruntime-web, ppu-paddle-ocr). Nova permissão de manifest: offscreen. CSP extension_pages ganha worker-src 'self'.",
+      "categoria": "infra",
+      "prioridade": "P1",
+      "coluna": "dev",
+      "origem": "skill release-extensao — sessão 2026-07-23",
+      "tags": ["release", "extensao", "cws", "ocr", "pp-ocr", "onnx", "anonimizacao", "julia"],
+      "esforco": "L",
+      "depende": ["OCR-30", "ANON-30", "REL-1.11.0"],
+      "aceitacao": [
+        "manifest.json e package.json em 1.12.0; dist/manifest.json em 1.12.0",
+        "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
+        "dist/ contém offscreen/ + assets/paddle-ocr/{det,rec,dict} + assets/ort-*.{wasm,mjs}",
+        "dist/ NÃO contém libs/tesseract/*",
+        "manifest com permissão offscreen + CSP worker-src 'self'",
+        "zip versoes/dist v1.12.0.zip com manifest.json na raiz, enviado à CWS",
+        "Commit pushado em origin/main; sync do KV",
+        "Aprovação CWS + smoke do owner + pilotos comunicados para mover para lancado",
+        "Tag git v1.12.0 + Release no GitHub"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-23T00:00:00.000Z",
+      "atualizadoEm": "2026-07-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-23",
+          "data": "2026-07-23T00:00:00.000Z",
+          "comando": "Card de release aberto na skill release-extensao. Pacote único v1.12.0 (working tree entrelaçado sobre v1.11.0): OCR local (OCR-30) + anonimizador local A–E (ANON-30) + refinamentos Júlia/análise preditiva. Bump 1.11.0 → 1.12.0 confirmado com o owner."
+        }
+      ]
     }
   ]
 }

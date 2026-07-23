@@ -438,3 +438,60 @@ peso morto e foi removido:
 - **A pergunta certa não era "qual OCR é mais rápido", e sim "preciso
   transcrever?".** A resposta foi não. Modelos multimodais leem a imagem
   diretamente; a transcrição era uma etapa intermediária cara e dispensável.
+
+## 9. Reviravolta 2026-07: OCR local determinístico (PP-OCR/ONNX) — a transcrição volta, agora barata
+
+A Seção 8 fechou com "não transcrever — mandar a imagem à IA". Foi a decisão
+certa para **2026-05**: eliminou o gargalo (transcrever = gerar ~150k tokens) e
+funcionou. Mas dois custos só ficaram evidentes com o uso:
+
+1. **LGPD.** A imagem-direto envia o scan (com CPF, nome, dados sensíveis) ao
+   provedor de IA **sem anonimização** — não há texto para o regex/máscara de
+   partes atuar. O contrário do que a extensão preza.
+2. **Reuso local.** Documentos digitalizados seguiam como "leitura pendente" no
+   `.txt`; sem texto para busca, auditoria ou reaproveitamento offline.
+
+### 9.1 A premissa caiu
+
+A v1.6.5 assumiu que "transcrever é lento em QUALQUER tecnologia". Isso deixou de
+valer: o **PP-OCR** (detecção DB + reconhecimento CTC) rodando em **ONNX Runtime
+Web (WebGPU→WASM)** faz ~**0,8 s/página** em WebGPU, é **determinístico** (sem
+alucinação — aceitável para documento jurídico, ao contrário de modelos
+generativos como Florence-2/TrOCR) e roda **100% local**. Validado primeiro num
+protótipo irmão (NexIA) e depois no PJe real: um processo cujos digitalizados
+caíam em "LEITURA PENDENTE — sem texto reconhecível" foi lido integralmente.
+
+### 9.2 A nova política: OCR local-first, imagem-direto como fallback
+
+O OCR local passou a ser **parte da extração**:
+
+- A extração renderiza as páginas e roda o **PP-OCR local**. O texto lido entra
+  em `textoExtraido` → vira `texto-ok`, entra no `.txt` **e passa pela
+  anonimização** antes de qualquer IA (o ganho de LGPD da Seção 9).
+- Só o resíduo que o OCR **não** lê com confiança cai para **imagem-direto**
+  (`paginasImagem` → IA multimodal) — a técnica da Seção 8 vira o *fallback*,
+  não o caminho principal.
+- A conclusão da extração só é declarada **após** o OCR (ele é parte dela);
+  nenhuma opção de enviar à IA aparece antes de o OCR terminar.
+
+### 9.3 Arquitetura
+
+- **Offscreen document reintroduzido** — o mesmo removido na Seção 8.7, agora
+  hospedando o **PP-OCR** (não o Tesseract). Motivo idêntico: inferência pesada
+  não pode rodar no service worker (morto) nem no content (CSP da página do PJe).
+- **Render continua no content** (BUG-21 permanece: `pdf.js page.render` trava em
+  offscreen). O content manda o **dataURL** de cada página ao background, que faz
+  o relay ao offscreen; volta `{ text, confidence, backend, ms }`.
+- **Motor único** — um offscreen por extensão → uma instância `PaddleOcrService`,
+  "quente". Content script e painel criminal são proxies do mesmo motor.
+- **Modelos tiny (~6 MB) embarcados** (`assets/paddle-ocr/`), servidos por
+  `chrome.runtime.getURL` — **nunca CDN** (CSP MV3). O Tesseract.js e os assets
+  `libs/tesseract/*` foram removidos.
+
+### 9.4 Lição atualizada
+
+A pergunta "preciso transcrever?" teve resposta **"não"** em 2026-05 porque
+transcrever era caro. Em **2026-07** virou **"sim, localmente"** — porque (a)
+transcrever local ficou barato e determinístico, e (b) **ter o texto local é
+pré-requisito para anonimizar antes da IA**. A imagem-direto não morreu: é o
+fallback para o que o OCR local não consegue ler (manuscrito, carimbo pesado).

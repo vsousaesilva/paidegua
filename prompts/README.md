@@ -40,8 +40,9 @@ Este diretório contém, em texto puro, **todos os prompts** enviados por qualqu
 ### Utilitários
 - [emenda-inicial.md](emenda-inicial.md) — Gabarito fixo + prompt para emenda à inicial com injeção das providências.
 - [rerank-templates-juridico.md](rerank-templates-juridico.md) — Reordenação, com julgamento jurídico, dos top-K modelos selecionados por BM25.
-- [anonimizacao-nomes-processuais.md](anonimizacao-nomes-processuais.md) — Identificação exaustiva de pessoas físicas a serem substituídas por papel processual.
 - [transcricao-audio-gemini.md](transcricao-audio-gemini.md) — Transcrição de áudio (ditado por voz) pelo Gemini multimodal.
+
+> **Nota:** a anonimização dos autos ("Anonimizar autos") deixou de usar LLM (2026-07). Hoje é 100% local: regex de PII (`src/shared/anonymizer.ts`) + substituição de nomes de partes pelo papel processual a partir dos dados estruturados do PJe (`src/shared/anonymizer-partes.ts`). O antigo prompt `anonimizacao-nomes-processuais.md` foi removido.
 
 ## Prompts do chat livre
 

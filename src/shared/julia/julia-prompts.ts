@@ -216,6 +216,47 @@ export function termosDePergunta(pergunta: string): string {
   return palavras.slice(0, 6).join(' ') || pergunta.trim();
 }
 
+/**
+ * Termos salientes de uma MINUTA, sem LLM — fallback da extração da análise
+ * preditiva quando a chamada ao modelo falha ou estoura o prazo.
+ *
+ * Frequência sobre o texto INTEIRO (não um recorte por posição): o recorte por
+ * offset fixo cortava no meio de uma palavra e produzia fragmentos como "nção"
+ * (de "manutenção"), que num buscador léxico com semântica E zeram a consulta
+ * inteira — nenhum documento contém a palavra quebrada.
+ *
+ * Palavra que se repete numa minuta é o tema dela: auxílio-doença, incapacidade,
+ * segurado, invalidez, perícia. Os `max` mais frequentes (palavras completas,
+ * sem descartáveis) dão uma consulta com recall razoável, muito melhor que um
+ * recorte arbitrário.
+ */
+const BOILERPLATE_MINUTA = new Set([
+  'parte','autor','autora','autores','réu','reu','requerido','requerida',
+  'requerente','pedido','pedidos','processo','processos','autos','juízo',
+  'juizo','juiz','sentença','sentenca','decisão','decisao','despacho',
+  'ação','acao','presente','exposto','ante','face','razão','razao','termos',
+  'artigo','artigos','inciso','parágrafo','paragrafo','caput','lei','leis',
+  'norma','dispositivo','conforme','ainda','sobre','assim','portanto',
+  'contudo','todavia','entretanto','forma','caso','casos','sendo','demais'
+]);
+
+export function termosSalientesMinuta(texto: string, max: number): string {
+  const freq = new Map<string, number>();
+  for (const bruto of texto.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)) {
+    const p = bruto.replace(/^-+|-+$/g, '').trim();
+    if (p.length < 4) continue; // corta fragmentos e palavras funcionais curtas
+    if (/^\d+$/.test(p)) continue;
+    if (PALAVRAS_DESCARTAVEIS.has(p) || BOILERPLATE_MINUTA.has(p)) continue;
+    freq.set(p, (freq.get(p) ?? 0) + 1);
+  }
+  const ordenadas = [...freq.entries()]
+    // Mais frequentes primeiro; empate desfeito pela palavra mais longa, que
+    // tende a ser a mais específica (auxílio-doença > doença).
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .map(([p]) => p);
+  return ordenadas.slice(0, Math.max(1, max)).join(' ');
+}
+
 export function parseJuliaExtracaoResponse(raw: string): JuliaExtracao | null {
   const obj = tryParseLooseJson(raw) as Record<string, unknown> | null;
   if (!obj || typeof obj !== 'object') return null;

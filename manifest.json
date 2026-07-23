@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "pAIdegua",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Plataforma de apoio à atividade e à gestão judicial no PJe — triagem, minutas, fluxos, metas CNJ, prazos e indicadores de gestão.",
   "permissions": [
     "activeTab",
     "alarms",
     "storage",
-    "scripting"
+    "scripting",
+    "offscreen"
   ],
   "host_permissions": [
     "https://*.jus.br/*",
@@ -83,7 +84,7 @@
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self'"
   },
   "icons": {
     "16": "icons/icon16.png",

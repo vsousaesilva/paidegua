@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>pAIdegua — OCR (offscreen)</title>
+  </head>
+  <body>
+    <!--
+      Documento offscreen invisível. Hospeda o motor PP-OCR (ONNX Runtime Web)
+      com acesso a canvas/WebGPU, fora do service worker (que o Chrome mata) e
+      fora do content script (preso à CSP da página do PJe). O bundle é gerado
+      pelo webpack a partir de src/offscreen/offscreen.ts (entry offscreen/offscreen).
+    -->
+    <script src="offscreen.js"></script>
+  </body>
+</html>

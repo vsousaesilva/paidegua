@@ -243,8 +243,6 @@ export const MESSAGE_CHANNELS = {
   TEMPLATES_RERANK: 'paidegua/templates/rerank',
   /** Options → background: avisa que o índice foi reconstruído (invalida cache). */
   TEMPLATES_INVALIDATE: 'paidegua/templates/invalidate',
-  /** Content → background: chama o LLM para identificar nomes a anonimizar. */
-  ANONYMIZE_NAMES: 'paidegua/anonymize/names',
   /** Content → background: triagem LLM para sugerir o melhor ato processual. */
   MINUTAR_TRIAGEM: 'paidegua/minutar/triagem',
   /**
@@ -850,7 +848,27 @@ export const MESSAGE_CHANNELS = {
   PAUTA_PERICIA_COLETA_DONE: 'paidegua/pauta-pericia/coleta-done',
   PAUTA_PERICIA_COLETA_READY: 'paidegua/pauta-pericia/coleta-ready',
   PAUTA_PERICIA_COLETA_FAIL: 'paidegua/pauta-pericia/coleta-fail',
-  PAUTA_PERICIA_CLEAR_PAYLOAD: 'paidegua/pauta-pericia/clear-payload'
+  PAUTA_PERICIA_CLEAR_PAYLOAD: 'paidegua/pauta-pericia/clear-payload',
+
+  /**
+   * OCR local (PP-OCR via ONNX Runtime Web, WebGPU→WASM). Substitui o motor
+   * Tesseract. Fica FORA do gate de autenticação (`AUTH_FREE_CHANNELS`): é
+   * processamento 100% local, a imagem nunca sai da máquina (CNJ/LGPD) e não
+   * chama provedor de IA.
+   *
+   * Topologia (a inferência ORT não pode rodar no service worker, que o Chrome
+   * mata, nem no content script, preso à CSP da página do PJe):
+   *  - Content script / página de extensão renderiza a página do PDF em imagem
+   *    (dataURL JPEG — Blob vira `{}` ao cruzar `sendMessage`) e emite
+   *    `OCR_RECOGNIZE` ao background, uma página por vez.
+   *  - O background garante o offscreen document (`ensureOcrOffscreen`) e faz o
+   *    relay via `OCR_RECOGNIZE_OFFSCREEN`.
+   *  - O offscreen hospeda o PP-OCR "quente" e devolve `{ text, confidence,
+   *    backend, ms }`.
+   */
+  OCR_RECOGNIZE: 'paidegua/ocr/recognize',
+  /** Background → offscreen: leg interna do relay acima (só o offscreen escuta). */
+  OCR_RECOGNIZE_OFFSCREEN: 'paidegua/ocr/recognize-offscreen'
 } as const;
 
 /** Nomes de portas long-lived (chat com streaming). */

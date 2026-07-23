@@ -196,16 +196,34 @@ import {
   type TemplateSearchHit
 } from '../shared/templates-client';
 import {
-  aplicarRegexAnonimizacao,
-  aplicarSubstituicoesNomes,
-  TRECHO_INICIAL_TAMANHO,
-  type NomeAnonimizar
+  aplicarRegexAnonimizacaoContado,
+  contagemPiiZerada,
+  verificarResiduosPii,
+  type ContagemPII
 } from '../shared/anonymizer';
+import {
+  montarSubstituicoesPartes,
+  aplicarSubstituicoesPartesContado,
+  type SubstituicaoNome
+} from '../shared/anonymizer-partes';
+import {
+  obterPartesDoProcesso,
+  parsearPartesDoDocument
+} from './pje-api/pje-api-partes';
+import {
+  montarTxtDocumentos,
+  criarBotaoDownloadTxt,
+  nomeArquivoSeguro,
+  classificarLeitura,
+  rotuloDocumento,
+  type SigiloProcesso
+} from './txt-download';
 import {
   activateDocumentInPje,
   extractContents,
   getOcrPendingDocuments,
-  runOcrViaIA
+  transcreverDigitalizadosLocal,
+  prepararImagensDocumento
 } from './extractor';
 import { startRecording, blobToBase64, type RecorderHandle } from './audio-recorder';
 import { recognizeLive, speakLocal, type SpeakHandle } from './web-speech';
@@ -531,26 +549,80 @@ async function handleExtractSelected(selectedIds: string[]): Promise<void> {
   docList.setExtractEnabled(true);
 
   if (sucesso > 0 && mounted) {
+    // O OCR É PARTE DA EXTRAÇÃO. Se há digitalizados sem texto e o auto-run está
+    // ligado, roda o OCR AGORA e só DEPOIS declara a extração concluída e habilita
+    // chat/recursos. Declarar "Extração concluída — prontos para o chat" com o OCR
+    // ainda lendo os digitalizados seria falso.
+    const pendentesIniciais = getOcrPendingDocuments(getExtraidosArray());
+    mounted.sidebar.setOcrPending(pendentesIniciais.length);
+    const ocrRodou = pendentesIniciais.length > 0 && !!memory.settings?.ocrAutoRun;
+
+    if (ocrRodou) {
+      mounted.sidebar.setGlobalNotice(
+        `Extração em andamento — lendo ${pendentesIniciais.length} digitalizado(s) por OCR (parte da extração)…`,
+        'info'
+      );
+      await handleRunOcr();
+      if (!mounted) return; // sidebar pode ter sido desmontada durante o OCR
+    }
+
+    // A partir daqui a extração está de fato concluída (texto nativo + OCR,
+    // quando houve). Só agora habilita chat e recursos.
     mounted.sidebar.setExtractedFeaturesEnabled(true);
     mounted.sidebar.setChatEnabled(true);
-    const pending = getOcrPendingDocuments(getExtraidosArray()).length;
-    mounted.sidebar.setOcrPending(pending);
-    if (pending > 0) {
-      if (memory.settings?.ocrAutoRun) {
-        mounted.sidebar.setGlobalNotice(
-          `${pending} documento(s) digitalizado(s). Iniciando OCR automático…`,
-          'info'
-        );
-        void handleRunOcr();
-      } else {
-        mounted.sidebar.setGlobalNotice(
-          `${pending} documento(s) digitalizado(s) sem texto extraído. Clique em "Rodar OCR pendente" para processá-los localmente.`,
-          'warn'
-        );
-      }
-    } else {
+
+    const numeroExtr = memory.detection?.numeroProcesso ?? null;
+    const prontos = getExtraidosArray().length;
+    const pendentesFinais = getOcrPendingDocuments(getExtraidosArray()).length;
+    // Digitalizados ainda sem texto porque o OCR não foi rodado (auto-run off).
+    const ocrAindaPendente = pendentesFinais > 0 && !memory.settings?.ocrAutoRun;
+
+    const cabecalho = ocrAindaPendente
+      ? `**Extração de texto concluída** — ${prontos} documento(s) no contexto. ` +
+        `${pendentesFinais} digitalizado(s) ainda sem texto — rode o OCR para lê-los.`
+      : `**Extração concluída** — ${prontos} documento(s) prontos para o chat.`;
+
+    // Oferece o download do .txt com o conteúdo extraído (bruto, não anonimizado)
+    // — mesmo formato estruturado do anonimizador. Útil para arquivar/auditar.
+    const bolhaExtr = ensureChatMounted().addSystemText(
+      `${cabecalho}\n\n` +
+        `Você pode baixar o conteúdo extraído em .txt (estruturado, um bloco por documento). ` +
+        `⚠️ Este arquivo é o texto **original**, sem anonimização.`
+    );
+    bolhaExtr.append(
+      criarBotaoDownloadTxt('⬇ Baixar .txt da extração', () => ({
+        nomeArquivo: nomeArquivoSeguro('paidegua-extracao', numeroExtr),
+        conteudo: montarTxtDocumentos({
+          titulo: 'CONTEÚDO EXTRAÍDO (ORIGINAL, SEM ANONIMIZAÇÃO)',
+          numeroProcesso: numeroExtr,
+          documentos: getExtraidosArray(),
+          sigilo: detectarSigiloProcesso()
+        })
+      }))
+    );
+
+    // Contêiner da lista "Levar à IA os digitalizados sem texto". Regra: nenhuma
+    // opção de LLM enquanto o OCR não terminar. Em auto-run o OCR já rodou acima
+    // → mostra só o resíduo (vazio se leu tudo). Em auto-run off fica escondido
+    // até o usuário rodar o OCR (o próprio `handleRunOcr`, ao concluir, chama
+    // `atualizarSelecaoLeituraIA()` sobre este contêiner).
+    ocrSelecaoContainer = document.createElement('div');
+    bolhaExtr.append(ocrSelecaoContainer);
+    if (!ocrAindaPendente) {
+      atualizarSelecaoLeituraIA();
+    }
+
+    mounted.sidebar.setOcrPending(pendentesFinais);
+    if (ocrAindaPendente) {
+      mounted.sidebar.setGlobalNotice(
+        `${pendentesFinais} documento(s) digitalizado(s) sem texto. Rode o OCR para lê-los localmente — o que o OCR não ler é oferecido à IA como imagem.`,
+        'warn'
+      );
+    } else if (!ocrRodou) {
+      // Sem digitalizados e sem OCR: nada a sinalizar.
       mounted.sidebar.setGlobalNotice('', 'info');
     }
+    // Se ocrRodou: mantém a notice "OCR concluído — N lido(s)…" do handleRunOcr.
   }
 }
 
@@ -584,7 +656,7 @@ async function handleRunOcr(): Promise<void> {
 
   try {
     const maxPages = memory.settings?.ocrMaxPages;
-    const merged = await runOcrViaIA(
+    const { docs: merged, stats } = await transcreverDigitalizadosLocal(
       pendentes,
       (event) => {
       // Rótulo identificador do documento — sempre presente nos eventos
@@ -651,35 +723,49 @@ async function handleRunOcr(): Promise<void> {
       }
     }
 
+    // Re-renderiza a lista "Levar à IA": a bolha foi montada na extração (antes
+    // do OCR). Os que o OCR local transcreveu agora são `texto-ok` e saem da
+    // lista; os que caíram para imagem já são filtrados (têm `paginasImagem`).
+    atualizarSelecaoLeituraIA();
+
     const pendentesApos = getOcrPendingDocuments(getExtraidosArray());
     const stillPending = pendentesApos.length;
     sidebar.setOcrPending(stillPending);
-    if (stillPending === 0) {
-      sidebar.setGlobalNotice('OCR concluído — todos os documentos digitalizados foram processados.', 'info');
-      docList?.setGlobalStatus(
-        `OCR concluído — ${ocrProcessados} documento(s) digitalizado(s) processado(s). Todos prontos para o chat.`
+
+    // Mensagem baseada no que o OCR local de fato fez:
+    //  - lidosLocal: texto extraído localmente (entra no .txt, é anonimizável);
+    //  - fallbackIA: sem leitura confiável → imagem para a IA (imagem-direto);
+    //  - falhas: erro duro (download/render).
+    const partes: string[] = [];
+    if (stats.lidosLocal > 0) {
+      partes.push(
+        `${stats.lidosLocal} lido(s) localmente por OCR (texto extraído — entra no .txt e é anonimizável)`
       );
-    } else {
-      const rotulo = (d: ProcessoDocumento): string => {
-        const base = d.tipo || d.descricao || `doc ${d.id}`;
-        return `${base} (id ${d.id})`;
-      };
-      const MAX_EXIBIR = 5;
-      const lista = pendentesApos.slice(0, MAX_EXIBIR).map(rotulo).join('; ');
-      const sufixo =
-        stillPending > MAX_EXIBIR ? `; e mais ${stillPending - MAX_EXIBIR}` : '';
-      const reconhecidos = ocrProcessados - stillPending;
-      sidebar.setGlobalNotice(
-        `OCR concluído — ${reconhecidos} doc(s) reconhecido(s), ${stillPending} sem texto extraível ` +
-          `(provavelmente carimbos, assinaturas ou imagens sem texto): ${lista}${sufixo}.`,
-        'warn'
+    }
+    if (stats.fallbackIA > 0) {
+      partes.push(
+        `${stats.fallbackIA} sem leitura confiável → preparado(s) como imagem para a IA`
       );
-      docList?.setGlobalStatus(
-        `OCR concluído — ${reconhecidos}/${pendentes.length} reconhecido(s), ` +
-          `${stillPending} sem texto extraível.`
+    }
+    if (stats.falhas > 0) {
+      partes.push(
+        `${stats.falhas} com falha` +
+          (stats.primeiroErro ? ` (1º erro: ${stats.primeiroErro})` : '')
       );
+    }
+    const resumo = partes.length > 0 ? `${partes.join('; ')}.` : 'nada a processar.';
+    sidebar.setGlobalNotice(
+      `OCR concluído — ${resumo}`,
+      stats.falhas > 0 || stats.fallbackIA > 0 ? 'warn' : 'info'
+    );
+    docList?.setGlobalStatus(
+      `OCR: ${stats.lidosLocal} texto, ${stats.fallbackIA} imagem/IA` +
+        (stats.falhas > 0 ? `, ${stats.falhas} falha(s)` : '') +
+        '.'
+    );
+    if (stillPending > 0) {
       console.warn(
-        `${LOG_PREFIX} OCR parcial — documentos pendentes:`,
+        `${LOG_PREFIX} OCR — documentos ainda pendentes (falha dura):`,
         pendentesApos.map((d) => ({
           id: d.id,
           tipo: d.tipo,
@@ -2177,18 +2263,64 @@ async function handleTemplateAction(
 // Anonimizador de autos (mesmo modelo do gerador-minutas)
 // =====================================================================
 
+/** Rótulos legíveis dos tipos de PII, para o resumo de auditoria. */
+const ROTULO_PII: Record<keyof ContagemPII, string> = {
+  CPF: 'CPF',
+  CNPJ: 'CNPJ',
+  RG: 'RG',
+  OAB: 'OAB',
+  CEP: 'CEP',
+  telefone: 'telefone',
+  email: 'e-mail',
+  bancario: 'dado bancário'
+};
+
 /**
- * Roda o anonimizador em duas etapas sobre os documentos já extraídos:
+ * Lê o sigilo do processo do cabeçalho do PJe: o campo estruturado
+ * "Segredo de justiça?" no bloco "Mais detalhes" (par dt/dd). SEGURO POR
+ * OMISSÃO: só retorna 'publico' quando lê explicitamente "NÃO"; qualquer
+ * ambiguidade (campo ausente, frame sem o cabeçalho) vira 'desconhecido' —
+ * e o .txt trata 'desconhecido' como sigiloso para efeito de omitir o código.
+ */
+function detectarSigiloProcesso(): SigiloProcesso {
+  try {
+    for (const dt of Array.from(document.querySelectorAll('dt'))) {
+      if (/segredo de justi[çc]a/i.test(dt.textContent ?? '')) {
+        const valor = (dt.nextElementSibling?.textContent ?? '').trim().toLowerCase();
+        if (valor.startsWith('sim')) return 'sigiloso';
+        if (valor.startsWith('n')) return 'publico'; // "não"
+        return 'desconhecido';
+      }
+    }
+  } catch {
+    /* DOM do cabeçalho inacessível — trata como desconhecido */
+  }
+  return 'desconhecido';
+}
+
+/** Monta o resumo "CPF 3, e-mail 2…" a partir da contagem, só dos não-zero. */
+function resumirContagemPii(c: ContagemPII): string {
+  const partes = (Object.keys(c) as Array<keyof ContagemPII>)
+    .filter((k) => c[k] > 0)
+    .map((k) => `${ROTULO_PII[k]} ${c[k]}`);
+  return partes.length > 0 ? partes.join(', ') : 'nenhum';
+}
+
+/**
+ * Roda o anonimizador em duas etapas sobre os documentos já extraídos —
+ * INTEIRAMENTE LOCAL, sem nenhuma chamada a modelo de IA:
  *
- *  1. Regex local para CPF, CNPJ, CEP, telefone, e-mail, RG e dados
- *     bancários — instantâneo, sem chamada de rede.
- *  2. LLM (via background) para extrair nomes de pessoas físicas a partir
- *     do trecho inicial concatenado, mapeando-os ao papel processual e
- *     aplicando a substituição em todos os documentos.
+ *  1. Regex local para CPF, CNPJ, RG, OAB, CEP, telefone, e-mail e dados
+ *     bancários — instantâneo, determinístico.
+ *  2. Substituição dos nomes de pessoas físicas pelo papel processual, a
+ *     partir dos dados ESTRUTURADOS de partes que o próprio PJe fornece
+ *     (`obterPartesDoProcesso` lê o bloco de qualificação dos autos). Não há
+ *     envio de dado pessoal a servidor externo para "descobrir" nomes.
  *
  * O resultado SUBSTITUI o conteúdo dos documentos em `memory.extraidos`,
  * de modo que qualquer pergunta seguinte ao chat usa o texto já anônimo.
- * O usuário recebe uma bolha de sistema confirmando o que foi feito.
+ * O usuário recebe uma bolha de sistema com o relatório de auditoria e um
+ * botão para baixar o .txt anonimizado.
  */
 async function handleAnonimizar(): Promise<void> {
   if (!mounted) return;
@@ -2203,112 +2335,100 @@ async function handleAnonimizar(): Promise<void> {
     return;
   }
 
+  // Pré-etapa — TRANSCRIÇÃO por IA: documentos que o usuário já enviou à IA
+  // (têm `paginasImagem`) e ainda não têm texto são transcritos para que o
+  // conteúdo entre, MASCARADO, no TXT anonimizado. O consentimento já foi dado
+  // no "Ler com IA"; usa a mesma imagem já enviada (nada novo é exposto).
+  // Ver [[anonimizacao-transcricao-ia]].
+  const paraTranscrever = docs.filter(
+    (d) => (d.paginasImagem?.length ?? 0) > 0 && classificarLeitura(d) === 'pendente-ocr'
+  );
+  let transcritos = 0;
+  for (const d of paraTranscrever) {
+    sidebar.setGlobalNotice(
+      `Transcrevendo documento enviado à IA (${transcritos + 1}/${paraTranscrever.length})…`,
+      'info'
+    );
+    try {
+      const bruto = await transcreverDocumentoViaIA(d);
+      if (bruto) {
+        d.textoExtraido = `[Conteúdo transcrito por IA a partir da imagem — revisar]\n${bruto}`;
+        transcritos++;
+      }
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} transcrição por IA falhou para doc ${d.id}:`, err);
+    }
+  }
+
   sidebar.setGlobalNotice('Anonimizando autos (etapa 1/2 — regex local)…', 'info');
 
-  // Etapa 1 — regex local em todos os documentos. Síncrono e barato.
+  // Etapa 1 — regex local em todos os documentos, acumulando a contagem de
+  // PII por tipo para o relatório de auditoria. Síncrono e barato.
+  const piiTotal = contagemPiiZerada();
   const docsRegex = docs.map((d) => ({
     ...d,
-    textoExtraido: aplicarRegexAnonimizacao(d.textoExtraido ?? '')
+    textoExtraido: aplicarRegexAnonimizacaoContado(d.textoExtraido ?? '', piiTotal)
+      .texto
   }));
 
-  // Seleção inteligente de documentos para o LLM identificar os atores.
-  // A estratégia antiga (pegar só os mais antigos em ordem) limitava a
-  // detecção ao início da petição inicial — onde quase sempre só aparece
-  // o autor qualificado. Advogados, procuradores, curadores, peritos e
-  // membros do MP normalmente aparecem em outros docs (contestação,
-  // procurações, laudos, substabelecimentos).
-  //
-  // Agora priorizamos documentos por tipo/descrição, pegando trechos
-  // iniciais de cada um. Isso cobre com mais fidelidade os atores.
-  const docsCronologicos = [...docsRegex].sort((a, b) => {
-    const da = parseDataMovimentacaoToMs(a.dataMovimentacao);
-    const db = parseDataMovimentacaoToMs(b.dataMovimentacao);
-    if (da !== db) return da - db;
-    return a.id.localeCompare(b.id);
-  });
-
-  /** Palavras-chave que identificam docs onde costumam aparecer atores. */
-  const TIPOS_PRIORITARIOS = [
-    'inicial', 'peticao inicial', 'petição inicial',
-    'contestacao', 'contestação', 'defesa',
-    'procuracao', 'procuração', 'substabelecimento',
-    'laudo', 'pericia', 'perícia',
-    'estudo social', 'assistente social',
-    'curatela', 'tutela', 'nomeacao', 'nomeação',
-    'manifestacao ministerial', 'manifestação ministerial', 'parecer do mp',
-    'qualificacao', 'qualificação'
-  ];
-
-  const normalizar = (s: string): string =>
-    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-  const isPrioritario = (d: ProcessoDocumento): boolean => {
-    const alvo = normalizar(`${d.tipo ?? ''} ${d.descricao ?? ''}`);
-    return TIPOS_PRIORITARIOS.some((kw) => alvo.includes(normalizar(kw)));
-  };
-
-  // Dois baldes: prioritários (entram primeiro) e demais (fallback).
-  const docsPrioritarios = docsCronologicos.filter(isPrioritario);
-  const docsDemais = docsCronologicos.filter((d) => !isPrioritario(d));
-
-  // Por-documento, pegamos até 3000 chars iniciais — suficiente para a
-  // qualificação, assinaturas e nomeações, sem estourar o total global.
-  const CHARS_POR_DOC = 3000;
-  const docsOrdenados = [...docsPrioritarios, ...docsDemais];
-
-  let trechoCombinado = '';
-  for (const d of docsOrdenados) {
-    const texto = d.textoExtraido ?? '';
-    if (!texto) continue;
-    const head = texto.slice(0, CHARS_POR_DOC);
-    const tag = d.tipo || d.descricao || `doc ${d.id}`;
-    const bloco = `=== ${tag} ===\n${head}`;
-    if (trechoCombinado.length + bloco.length > TRECHO_INICIAL_TAMANHO) {
-      // Ainda tenta encaixar um trecho parcial se sobrar espaço útil.
-      const restante = TRECHO_INICIAL_TAMANHO - trechoCombinado.length;
-      if (restante > 500) {
-        trechoCombinado += (trechoCombinado ? '\n\n' : '') + bloco.slice(0, restante);
-      }
-      break;
-    }
-    if (trechoCombinado) trechoCombinado += '\n\n';
-    trechoCombinado += bloco;
-  }
-  trechoCombinado = trechoCombinado.slice(0, TRECHO_INICIAL_TAMANHO);
-
+  // Etapa 2 — identificação LOCAL dos nomes de pessoas físicas a partir das
+  // partes qualificadas do PJe (bloco de qualificação dos autos digitais).
+  // Não há chamada a modelo de IA: os papéis (autor, réu, advogado,
+  // representante, procuradoria) vêm estruturados de `obterPartesDoProcesso`.
   sidebar.setGlobalNotice(
-    'Anonimizando autos (etapa 2/2 — identificando partes via IA)…',
+    'Anonimizando autos (etapa 2/2 — identificando partes localmente)…',
     'info'
   );
 
-  let nomes: NomeAnonimizar[] = [];
-  try {
-    const response = (await chrome.runtime.sendMessage({
-      channel: MESSAGE_CHANNELS.ANONYMIZE_NAMES,
-      payload: { texto: trechoCombinado }
-    })) as { ok: boolean; nomes?: NomeAnonimizar[]; error?: string };
+  let substituicoes: SubstituicaoNome[] = [];
+  let avisoPartes: string | null = null;
 
-    if (!response?.ok) {
-      sidebar.setGlobalNotice(
-        `Falha ao identificar nomes: ${response?.error ?? 'erro desconhecido'}`,
-        'error'
-      );
-      // Mesmo sem LLM, mantém o resultado da etapa 1 — não regredimos.
+  // Fonte PRIMÁRIA das partes: o DOM VIVO da própria página de autos
+  // (#poloAtivo/#poloPassivo/#outrosInteressados no cabeçalho). Não depende do
+  // snapshot de auth — crítico para NÃO deixar nomes sem máscara quando o
+  // snapshot não foi capturado (ex.: abrir o processo direto, sem passar pelo
+  // painel). Só recorre à API (que precisa de auth) se o DOM não trouxer nada.
+  let partes = parsearPartesDoDocument(document);
+  if (partes.length === 0) {
+    const idProcesso = extrairIdProcessoDaUrl();
+    if (idProcesso) {
+      try {
+        const r = await obterPartesDoProcesso({
+          idProcesso,
+          idTaskInstance: null,
+          legacyOrigin: window.location.origin
+        });
+        if (r.ok && r.partes) partes = r.partes;
+        else avisoPartes = r.error ?? 'Não foi possível ler as partes dos autos digitais.';
+      } catch (error: unknown) {
+        avisoPartes = errorMessage(error);
+      }
     } else {
-      nomes = response.nomes ?? [];
+      avisoPartes = 'Não foi possível identificar o processo pela URL.';
     }
-  } catch (error: unknown) {
-    sidebar.setGlobalNotice(
-      `Falha de comunicação com o background: ${errorMessage(error)}`,
-      'error'
-    );
+  }
+  if (partes.length > 0) {
+    substituicoes = montarSubstituicoesPartes(partes);
+    avisoPartes = null;
+  } else if (!avisoPartes) {
+    avisoPartes =
+      'Nenhuma parte identificada — só o regex local foi aplicado; confira nomes no .txt.';
   }
 
-  // Etapa 3 — aplica substituições de nomes em todos os documentos.
-  const docsFinal = docsRegex.map((d) => ({
-    ...d,
-    textoExtraido: aplicarSubstituicoesNomes(d.textoExtraido ?? '', nomes)
-  }));
+  // Aplica as substituições de nome em todos os documentos, contando as
+  // ocorrências mascaradas.
+  let nomesMascarados = 0;
+  const docsFinal = docsRegex.map((d) => {
+    const res = aplicarSubstituicoesPartesContado(
+      d.textoExtraido ?? '',
+      substituicoes
+    );
+    nomesMascarados += res.contagem;
+    // DESCARTA a imagem original (`paginasImagem`): sem isso, um Resumir/Analisar
+    // pós-anonimização reanexaria a imagem NÃO mascarada ao contexto e vazaria o
+    // original à IA. Depois de anonimizar, só o texto mascarado vai à IA.
+    return { ...d, textoExtraido: res.texto, paginasImagem: undefined };
+  });
 
   // Substitui o que está em memória — perguntas seguintes usam o anônimo.
   memory.extraidos.clear();
@@ -2318,59 +2438,246 @@ async function handleAnonimizar(): Promise<void> {
 
   sidebar.setGlobalNotice('', 'info');
 
-  const chat = ensureChatMounted();
-  const nomesPreview = nomes.length > 0
-    ? nomes
-        .slice(0, 8)
-        .map((n) => `- \`${n.original}\` → ${n.substituto}`)
-        .join('\n') + (nomes.length > 8 ? `\n…e mais ${nomes.length - 8}.` : '')
-    : '_(nenhum nome de pessoa física foi identificado pela IA)_';
+  // Mapa nome → papel para auditoria. Este relatório é LOCAL e efêmero:
+  // fica apenas na tela, NÃO é enviado à IA e NÃO entra no .txt anonimizado.
+  // Permite ao usuário conferir se cada parte foi classificada corretamente.
+  const LIMITE_PREVIEW = 25;
+  const nomesPreview =
+    substituicoes.length > 0
+      ? substituicoes
+          .slice(0, LIMITE_PREVIEW)
+          .map((s) => `- ${s.original} → **${s.substituto}**`)
+          .join('\n') +
+        (substituicoes.length > LIMITE_PREVIEW
+          ? `\n- …e mais ${substituicoes.length - LIMITE_PREVIEW} parte(s).`
+          : '')
+      : '_(nenhuma parte pessoa física identificada nos autos)_';
 
-  const bubble = chat.addSystemText(
-    `**Autos anonimizados.** O contexto enviado nas próximas perguntas já está sem dados pessoais.\n\n` +
-      `**Etapa 1 — regex local:** CPF, CNPJ, CEP, telefone, e-mail, RG e dados bancários substituídos por marcadores ` +
-      `\`[XXX OMITIDO]\`.\n\n` +
-      `**Etapa 2 — IA (${nomes.length} nome(s) identificado(s)):**\n${nomesPreview}\n\n` +
-      `---\n\n` +
-      `⚠️ **Atenção:** a partir deste momento, qualquer pergunta ou comando enviado ao modelo de IA usará **apenas o texto anonimizado** acima — o conteúdo original dos autos não será mais transmitido ao provedor de IA.`
+  // Rede de segurança: confere resíduos de PII estruturada no texto final.
+  const residuos = verificarResiduosPii(
+    docsFinal.map((d) => d.textoExtraido ?? '').join('\n')
   );
 
-  // Botão para baixar o .txt anonimizado — permite auditar o que foi enviado.
-  const downloadBtn = document.createElement('button');
-  downloadBtn.type = 'button';
-  downloadBtn.className = 'paidegua-chat__download-btn';
-  downloadBtn.textContent = '⬇ Baixar .txt anonimizado';
-  downloadBtn.style.cssText =
-    'margin-top: 10px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(19,81,180,0.35); background: rgba(19,81,180,0.08); color: var(--paidegua-primary-dark); font-size: 12px; cursor: pointer; font-weight: 600;';
-  downloadBtn.addEventListener('click', () => {
-    const numero = memory.detection?.numeroProcesso ?? 'processo';
-    const partes: string[] = [
-      `PROCESSO ${numero} — TEXTO ANONIMIZADO`,
-      `Gerado em ${new Date().toLocaleString('pt-BR')}`,
-      `Total de documentos: ${docsFinal.length}`,
-      `Nomes identificados pela IA: ${nomes.length}`,
-      ''
-    ];
-    for (const d of docsFinal) {
-      const tag = d.tipo || d.descricao || `doc ${d.id}`;
-      partes.push('='.repeat(72));
-      partes.push(`=== ${tag} (id ${d.id})`);
-      if (d.dataMovimentacao) partes.push(`=== ${d.dataMovimentacao}`);
-      partes.push('='.repeat(72));
-      partes.push('');
-      partes.push(d.textoExtraido ?? '');
-      partes.push('');
-    }
-    const blob = new Blob([partes.join('\n')], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const safeNum = numero.replace(/[^0-9A-Za-z._-]/g, '_');
-    a.download = `paidegua-anonimizado-${safeNum}.txt`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Documentos digitalizados que a extração offline não conseguiu ler: o
+  // conteúdo deles não entra no .txt. Sinalizamos aqui para o usuário decidir,
+  // num segundo momento, se completa a leitura (OCR local ou IA multimodal).
+  // Filtra sobre `docsFinal` (ProcessoDocumento, com `url`) para permitir o
+  // OCR sob demanda por documento.
+  const pendenciasLeitura = docsFinal.filter(
+    (d) => classificarLeitura(d) === 'pendente-ocr'
+  );
+
+  const chat = ensureChatMounted();
+  const tituloLocal =
+    transcritos > 0
+      ? `**Autos anonimizados** (local, exceto ${transcritos} documento(s) que você enviou à IA — transcritos e mascarados).`
+      : `**Autos anonimizados** (100% local, sem envio de dados à IA).`;
+  const bubble = chat.addSystemText(
+    `${tituloLocal} O contexto das próximas perguntas já está sem dados pessoais.\n\n` +
+      `**Etapa 1 — dados estruturados:** ${resumirContagemPii(piiTotal)}.\n\n` +
+      `**Etapa 2 — partes do processo (${substituicoes.length} pessoa(s), ${nomesMascarados} ocorrência(s) mascarada(s)):**\n${nomesPreview}\n\n` +
+      (transcritos > 0
+        ? `🖊️ **${transcritos} documento(s) transcrito(s) por IA** (você os enviou à IA) e mascarado(s) — entram no .txt marcados como "revisar".\n\n`
+        : '') +
+      (avisoPartes ? `⚠️ ${avisoPartes}\n\n` : '') +
+      (residuos.length > 0
+        ? `⚠️ **Possíveis resíduos detectados:** ${residuos.join(', ')} — confira o .txt.\n\n`
+        : '') +
+      (pendenciasLeitura.length > 0
+        ? `📄 **Leitura pendente:** ${pendenciasLeitura.length} documento(s) digitalizado(s) sem texto ` +
+          `(não enviados à IA). O conteúdo deles não está no .txt — para incluí-lo, prepare-os com ` +
+          `"Ler com IA" ANTES de anonimizar. Listados no topo do .txt.\n\n`
+        : '') +
+      `---\n\n` +
+      `⚠️ **Atenção:** a partir deste momento, qualquer pergunta ou comando enviado ao modelo de IA usará **apenas o texto anonimizado** — nem o texto original nem as imagens dos autos serão mais transmitidos ao provedor de IA.`
+  );
+
+  // Botão para baixar o .txt anonimizado — permite auditar o resultado.
+  const numero = memory.detection?.numeroProcesso ?? null;
+  bubble.append(
+    criarBotaoDownloadTxt('⬇ Baixar .txt anonimizado', () => ({
+      nomeArquivo: nomeArquivoSeguro('paidegua-anonimizado', numero),
+      conteudo: montarTxtDocumentos({
+        titulo: 'CONTEÚDO ANONIMIZADO',
+        numeroProcesso: numero,
+        resumo: [
+          `Dados estruturados mascarados: ${resumirContagemPii(piiTotal)}`,
+          `Ocorrências de nome mascaradas: ${nomesMascarados}`
+        ],
+        documentos: docsFinal,
+        sigilo: detectarSigiloProcesso()
+      })
+    }))
+  );
+
+  // NÃO oferecemos aqui a seleção "Ler com IA": preparar documentos para a IA
+  // APÓS anonimizar reintroduziria imagem/texto NÃO mascarado na memória já
+  // anonimizada (vazamento no Resumir seguinte). O lugar de "Levar à IA" é a
+  // bolha de EXTRAÇÃO, ANTES de anonimizar — a anonimização então transcreve e
+  // mascara o que foi enviado. Ver [[anonimizacao-transcricao-ia]].
+}
+
+/**
+ * Contêiner da lista "Levar à IA os digitalizados sem texto" na bolha de
+ * extração. Guardado em módulo para permitir re-render após o OCR (ver
+ * `atualizarSelecaoLeituraIA`). Aponta para a bolha da última extração.
+ */
+let ocrSelecaoContainer: HTMLElement | null = null;
+
+/**
+ * (Re)renderiza a lista "Levar à IA" a partir do estado ATUAL dos documentos.
+ * Chamada na extração e ao fim do OCR. Os documentos que o OCR local
+ * transcreveu viram `texto-ok` e saem da lista; os que caíram para imagem já
+ * são filtrados por `montarSelecaoLeituraIA` (têm `paginasImagem`). Quando não
+ * sobra nenhum, o contêiner fica vazio (a lista some).
+ */
+function atualizarSelecaoLeituraIA(): void {
+  const container = ocrSelecaoContainer;
+  if (!container) return;
+  container.replaceChildren();
+  const pendentes = getExtraidosArray().filter(
+    (d) => classificarLeitura(d) === 'pendente-ocr'
+  );
+  if (pendentes.length > 0) {
+    montarSelecaoLeituraIA(container, pendentes);
+  }
+}
+
+/**
+ * Renderiza a lista de pendências com checkbox por documento + "selecionar
+ * todos" + um botão de envio em lote à IA. Os documentos escolhidos são
+ * renderizados como imagem (`prepararImagensDocumento`) e passam a ser lidos
+ * pela IA nas próximas perguntas/resumos.
+ *
+ * Persiste em `memory.extraidos` (a fonte canônica que TODOS os botões leem via
+ * `getExtraidosArray`), então o documento preparado fica disponível para
+ * Resumir/Analisar/Minutar/chat — não só para o fluxo em que foi acionado.
+ * Só lista os que AINDA não têm imagem (os que já têm já são lidos pela IA).
+ */
+function montarSelecaoLeituraIA(
+  bubble: HTMLElement,
+  pendencias: ProcessoDocumento[]
+): void {
+  const semImagem = pendencias.filter(
+    (p) => !(p.paginasImagem && p.paginasImagem.length > 0)
+  );
+  if (semImagem.length === 0) return;
+
+  const bloco = document.createElement('div');
+  bloco.style.cssText =
+    'margin-top: 12px; display: flex; flex-direction: column; gap: 4px;';
+
+  const titulo = document.createElement('div');
+  titulo.textContent = `Levar à IA os digitalizados sem texto — ${semImagem.length} documento(s):`;
+  titulo.style.cssText =
+    'font-size: 12px; font-weight: 600; color: var(--paidegua-primary-dark); margin-bottom: 2px;';
+  bloco.append(titulo);
+
+  const linhaEstilo =
+    'display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; padding: 2px 4px;';
+
+  // "Selecionar todos"
+  const labelTodos = document.createElement('label');
+  labelTodos.style.cssText = linhaEstilo + ' font-weight: 600;';
+  const chkTodos = document.createElement('input');
+  chkTodos.type = 'checkbox';
+  labelTodos.append(chkTodos, document.createTextNode('Selecionar todos'));
+  bloco.append(labelTodos);
+
+  const itens = semImagem.map((pend) => {
+    const label = document.createElement('label');
+    label.style.cssText = linhaEstilo;
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    const nome = document.createElement('span');
+    nome.textContent = `id ${pend.id} — ${rotuloDocumento(pend)}`;
+    const status = document.createElement('span');
+    status.style.cssText =
+      'margin-left: auto; font-size: 11px; color: var(--paidegua-text-muted);';
+    label.append(chk, nome, status);
+    bloco.append(label);
+    return { pend, chk, status };
   });
-  bubble.append(downloadBtn);
+
+  chkTodos.addEventListener('change', () => {
+    for (const it of itens) if (!it.chk.disabled) it.chk.checked = chkTodos.checked;
+  });
+
+  const rodape = document.createElement('div');
+  rodape.style.cssText = 'font-size: 11px; color: var(--paidegua-text-muted); margin-top: 4px;';
+
+  const btnLote = document.createElement('button');
+  btnLote.type = 'button';
+  btnLote.textContent = '📤 Ler selecionados com IA';
+  btnLote.style.cssText =
+    'margin-top: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(19,81,180,0.35); background: rgba(19,81,180,0.08); color: var(--paidegua-primary-dark); font-size: 12px; font-weight: 600; cursor: pointer; align-self: flex-start;';
+
+  const processarLote = async (): Promise<void> => {
+    const selecionados = itens.filter((it) => it.chk.checked && !it.chk.disabled);
+    if (selecionados.length === 0) {
+      rodape.textContent = 'Selecione ao menos um documento.';
+      return;
+    }
+    const consentiu = window.confirm(
+      `Ler ${selecionados.length} documento(s) com IA?\n\n` +
+        `A IMAGEM ORIGINAL destes documentos será ENVIADA ao provedor de IA configurado ` +
+        `para leitura nas próximas perguntas/resumos. Confirmar o envio?`
+    );
+    if (!consentiu) return;
+
+    btnLote.disabled = true;
+    chkTodos.disabled = true;
+    let ok = 0;
+    let falhas = 0;
+    for (let i = 0; i < selecionados.length; i++) {
+      const { pend, chk, status } = selecionados[i]!;
+      chk.disabled = true;
+      status.textContent = '⏳ preparando…';
+      btnLote.textContent = `📤 Preparando ${i + 1}/${selecionados.length}…`;
+      try {
+        const atualizado = await prepararImagensDocumento(pend, { maxPages: 30 });
+        // Persiste na FONTE CANÔNICA: muta o documento em `memory.extraidos`
+        // (o mesmo objeto que `pend` referencia) OU insere se ausente. Assim o
+        // conteúdo em imagem fica disponível para TODAS as funcionalidades
+        // (Resumir/Analisar/Minutar/chat) via getExtraidosArray, não só aqui.
+        const alvo = memory.extraidos.get(pend.id);
+        if (alvo) {
+          alvo.paginasImagem = atualizado.paginasImagem;
+          alvo.isScanned = true;
+        } else {
+          memory.extraidos.set(pend.id, atualizado);
+        }
+        // Mantém `pend` coerente caso ele não seja o mesmo objeto do mapa.
+        pend.paginasImagem = atualizado.paginasImagem;
+        pend.isScanned = true;
+        status.textContent = '✓ na IA';
+        status.style.color = 'rgba(22,133,79,0.9)';
+        chk.checked = false;
+        ok++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        status.textContent = '⚠️ falha';
+        chk.disabled = false;
+        falhas++;
+        console.warn(`${LOG_PREFIX} preparar doc ${pend.id} para IA falhou:`, msg);
+      }
+    }
+    btnLote.disabled = false;
+    chkTodos.disabled = false;
+    chkTodos.checked = false;
+    btnLote.textContent = '📤 Ler selecionados com IA';
+    rodape.textContent =
+      `${ok} documento(s) disponível(is) para a IA` +
+      (falhas ? `, ${falhas} falha(s)` : '') +
+      '. Resumir/Analisar já leem.';
+  };
+
+  btnLote.addEventListener('click', () => {
+    void processarLote();
+  });
+
+  bloco.append(btnLote, rodape);
+  bubble.append(bloco);
 }
 
 // =====================================================================
@@ -2582,7 +2889,10 @@ function appendSpeakControls(text: string): void {
 // Helper: chama o LLM e coleta a resposta completa (não-streaming UI)
 // =====================================================================
 
-async function collectFullResponse(prompt: string): Promise<string> {
+async function collectFullResponse(
+  prompt: string,
+  documentsOverride?: ProcessoDocumento[]
+): Promise<string> {
   if (!memory.settings) {
     throw new Error('Configurações não carregadas.');
   }
@@ -2614,13 +2924,32 @@ async function collectFullResponse(prompt: string): Promise<string> {
       model: settings.models[settings.activeProvider],
       // Envia apenas o prompt — sem histórico do chat para evitar contaminação.
       messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
-      documents: getExtraidosArray(),
+      documents: documentsOverride ?? getExtraidosArray(),
       numeroProcesso: memory.detection?.numeroProcesso ?? null,
       temperature: settings.temperature,
       maxTokens: settings.maxTokens
     };
     port.postMessage({ type: CHAT_PORT_MSG.START, payload });
   });
+}
+
+/** Prompt de transcrição fiel (imagem → texto) para documentos digitalizados. */
+const PROMPT_TRANSCRICAO_IA =
+  'Transcreva integralmente, em texto puro, TODO o conteúdo legível deste ' +
+  'documento digitalizado (anexado como imagem). Mantenha a ordem e os dados ' +
+  'exatamente como aparecem no documento. Não resuma, não interprete, não ' +
+  'comente e não adicione nada além da transcrição literal. Se algo estiver ' +
+  'ilegível, indique com "[ilegível]".';
+
+/**
+ * Transcreve UM documento (já com `paginasImagem`) para texto via IA
+ * multimodal. Envia SÓ este documento no contexto. Usado pela anonimização
+ * para trazer, mascarado, o conteúdo dos escaneados que o usuário conscientemente
+ * enviou à IA — ver memória [[anonimizacao-transcricao-ia]].
+ */
+async function transcreverDocumentoViaIA(doc: ProcessoDocumento): Promise<string> {
+  const texto = await collectFullResponse(PROMPT_TRANSCRICAO_IA, [doc]);
+  return texto.trim();
 }
 
 // =====================================================================

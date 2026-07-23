@@ -79,12 +79,6 @@ import {
   type TriagemResult
 } from '../shared/prompts';
 import {
-  buildAnonymizePrompt,
-  parseNomesResponse,
-  recortarTrechoInicial,
-  type NomeAnonimizar
-} from '../shared/anonymizer';
-import {
   hasAnyTemplate,
   invalidateSearchIndex,
   searchTemplates,
@@ -152,6 +146,11 @@ import {
 import { gravarAuthSnapshot } from './pje-api-client';
 import { isLegacyGeminiKey } from './providers/gemini';
 import { getProvider } from './providers';
+import { handleOcrRecognize } from './ocr-offscreen';
+import type {
+  OcrRecognizePayload,
+  OcrRecognizeResult
+} from '../shared/ocr-messages';
 import {
   PROMPT_SISTEMA_DADOS_PDF,
   MAX_CHARS_PARA_IA,
@@ -556,7 +555,12 @@ const AUTH_FREE_CHANNELS: ReadonlySet<string> = new Set<string>([
   // ficarem fora do gate de autenticação. O CHAT dentro dessas páginas
   // continua protegido pelos canais CHAT_* que NÃO estão nesta lista.
   MESSAGE_CHANNELS.FLUXOS_OPEN_CONSULTOR,
-  MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS
+  MESSAGE_CHANNELS.FLUXOS_OPEN_JORNADAS,
+  // OCR local: processamento 100% na máquina (PP-OCR/ONNX no offscreen). Não
+  // chama provider de IA nem toca a rede — a imagem nunca sai do navegador
+  // (CNJ/LGPD). Fica fora do gate para funcionar mesmo sem sessão (ex.: painel
+  // criminal lendo um PDF digitalizado).
+  MESSAGE_CHANNELS.OCR_RECOGNIZE
 ]);
 
 /**
@@ -647,6 +651,13 @@ function dispatchMessage(
       case MESSAGE_CHANNELS.PING:
         sendResponse({ ok: true, pong: Date.now() });
         return false;
+
+      case MESSAGE_CHANNELS.OCR_RECOGNIZE:
+        void handleOcrRecognize(
+          message.payload as OcrRecognizePayload | undefined,
+          sendResponse as (r: OcrRecognizeResult) => void
+        );
+        return true;
 
       case MESSAGE_CHANNELS.AUTH_REQUEST_CODE:
         void handleAuthRequestCode(
@@ -792,13 +803,6 @@ function dispatchMessage(
         invalidateSearchIndex();
         sendResponse({ ok: true });
         return false;
-
-      case MESSAGE_CHANNELS.ANONYMIZE_NAMES:
-        void handleAnonymizeNames(
-          message.payload as { texto: string },
-          sendResponse
-        );
-        return true;
 
       case MESSAGE_CHANNELS.TEMPLATES_RERANK:
         void handleTemplatesRerank(
@@ -1784,70 +1788,6 @@ async function handlePjeAuthCaptured(
       ok: false,
       error: err instanceof Error ? err.message : String(err)
     });
-  }
-}
-
-/**
- * Handler do passo 2 do anonimizador: chama o LLM ativo para extrair
- * pares `{original, substituto}` a partir do trecho inicial do texto.
- *
- * Não streama — acumula os chunks e devolve um único JSON. Para o
- * caso de uso (lista curta de nomes), o tempo total fica baixo e o
- * content evita ter que abrir uma porta long-lived.
- */
-async function handleAnonymizeNames(
-  payload: { texto: string },
-  sendResponse: (response: unknown) => void
-): Promise<void> {
-  try {
-    const texto = payload?.texto ?? '';
-    if (!texto.trim()) {
-      sendResponse({ ok: true, nomes: [] as NomeAnonimizar[] });
-      return;
-    }
-
-    const settings = await getSettings();
-    const providerId = settings.activeProvider;
-    const apiKey = await getApiKey(providerId);
-    if (!apiKey) {
-      sendResponse({
-        ok: false,
-        error: `API key não cadastrada para ${providerId}.`
-      });
-      return;
-    }
-
-    const provider = getProvider(providerId);
-    const trecho = recortarTrechoInicial(texto);
-    const prompt = buildAnonymizePrompt(trecho);
-
-    const controller = new AbortController();
-    const generator = provider.sendMessage({
-      apiKey,
-      model: settings.models[providerId],
-      systemPrompt:
-        'Você é um assistente que extrai dados estruturados de processos judiciais. ' +
-        'Responda SEMPRE em JSON puro, sem texto adicional, sem markdown.',
-      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
-      temperature: 0,
-      // Ampliado de 2048 → 4096 para acomodar a lista exaustiva de papéis
-      // pedida pelo novo prompt (advogados, procuradores, peritos, MP etc.).
-      // Cada entrada no JSON usa ~25 tokens — 4k cobre com folga processos
-      // com muitos atores (contestação, laudos, substabelecimentos).
-      maxTokens: 4096,
-      signal: controller.signal
-    });
-
-    let raw = '';
-    for await (const chunk of generator) {
-      raw += chunk.delta;
-    }
-
-    const nomes = parseNomesResponse(raw);
-    sendResponse({ ok: true, nomes });
-  } catch (error: unknown) {
-    console.warn(`${LOG_PREFIX} handleAnonymizeNames falhou:`, error);
-    sendResponse({ ok: false, error: errorMessage(error) });
   }
 }
 

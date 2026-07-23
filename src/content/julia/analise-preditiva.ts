@@ -200,8 +200,8 @@ export async function lerMinutaEmQualquerFrame(
  * Resumo da minuta detectada + aviso de privacidade, inseridos no formulário.
  *
  * O aviso não é burocracia: o texto da minuta sai do navegador para o provedor
- * de IA configurado, e quem assina precisa saber disso antes de clicar — com a
- * anonimização e o seu limite conhecido (nome citado no corpo) declarados.
+ * de IA configurado, e quem assina precisa saber disso antes de clicar. Com os
+ * dois botões (com e sem anonimização), o aviso explica o que cada um faz.
  */
 function montarBlocoMinuta(
   conteudo: PJeEditorContent,
@@ -233,9 +233,10 @@ function montarBlocoMinuta(
   const privacidade = document.createElement('div');
   privacidade.className = 'paidegua-julia-form__hint';
   privacidade.textContent =
-    `O texto da minuta será enviado ao provedor de IA configurado (${PROVIDER_LABELS[provider]}), ` +
-    'após anonimização automática de CPF, contatos e qualificação das partes. ' +
-    'Nomes citados no corpo do texto podem permanecer. Nada é armazenado.';
+    `O texto da minuta será enviado ao provedor de IA configurado (${PROVIDER_LABELS[provider]}). ` +
+    '"Analisar a minuta" envia o texto como está; ' +
+    '"Analisar minuta (com texto anonimizado)" mascara antes CPF, contatos e a qualificação das partes ' +
+    '(nomes citados no corpo do texto podem permanecer). Em nenhum dos casos a minuta é armazenada.';
   bloco.appendChild(privacidade);
 
   return bloco;
@@ -269,7 +270,8 @@ export async function abrirFormularioAnalise(
       termosIniciais: opts.termosIniciais,
       variante: 'analise',
       blocoExtra: montarBlocoMinuta(conteudo, opts.provider),
-      onConsultar: (escolhido, _pergunta, termosManuais, reabilitar) => {
+      onConsultar: (escolhido, _pergunta, termosManuais, reabilitar, opcoesAnalise) => {
+        const anonimizar = opcoesAnalise?.anonimizar ?? false;
         // Releitura fresca (com o texto): o que se analisa é o estado atual
         // do editor, não o do momento em que o formulário abriu.
         void (async () => {
@@ -292,7 +294,8 @@ export async function abrirFormularioAnalise(
             model: opts.model,
             analise: {
               minutaTexto: fresco.text,
-              minutaTruncada: fresco.truncado
+              minutaTruncada: fresco.truncado,
+              anonimizar
             },
             onFim: reabilitar,
             // Sucesso: as ações do rodapé da bolha ("Analisar sugestões…",
@@ -310,6 +313,8 @@ export async function abrirFormularioAnalise(
                 // preservar negrito, itálico e recuos de citação; o texto
                 // puro fica de reserva para HTML vazio/inconversível.
                 minutaFormatada: htmlParaMarkdown(fresco.html) || fresco.text,
+                // A reescrita segue a mesma escolha de anonimização da análise.
+                anonimizar,
                 termosUsados,
                 citaveis
               };
@@ -351,6 +356,8 @@ interface UltimaAnalise {
   model: string;
   /** Minuta em markdown derivado do HTML do editor — preserva a formatação. */
   minutaFormatada: string;
+  /** Escolha de anonimização da análise — a reescrita a repete. */
+  anonimizar: boolean;
   termosUsados: string;
   citaveis: Map<number, DocumentoCitado>;
 }
@@ -476,8 +483,9 @@ export function abrirSeletorSugestoes(markdown: string): boolean {
 
   const aviso = document.createElement('div');
   aviso.className = 'paidegua-julia-form__hint';
-  aviso.textContent =
-    'A reescrita parte do texto anonimizado enviado à IA: a qualificação das partes e os dados mascarados não constam do resultado — confira ao levar para o PJe.';
+  aviso.textContent = u.anonimizar
+    ? 'Como a análise foi feita com texto anonimizado, a reescrita parte do texto anonimizado: a qualificação das partes e os dados mascarados não constam do resultado — confira ao levar para o PJe.'
+    : 'A reescrita mantém as mesmas partes e dados da minuta original — confira o resultado antes de inserir no PJe.';
   box.appendChild(aviso);
 
   const acoes = document.createElement('div');
@@ -589,6 +597,7 @@ function executarReescrita(u: UltimaAnalise, sugestoes: string[]): void {
     type: JULIA_PORT_MSG.START_REESCRITA,
     payload: {
       minutaTexto: u.minutaFormatada,
+      anonimizar: u.anonimizar,
       sugestoes,
       precedentes,
       provider: u.provider,

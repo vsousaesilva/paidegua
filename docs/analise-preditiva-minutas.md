@@ -69,6 +69,24 @@ o ciclo de análise, útil após inserir a versão nova no editor). Aviso ao
 usuário no seletor: o resultado parte do texto anonimizado (qualificação das
 partes e dados mascarados não constam).
 
+## Unidade padrão do usuário logado
+
+O formulário (Fale com a Júlia e análise preditiva) **pré-marca a unidade do
+magistrado logado**. A lotação é lida do masthead do PJe — cabeçalho no formato
+`{unidade} / {papel} / {cargo}` (ex.: "35ª Vara Federal CE / Direção de
+Secretaria / Diretor de Secretaria"), no `title`/`data-original-title` e num
+`<small>` dentro de `.bloco-va-mid` — por `lerLotacaoUsuario()`
+(`src/content/julia/lotacao-usuario.ts`), varrendo os documentos acessíveis
+(topo + iframes same-origin + shadow; o masthead é frame de topo). A UF ao fim
+do primeiro segmento define a seccional (`orgaoDaLotacao`, precedência sobre o
+domínio do e-mail). Após a lista de órgãos julgadores carregar, `casarUnidade`
+casa a lotação (número ordinal + tipo, sem confundir 1ª/10ª nem Vara/Juizado) e
+**só pré-marca quando há exatamente um correspondente** — casamento ambíguo não
+seleciona nada. É um default: aplica-se uma vez, na primeira carga; depois o
+usuário controla. Sem fonte estruturada limpa (o header
+`X-pje-usuario-localizacao` é ID numérico; `nomeVara` é opcional/Secretaria),
+a leitura do DOM do masthead é a via confiável.
+
 ## Escopos e graus
 
 - **1º grau / TR / unknown** → modo `dupla`: unidade (API autenticada da
@@ -85,10 +103,17 @@ partes e dados mascarados não constam).
 
 ## Privacidade (LGPD)
 
-- Anonimização no background antes de qualquer chamada de LLM
-  (`prepararTextoParaIA`: remoção da qualificação das partes + regex de CPF,
-  RG, e-mail, telefone, dados bancários). Limite conhecido: nome citado no
-  corpo do texto permanece — declarado no aviso do formulário.
+- **Anonimização é escolha do magistrado** (dois botões no formulário, desde a
+  v1.11.x): "Analisar a minuta" envia o texto como está; "Analisar minuta (com
+  texto anonimizado)" aplica `prepararTextoParaIA` (remoção da qualificação das
+  partes + regex de CPF, RG, e-mail, telefone, dados bancários) antes de
+  qualquer chamada de LLM. A escolha viaja em `anonimizar`
+  (`AnalisePreditivaStartPayload`); o orquestrador aplica ou não a
+  anonimização. A **reescrita repete a mesma escolha** (`anonimizar` em
+  `ReescritaStartPayload` e em `ultimaAnalise`). A minuta é o rascunho do
+  próprio magistrado, no navegador dele, e ele é o controlador do dado.
+- Quando anonimizado, o limite conhecido (nome citado no corpo do texto)
+  permanece — declarado no aviso do formulário.
 - Nenhuma persistência: a minuta vive só no payload da porta e em
   `ultimaRecuperacao` (memória volátil do service worker).
 

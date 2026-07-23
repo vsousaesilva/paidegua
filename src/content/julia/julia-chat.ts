@@ -41,6 +41,11 @@ import {
   JULIA_INSTANCIA_AUTENTICADA_LABELS,
   JULIA_ORGAOS
 } from '../../shared/julia/julia-types';
+import {
+  casarUnidade,
+  lerLotacaoUsuario,
+  orgaoDaLotacao
+} from './lotacao-usuario';
 import type { ChatController } from '../ui/chat';
 
 // ── Contexto da unidade ──────────────────────────────────────────
@@ -70,6 +75,13 @@ export interface JuliaContextoUnidade {
    * Sobrepõe a derivação por rito, que ali não se aplica.
    */
   instanciasPublicas?: JuliaInstancia[];
+  /**
+   * Lotação do usuário lida do masthead do PJe (ex.: "35ª Vara Federal CE"),
+   * quando disponível. Usada para pré-marcar a unidade do usuário na lista —
+   * o casamento com os órgãos julgadores da Júlia acontece após a lista
+   * carregar.
+   */
+  lotacaoUsuario?: string;
   /** `true` quando algum campo foi presumido — a interface deve sinalizar. */
   inferido: boolean;
 }
@@ -119,19 +131,31 @@ export async function inferirContexto(): Promise<JuliaContextoUnidade> {
     instanciasPublicas: ['G2'],
     inferido: true
   };
+  // Lotação do masthead do PJe — quando presente, é a fonte mais confiável da
+  // seccional (mais que o domínio do e-mail) e permite pré-marcar a unidade do
+  // usuário depois que a lista de órgãos julgadores carregar.
+  const lotacao = lerLotacaoUsuario();
+  const orgaoLotacao = lotacao ? orgaoDaLotacao(lotacao) : null;
+
   try {
     const resp = (await chrome.runtime.sendMessage({
       type: MESSAGE_CHANNELS.AUTH_GET_STATUS
     })) as { email?: string } | undefined;
 
     const dominio = resp?.email?.split('@')[1]?.toLowerCase();
-    const orgao = dominio ? DOMINIO_PARA_ORGAO[dominio] : undefined;
-    // Domínio reconhecido é identificação, não palpite — daí `inferido: false`,
-    // que remove o "(presumido)" do rótulo.
-    return orgao ? { ...padrao, orgao, inferido: false } : padrao;
+    const orgaoEmail = dominio ? DOMINIO_PARA_ORGAO[dominio] : undefined;
+    // Precedência: lotação (sessão logada) > domínio do e-mail > padrão.
+    const orgao = orgaoLotacao ?? orgaoEmail;
+    // Órgão vindo da lotação ou do domínio é identificação, não palpite — daí
+    // `inferido: false`, que remove o "(presumido)" do rótulo.
+    return orgao
+      ? { ...padrao, orgao, lotacaoUsuario: lotacao ?? undefined, inferido: false }
+      : { ...padrao, lotacaoUsuario: lotacao ?? undefined };
   } catch (err) {
     console.warn(`${LOG_PREFIX} julia: falha inferindo unidade:`, err);
-    return padrao;
+    return orgaoLotacao
+      ? { ...padrao, orgao: orgaoLotacao, lotacaoUsuario: lotacao ?? undefined, inferido: false }
+      : { ...padrao, lotacaoUsuario: lotacao ?? undefined };
   }
 }
 
@@ -994,7 +1018,7 @@ export interface JuliaExecOpcoes {
    * exibido no fio da conversa. Todo o resto do fluxo — etapas, evidência,
    * streaming, citações, retentativa — é o mesmo da consulta comum.
    */
-  analise?: { minutaTexto: string; minutaTruncada: boolean };
+  analise?: { minutaTexto: string; minutaTruncada: boolean; anonimizar: boolean };
   /**
    * Chamado quando a análise preditiva termina com sucesso, com o material
    * que as ações do rodapé da bolha precisam (os botões do chat são
@@ -1317,7 +1341,8 @@ export function consultarJulia(opts: JuliaExecOpcoes): () => void {
       ? {
           ...payloadBase,
           minutaTexto: opts.analise.minutaTexto,
-          minutaTruncada: opts.analise.minutaTruncada
+          minutaTruncada: opts.analise.minutaTruncada,
+          anonimizar: opts.analise.anonimizar
         }
       : {
           ...payloadBase,
@@ -1390,7 +1415,7 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
       'div',
       'paidegua-julia-form__hint',
       analise
-        ? 'Confronta a minuta aberta no editor com a jurisprudência do colegiado escolhido.'
+        ? 'Confronta a minuta aberta no editor ou no painel de assinatura com a jurisprudência do colegiado escolhido.'
         : 'Pesquisa a jurisprudência do TRF5, das Turmas Recursais e da TRU.'
     )
   );
@@ -1449,28 +1474,11 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
 
   if (opts.blocoExtra) root.appendChild(opts.blocoExtra);
 
-  const acoes = el('div', 'paidegua-julia-form__acoes');
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'paidegua-julia-form__btn';
-  btn.textContent = analise ? 'Analisar a minuta' : 'Consultar a Júlia';
-  acoes.appendChild(btn);
-  root.appendChild(acoes);
-
-  const aviso = el('div', 'paidegua-julia-form__aviso');
-  root.appendChild(aviso);
-
-  function atualizar(): void {
-    const semAcervo = !c.instanciasPublicas?.length;
-    btn.disabled = semAcervo || (!analise && !ta.value.trim());
-    aviso.textContent = semAcervo ? 'Selecione ao menos um acervo.' : '';
-  }
-
-  ta.addEventListener('input', atualizar);
-  btn.addEventListener('click', () => {
+  const acoes = el('div', analise ? 'paidegua-julia-form__acoes-esq' : 'paidegua-julia-form__acoes');
+  const submeter = (anonimizar: boolean): void => {
     const pergunta = ta.value.trim();
     if ((!analise && !pergunta) || !c.instanciasPublicas?.length) return;
-    btn.disabled = true;
+    botoes.forEach((b) => (b.disabled = true));
     ta.disabled = true;
     opts.onConsultar(
       { ...c, instanciasPublicas: [...c.instanciasPublicas] },
@@ -1479,9 +1487,44 @@ export function renderSeletorPublico(opts: SeletorOpcoes): HTMLElement {
       () => {
         ta.disabled = false;
         atualizar();
-      }
+      },
+      analise ? { anonimizar } : undefined
     );
-  });
+  };
+
+  // Na análise, dois botões: enviar a minuta como está ou anonimizada antes de
+  // ir ao provedor de IA. Fora da análise, o botão único de consulta.
+  const botoes: HTMLButtonElement[] = [];
+  const criarBotao = (rotulo: string, primario: boolean, anonimizar: boolean): void => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = primario
+      ? 'paidegua-julia-form__btn'
+      : 'paidegua-julia-form__btn paidegua-julia-form__btn--ghost';
+    b.textContent = rotulo;
+    b.addEventListener('click', () => submeter(anonimizar));
+    acoes.appendChild(b);
+    botoes.push(b);
+  };
+  if (analise) {
+    criarBotao('Analisar a minuta', true, false);
+    criarBotao('Analisar minuta (com texto anonimizado)', false, true);
+  } else {
+    criarBotao('Consultar a Júlia', true, false);
+  }
+  root.appendChild(acoes);
+
+  const aviso = el('div', 'paidegua-julia-form__aviso');
+  root.appendChild(aviso);
+
+  function atualizar(): void {
+    const semAcervo = !c.instanciasPublicas?.length;
+    const bloqueia = semAcervo || (!analise && !ta.value.trim());
+    botoes.forEach((b) => (b.disabled = bloqueia));
+    aviso.textContent = semAcervo ? 'Selecione ao menos um acervo.' : '';
+  }
+
+  ta.addEventListener('input', atualizar);
 
   atualizar();
   return root;
@@ -1580,13 +1623,19 @@ export function renderPortaEntrada(opts: PortaEntradaOpcoes): HTMLElement {
     acoes.appendChild(entrar);
   }
 
-  const reverificar = document.createElement('button');
-  reverificar.type = 'button';
-  reverificar.className =
-    'paidegua-julia-form__btn paidegua-julia-form__btn--ghost';
-  reverificar.textContent = indisponivel ? 'Tentar de novo' : 'Já entrei — verificar';
-  reverificar.addEventListener('click', () => void reverificarAcesso());
-  acoes.appendChild(reverificar);
+  // "Já entrei — verificar" foi removido no caso de sessão: o próprio "Entrar
+  // na Júlia" acompanha o login e valida sozinho ao voltar à aba, então o botão
+  // extra era redundante. No serviço fora do ar não há "Entrar", e aí um botão
+  // de nova tentativa continua fazendo sentido.
+  if (indisponivel) {
+    const reverificar = document.createElement('button');
+    reverificar.type = 'button';
+    reverificar.className =
+      'paidegua-julia-form__btn paidegua-julia-form__btn--ghost';
+    reverificar.textContent = 'Tentar de novo';
+    reverificar.addEventListener('click', () => void reverificarAcesso());
+    acoes.appendChild(reverificar);
+  }
 
   root.appendChild(acoes);
 
@@ -1641,10 +1690,10 @@ export function renderPortaEntrada(opts: PortaEntradaOpcoes): HTMLElement {
       estado.textContent =
         r?.motivo === 'aba-fechada'
           ? 'A aba da Júlia foi fechada antes do login. Use "Entrar na Júlia" para tentar de novo.'
-          : 'Não detectamos o login. Se você entrou, use "Já entrei — verificar".';
+          : 'Não detectamos o login. Se você entrou, clique novamente em "Entrar na Júlia".';
     } catch (err) {
       console.warn(`${LOG_PREFIX} julia: login assistido falhou:`, err);
-      estado.textContent = 'Falha ao acompanhar o login. Use "Já entrei — verificar".';
+      estado.textContent = 'Falha ao acompanhar o login. Clique novamente em "Entrar na Júlia".';
     } finally {
       const entrar = acoes.querySelector('button');
       if (entrar instanceof HTMLButtonElement && entrar.disabled) {
@@ -1696,13 +1745,16 @@ export interface SeletorOpcoes {
    * invocá-lo ao fim da consulta, inclusive em erro — senão uma sessão expirada
    * deixa o formulário travado e obriga a reabrir tudo para tentar de novo.
    *
-   * Na variante `'analise'`, `pergunta` chega vazia.
+   * Na variante `'analise'`, `pergunta` chega vazia e `opcoesAnalise` traz a
+   * escolha de anonimização (dois botões: com e sem anonimizar o texto da
+   * minuta antes de enviar ao provedor de IA).
    */
   onConsultar: (
     contexto: JuliaContextoUnidade,
     pergunta: string,
     termosManuais: string,
-    reabilitar: () => void
+    reabilitar: () => void,
+    opcoesAnalise?: { anonimizar: boolean }
   ) => void;
 }
 
@@ -1794,7 +1846,7 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
       'div',
       'paidegua-julia-form__hint',
       analise
-        ? 'Confronta a minuta aberta no editor com o que a sua unidade e a instância revisora vêm decidindo.'
+        ? 'Confronta a minuta aberta no editor ou no painel de assinatura com o que a sua unidade e a instância revisora vêm decidindo.'
         : 'Compara o que a sua unidade vem entendendo com o que a instância revisora vem decidindo.'
     )
   );
@@ -1906,6 +1958,10 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
   root.appendChild(resumoUnidades);
 
   let disponiveis: string[] = [];
+  // A pré-marcação da unidade do usuário é um DEFAULT: aplica-se uma única vez,
+  // na primeira carga da lista. Depois disso o usuário está no controle — trocar
+  // de seccional ou desmarcar não deve fazer a unidade reaparecer sozinha.
+  let lotacaoAplicada = false;
 
   function atualizarResumo(): void {
     const n = c.orgaosJulgadores.length;
@@ -1994,6 +2050,13 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
       disponiveis = resp.orgaos ?? [];
       // Descarta seleções que não existem na nova combinação de instâncias.
       c.orgaosJulgadores = c.orgaosJulgadores.filter((u) => disponiveis.includes(u));
+      // Default: pré-marca a unidade do usuário logado, quando a lotação lida
+      // do masthead casa (sem ambiguidade) com um órgão julgador da lista.
+      if (!lotacaoAplicada && !c.orgaosJulgadores.length && c.lotacaoUsuario) {
+        lotacaoAplicada = true;
+        const unidade = casarUnidade(c.lotacaoUsuario, disponiveis);
+        if (unidade) c.orgaosJulgadores = [unidade];
+      }
       pintarLista();
       atualizarResumo();
     } catch (err) {
@@ -2044,30 +2107,11 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
 
   if (opts.blocoExtra) root.appendChild(opts.blocoExtra);
 
-  const acoes = el('div', 'paidegua-julia-form__acoes');
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'paidegua-julia-form__btn';
-  btn.textContent = analise ? 'Analisar a minuta' : 'Consultar a Júlia';
-  acoes.appendChild(btn);
-  root.appendChild(acoes);
-
-  const aviso = el('div', 'paidegua-julia-form__aviso');
-  root.appendChild(aviso);
-
-  function atualizarBotao(): void {
-    const semInstancia = c.instancias.length === 0;
-    btn.disabled = semInstancia || (!analise && !ta.value.trim());
-    aviso.textContent = semInstancia
-      ? 'Selecione ao menos uma instância.'
-      : '';
-  }
-
-  ta.addEventListener('input', atualizarBotao);
-  btn.addEventListener('click', () => {
+  const acoes = el('div', analise ? 'paidegua-julia-form__acoes-esq' : 'paidegua-julia-form__acoes');
+  const submeter = (anonimizar: boolean): void => {
     const pergunta = ta.value.trim();
     if ((!analise && !pergunta) || !c.instancias.length) return;
-    btn.disabled = true;
+    botoes.forEach((b) => (b.disabled = true));
     ta.disabled = true;
     opts.onConsultar(
       {
@@ -2080,9 +2124,46 @@ export function renderSeletorConsulta(opts: SeletorOpcoes): HTMLElement {
       () => {
         ta.disabled = false;
         atualizarBotao();
-      }
+      },
+      analise ? { anonimizar } : undefined
     );
-  });
+  };
+
+  // Na análise, dois botões: enviar a minuta como está ou anonimizada antes de
+  // ir ao provedor de IA. Fora da análise, o botão único de consulta.
+  const botoes: HTMLButtonElement[] = [];
+  const criarBotao = (rotulo: string, primario: boolean, anonimizar: boolean): void => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = primario
+      ? 'paidegua-julia-form__btn'
+      : 'paidegua-julia-form__btn paidegua-julia-form__btn--ghost';
+    b.textContent = rotulo;
+    b.addEventListener('click', () => submeter(anonimizar));
+    acoes.appendChild(b);
+    botoes.push(b);
+  };
+  if (analise) {
+    criarBotao('Analisar a minuta', true, false);
+    criarBotao('Analisar minuta (com texto anonimizado)', false, true);
+  } else {
+    criarBotao('Consultar a Júlia', true, false);
+  }
+  root.appendChild(acoes);
+
+  const aviso = el('div', 'paidegua-julia-form__aviso');
+  root.appendChild(aviso);
+
+  function atualizarBotao(): void {
+    const semInstancia = c.instancias.length === 0;
+    const bloqueia = semInstancia || (!analise && !ta.value.trim());
+    botoes.forEach((b) => (b.disabled = bloqueia));
+    aviso.textContent = semInstancia
+      ? 'Selecione ao menos uma instância.'
+      : '';
+  }
+
+  ta.addEventListener('input', atualizarBotao);
 
   atualizarBotao();
   return root;

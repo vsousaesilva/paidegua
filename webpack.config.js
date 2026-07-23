@@ -20,6 +20,10 @@ module.exports = (_env, argv) => {
     entry: {
       background: './src/background/background.ts',
       content: './src/content/content.ts',
+      // Offscreen document que hospeda o motor de OCR local (PP-OCR via ONNX
+      // Runtime Web, WebGPU→WASM). A inferência não pode rodar no service worker
+      // (morto pelo Chrome) nem no content script (CSP da página do PJe).
+      'offscreen/offscreen': './src/offscreen/offscreen.ts',
       // Bundle separado para o interceptor injetado em page-world (ver
       // segundo entry de content_scripts no manifest com `world: "MAIN"`).
       // Roda no contexto JS da SPA Angular do painel; sem chrome.* APIs.
@@ -197,38 +201,41 @@ module.exports = (_env, argv) => {
             noErrorOnMissing: true
           },
           { from: 'src/content/content.css', to: 'content.css' },
+          // Offscreen document do OCR local (HTML host do bundle offscreen.js).
+          {
+            from: 'src/offscreen/offscreen.html',
+            to: 'offscreen/offscreen.html'
+          },
+          // ONNX Runtime Web: além do binário .wasm, cada backend tem um loader
+          // .mjs ao lado (ex.: ort-wasm-simd-threaded.jsep.mjs) que o ORT importa
+          // em runtime a partir de `ort.env.wasm.wasmPaths`. Copiar SÓ o .wasm faz
+          // o import do .mjs dar 404 e o ORT reportar "no available backend
+          // found" — por isso copiamos AMBOS. Servidos da origin da extensão
+          // (offscreen), não precisam estar em web_accessible_resources.
+          {
+            from: 'node_modules/onnxruntime-web/dist/ort-*.{wasm,mjs}',
+            to: 'assets/[name][ext]'
+          },
+          // Modelos PP-OCR (tier tiny, ~6 MB — detecção + reconhecimento +
+          // dicionário). Embarcados localmente; NUNCA de CDN (CSP MV3). Baixar
+          // antes do build — ver assets/paddle-ocr/README.md. noErrorOnMissing
+          // permite o build passar antes do download (o OCR falha em runtime até
+          // os arquivos existirem).
+          {
+            from: 'assets/paddle-ocr',
+            to: 'assets/paddle-ocr',
+            noErrorOnMissing: true
+          },
           // PDF.js worker precisa ser servido como arquivo acessivel via
           // chrome.runtime.getURL. Listado em web_accessible_resources
           // (libs/*) no manifest.
           {
             from: 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
             to: 'libs/pdf.worker.min.mjs'
-          },
-          // Tesseract.js: worker + core (wasm) precisam ser servidos via
-          // chrome.runtime.getURL porque rodam dentro de Web Workers criados
-          // a partir do content script. Usamos a variante SIMD+LSTM que é
-          // a mais rápida em browsers modernos.
-          {
-            from: 'node_modules/tesseract.js/dist/worker.min.js',
-            to: 'libs/tesseract/worker.min.js'
-          },
-          {
-            from: 'node_modules/tesseract.js-core/tesseract-core-simd-lstm.js',
-            to: 'libs/tesseract/tesseract-core-simd-lstm.js'
-          },
-          {
-            from: 'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js',
-            to: 'libs/tesseract/tesseract-core-simd-lstm.wasm.js'
-          },
-          {
-            from: 'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm',
-            to: 'libs/tesseract/tesseract-core-simd-lstm.wasm'
-          },
-          // Modelo português bundle-ado localmente (sem dependência de rede).
-          {
-            from: 'assets/tesseract/por.traineddata',
-            to: 'libs/tesseract/por.traineddata'
           }
+          // (OCR migrado para PP-OCR/ONNX no offscreen — ver entrada
+          // 'offscreen/offscreen' e as cópias de ort-*/paddle-ocr acima. O
+          // Tesseract.js e seus assets libs/tesseract/* foram removidos.)
         ]
       })
     ],

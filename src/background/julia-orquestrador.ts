@@ -38,6 +38,7 @@ import {
   prepararTextoParaIA,
   removerOperadores,
   termosDePergunta,
+  termosSalientesMinuta,
   type AnalisePreditivaExtracao,
   type JuliaExtracao,
   type PrecedenteParaReescrita
@@ -571,7 +572,7 @@ let ultimaRecuperacao:
   | {
       tipo: 'analise';
       payload: AnalisePreditivaStartPayload;
-      minutaAnonimizada: string;
+      minutaParaIA: string;
       extracao: AnalisePreditivaExtracao;
       recuperacao: JuliaRecuperacao;
     }
@@ -600,7 +601,7 @@ export async function retentarSinteseJulia(ctx: JuliaContexto): Promise<void> {
   } else {
     await sintetizarAnalise(
       anterior.payload,
-      anterior.minutaAnonimizada,
+      anterior.minutaParaIA,
       anterior.extracao,
       anterior.recuperacao,
       ctx
@@ -648,10 +649,18 @@ async function sintetizar(
 // ── Análise preditiva de minutas ─────────────────────────────────
 
 export interface AnalisePreditivaStartPayload {
-  /** Texto cru lido do editor do PJe — a anonimização acontece aqui, no background. */
+  /** Texto cru lido do editor do PJe. */
   minutaTexto: string;
   /** A leitura cortou o texto no teto? A síntese precisa saber que viu parte. */
   minutaTruncada: boolean;
+  /**
+   * Anonimizar a minuta antes de enviá-la ao provedor de IA? Escolha do
+   * magistrado no formulário (dois botões). A minuta é o rascunho dele, no
+   * próprio navegador — quando opta por não anonimizar, envia o texto como
+   * está; quando opta por anonimizar, aplica-se `prepararTextoParaIA` (mesma
+   * política dos documentos da Júlia).
+   */
+  anonimizar: boolean;
   orgao: JuliaOrgao;
   instancias: JuliaInstanciaAutenticada[];
   orgaosJulgadores?: string[];
@@ -683,19 +692,18 @@ const TIMEOUT_EXTRACAO_ANALISE_MS = 60_000;
  */
 async function extrairDaMinuta(
   payload: AnalisePreditivaStartPayload,
-  minutaAnonimizada: string,
+  minutaParaIA: string,
   ctx: JuliaContexto
 ): Promise<AnalisePreditivaExtracao> {
-  // Rede de segurança local: um trecho a ~40% do texto — depois do cabeçalho e
-  // do relatório, onde a fundamentação costuma começar — rende termos melhores
-  // que as primeiras linhas ("PODER JUDICIÁRIO", autuação, relatório).
-  const inicioFundamentacao = Math.floor(minutaAnonimizada.length * 0.4);
-  const termosLocais = termosDePergunta(
-    minutaAnonimizada.slice(inicioFundamentacao, inicioFundamentacao + 2_000)
-  );
+  // Rede de segurança local, por FREQUÊNCIA sobre o texto inteiro — sem recorte
+  // por posição, que cortava no meio de palavra e envenenava a busca E com um
+  // fragmento inexistente. `termo` com mais termos; `termoSimples` com menos,
+  // para o retro-alargamento do orquestrador (retry com termoSimples) valer.
+  const termosLocais = termosSalientesMinuta(minutaParaIA, 3);
+  const termosAmplos = termosSalientesMinuta(minutaParaIA, 2);
   const fallback: AnalisePreditivaExtracao = {
-    termo: termosLocais,
-    termoSimples: termosLocais,
+    termo: termosLocais || termosDePergunta(minutaParaIA),
+    termoSimples: termosAmplos || termosLocais,
     teses: [],
     sentido: null,
     materia: ''
@@ -704,7 +712,7 @@ async function extrairDaMinuta(
   let extracao: AnalisePreditivaExtracao;
   try {
     const provider = getProvider(payload.provider);
-    const prompt = buildAnalisePreditivaExtracaoPrompt(minutaAnonimizada, {
+    const prompt = buildAnalisePreditivaExtracaoPrompt(minutaParaIA, {
       unidade: `${payload.orgao} / ${payload.instancias.join(' + ')}${payload.orgaosJulgadores?.length ? ` / ${payload.orgaosJulgadores.join(', ')}` : ''}`,
       hoje: new Date().toISOString().slice(0, 10)
     });
@@ -752,10 +760,15 @@ export async function executarAnalisePreditiva(
 
   emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.EXTRAINDO });
 
-  // Anonimização ANTES de qualquer chamada de LLM — mesma política aplicada
-  // aos documentos da Júlia. O texto cru da minuta não sai do navegador.
-  const minutaAnonimizada = prepararTextoParaIA(payload.minutaTexto);
-  const extracao = await extrairDaMinuta(payload, minutaAnonimizada, ctx);
+  // Anonimização é escolha do magistrado (dois botões). Quando escolhe
+  // anonimizar, aplica-se `prepararTextoParaIA` antes de qualquer chamada de
+  // LLM — mesma política dos documentos da Júlia; quando não, o rascunho vai
+  // como está. O texto (anonimizado ou não) só sai daqui para o provedor de IA
+  // que o próprio usuário configurou.
+  const minutaParaIA = payload.anonimizar
+    ? prepararTextoParaIA(payload.minutaTexto)
+    : payload.minutaTexto;
+  const extracao = await extrairDaMinuta(payload, minutaParaIA, ctx);
 
   emitir({
     type: JULIA_PORT_MSG.PROGRESSO,
@@ -820,17 +833,17 @@ export async function executarAnalisePreditiva(
   ultimaRecuperacao = {
     tipo: 'analise',
     payload,
-    minutaAnonimizada,
+    minutaParaIA,
     extracao,
     recuperacao
   };
 
-  await sintetizarAnalise(payload, minutaAnonimizada, extracao, recuperacao, ctx);
+  await sintetizarAnalise(payload, minutaParaIA, extracao, recuperacao, ctx);
 }
 
 async function sintetizarAnalise(
   payload: AnalisePreditivaStartPayload,
-  minutaAnonimizada: string,
+  minutaParaIA: string,
   extracao: AnalisePreditivaExtracao,
   recuperacao: JuliaRecuperacao,
   ctx: JuliaContexto
@@ -838,8 +851,8 @@ async function sintetizarAnalise(
   ctx.emitir({ type: JULIA_PORT_MSG.PROGRESSO, etapa: JULIA_ETAPA.SINTETIZANDO });
 
   const minutaComAviso = payload.minutaTruncada
-    ? `${minutaAnonimizada}\n\n[AVISO AO ANALISTA: a minuta excedeu o limite de leitura e o trecho intermediário foi omitido. Considere isso ao avaliar completude.]`
-    : minutaAnonimizada;
+    ? `${minutaParaIA}\n\n[AVISO AO ANALISTA: a minuta excedeu o limite de leitura e o trecho intermediário foi omitido. Considere isso ao avaliar completude.]`
+    : minutaParaIA;
 
   const provider = getProvider(payload.provider);
   const generator = provider.sendMessage({
@@ -871,8 +884,10 @@ async function sintetizarAnalise(
 }
 
 export interface ReescritaStartPayload {
-  /** Texto cru da minuta atual — anonimizado aqui, como nos demais fluxos. */
+  /** Texto (markdown) da minuta atual. */
   minutaTexto: string;
+  /** Anonimizar antes do LLM? Segue a mesma escolha feita na análise. */
+  anonimizar: boolean;
   /** Sugestões escolhidas pelo magistrado, no texto em que apareceram. */
   sugestoes: string[];
   /** Precedentes citados nas sugestões escolhidas (trecho + referência). */
@@ -904,7 +919,9 @@ export async function executarReescritaMinuta(
       {
         role: 'user',
         content: buildReescritaMinutaPrompt(
-          prepararTextoParaIA(payload.minutaTexto),
+          payload.anonimizar
+            ? prepararTextoParaIA(payload.minutaTexto)
+            : payload.minutaTexto,
           payload.sugestoes,
           payload.precedentes
         ),

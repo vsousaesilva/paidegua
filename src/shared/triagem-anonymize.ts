@@ -201,6 +201,56 @@ export function sanitizePayloadForLLM(
 }
 
 /**
+ * Serializa o payload ANONIMIZADO da triagem (exatamente o que vai à LLM) num
+ * .txt estruturado, com cabeçalho e divisão por tarefa/processo — para o
+ * usuário auditar/arquivar o que foi enviado. Não expõe nome de parte física.
+ */
+export function montarTxtTriagemAnon(anon: TriagemPayloadAnon): string {
+  const L = 72;
+  const linhas: string[] = [
+    '='.repeat(L),
+    'TRIAGEM INTELIGENTE — CONTEÚDO ANONIMIZADO ENVIADO À IA',
+    '='.repeat(L),
+    `Gerado em: ${new Date().toLocaleString('pt-BR')}`,
+    `PJe: ${anon.hostnamePJe}`,
+    `Total de processos: ${anon.totalProcessos}`,
+    ''
+  ];
+
+  for (const tarefa of anon.tarefas) {
+    linhas.push('-'.repeat(L));
+    linhas.push(
+      `### TAREFA: ${tarefa.tarefaNome} (${tarefa.totalLido} lido(s)` +
+        `${tarefa.truncado ? ', truncado' : ''})`
+    );
+    linhas.push('-'.repeat(L));
+    for (const p of tarefa.processos) {
+      linhas.push(`• ${p.ref}`);
+      linhas.push(`  Assunto: ${p.assunto}`);
+      linhas.push(`  Órgão: ${p.orgao}`);
+      linhas.push(`  Polo ativo: ${p.poloAtivo} | Polo passivo: ${p.poloPassivo}`);
+      const flags = [
+        p.prioritario ? 'PRIORITÁRIO' : null,
+        p.sigiloso ? 'SIGILOSO' : null
+      ].filter(Boolean);
+      linhas.push(
+        `  Dias: tarefa=${p.diasNaTarefa ?? '-'} | últ. mov.=${
+          p.diasUltimoMovimento ?? '-'
+        } | conclusão=${p.diasDesdeConclusao ?? '-'}` +
+          (flags.length ? ` | ${flags.join(', ')}` : '')
+      );
+      if (p.etiquetas.length) linhas.push(`  Etiquetas: ${p.etiquetas.join(', ')}`);
+      if (p.ultimaMovimentacaoTexto) {
+        linhas.push(`  Últ. movimentação: ${p.ultimaMovimentacaoTexto}`);
+      }
+      linhas.push('');
+    }
+  }
+
+  return linhas.join('\n');
+}
+
+/**
  * Aviso curto que pode ser injetado no system prompt da LLM e exibido no
  * dashboard, para auditoria.
  */

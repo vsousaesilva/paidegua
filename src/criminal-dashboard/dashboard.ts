@@ -1237,8 +1237,8 @@ async function carregarPdfManual(
     return;
   }
 
-  // 2ª tentativa: OCR (Tesseract). Roda quando a extração nativa
-  // identifica digitalização ou devolve texto vazio (PDF gerado por
+  // 2ª tentativa: OCR local (PP-OCR via offscreen). Roda quando a extração
+  // nativa identifica digitalização ou devolve texto vazio (PDF gerado por
   // scanner sem camada OCR).
   const precisaOcr = isScanned || !texto.trim();
   if (precisaOcr) {
@@ -1265,7 +1265,7 @@ async function carregarPdfManual(
     } catch (err) {
       // Em caso de falha, log completo no console e trecho legível
       // no trace para o usuário. O erro frequentemente é silencioso
-      // (worker do Tesseract perdeu acesso a um asset), por isso
+      // (ex.: modelo do OCR não carregou no offscreen), por isso
       // garantimos console.error com stack.
       console.error(`${LOG_PREFIX} OCR falhou:`, err);
       const detalhe = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
