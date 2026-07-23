@@ -8173,9 +8173,40 @@
       ]
     },
     {
+      "id": "PES-08",
+      "titulo": "Análise preditiva — lotação do usuário como unidade padrão + anonimizar a minuta antes de analisar",
+      "descricao": "Dois refinamentos da análise preditiva de minutas (PES-07), pós-1.11.0, empacotados na REL-1.12.0. (1) A unidade confrontada passa a ter como PADRÃO a lotação do próprio usuário (coletada em src/content/julia/lotacao-usuario.ts), dispensando a seleção manual a cada uso — o usuário só ajusta se quiser comparar com outra unidade. (2) Botão para ANONIMIZAR o texto da minuta antes de enviá-la ao escopo preditivo: os dados pessoais das partes são mascarados localmente e só então a minuta segue para a análise (opção 'Analisar com o texto anonimizado'). Reaproveita o anonimizador local (ANON-30). Manual público atualizado com a subseção 'Análise preditiva da minuta'.",
+      "categoria": "modulo",
+      "prioridade": "P2",
+      "coluna": "lancado",
+      "dataConclusao": "2026-07-23T00:00:00.000Z",
+      "origem": "refinamentos pós-1.11.0 pedidos pelo owner — julho/2026",
+      "tags": ["julia", "analise-preditiva", "gabinete", "lotacao", "anonimizacao", "minuta"],
+      "esforco": "S",
+      "depende": ["PES-07", "ANON-30"],
+      "aceitacao": [
+        "unidade confrontada vem por padrão como a lotação do usuário; ajustável",
+        "botão de anonimizar a minuta antes da análise preditiva (máscara local das partes)",
+        "manual público documenta a análise preditiva e os dois refinamentos",
+        "typecheck + build OK"
+      ],
+      "owner": "vsousaesilva@jfce.jus.br",
+      "dataCriacao": "2026-07-23T00:00:00.000Z",
+      "atualizadoEm": "2026-07-23T00:00:00.000Z",
+      "atualizadoPor": "claude-code/sessao-2026-07-23",
+      "historico": [
+        {
+          "tipo": "criado",
+          "autor": "claude-code/sessao-2026-07-23",
+          "data": "2026-07-23T00:00:00.000Z",
+          "comando": "Card aberto retrospectivamente para registrar os refinamentos da análise preditiva (lotação do usuário como unidade padrão + anonimizar a minuta antes de analisar), empacotados e aprovados na REL-1.12.0."
+        }
+      ]
+    },
+    {
       "id": "REL-1.12.0",
       "titulo": "Release v1.12.0 — OCR local PP-OCR + anonimizador local (A–E) + refinamentos Júlia/análise preditiva",
-      "descricao": "Release-pacote único (working tree sobre v1.11.0; arquivos entrelaçados entre frentes, por isso não separado em commits). Frentes: OCR-30 (OCR local determinístico PP-OCR/ONNX/WebGPU no offscreen + política local-first; imagem-direto da REL-1.6.5 vira fallback; Tesseract removido; Resumo da pauta migrado); ANON-30 (anonimizador 100% local, nome→papel via partes estruturadas, sem LLM, A–E); refinamentos pós-1.11.0 da análise preditiva de minutas + lotação do usuário na Júlia (id/escopo a confirmar com o owner). Bump 1.11.0 → 1.12.0 (minor: feature significativa + 2 deps novas: onnxruntime-web, ppu-paddle-ocr). Nova permissão de manifest: offscreen. CSP extension_pages ganha worker-src 'self'.",
+      "descricao": "Release-pacote único (working tree sobre v1.11.0; arquivos entrelaçados entre frentes, por isso não separado em commits). Frentes: OCR-30 (OCR local determinístico PP-OCR/ONNX/WebGPU no offscreen + política local-first; imagem-direto da REL-1.6.5 vira fallback; Tesseract removido; Resumo da pauta migrado); ANON-30 (anonimizador 100% local, nome→papel via partes estruturadas, sem LLM, A–E); PES-08 (refinamentos da análise preditiva: lotação do usuário como unidade padrão + anonimizar a minuta antes de analisar). Bump 1.11.0 → 1.12.0 (minor: feature significativa + 2 deps novas: onnxruntime-web, ppu-paddle-ocr). Nova permissão de manifest: offscreen. CSP extension_pages ganha worker-src 'self'.",
       "categoria": "infra",
       "prioridade": "P1",
       "coluna": "lancado",
@@ -8183,7 +8214,7 @@
       "origem": "skill release-extensao — sessão 2026-07-23",
       "tags": ["release", "extensao", "cws", "ocr", "pp-ocr", "onnx", "anonimizacao", "julia"],
       "esforco": "L",
-      "depende": ["OCR-30", "ANON-30", "REL-1.11.0"],
+      "depende": ["OCR-30", "ANON-30", "PES-08", "REL-1.11.0"],
       "aceitacao": [
         "manifest.json e package.json em 1.12.0; dist/manifest.json em 1.12.0",
         "dist/background.js contém kanban.paidegua.ia.br (BACKEND_URL preservada)",
