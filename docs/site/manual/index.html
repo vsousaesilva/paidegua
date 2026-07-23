@@ -235,15 +235,15 @@
     <p>Produz um resumo narrado em voz sintetizada. Útil para visão geral rápida em deslocamento.</p>
 
     <h4 id="anonimizar">Anonimizar autos</h4>
-    <p>Substitui dados sensíveis nos documentos extraídos:</p>
+    <p>Substitui dados sensíveis nos documentos extraídos — <strong>tudo na sua máquina, sem enviar nada à IA nesta etapa</strong>:</p>
     <ul>
-      <li>CPF, CNPJ, CEP, telefones, e-mails, RG e dados bancários — substituição <strong>local</strong>, por regex, sem envio à IA.</li>
-      <li>Nomes de pessoas físicas — substituição via IA.</li>
+      <li>CPF, CNPJ, CEP, telefones, e-mails, RG e dados bancários — substituição <strong>local</strong>, por regex.</li>
+      <li>Nomes de pessoas físicas — substituídos pelo <strong>papel processual</strong>, identificados a partir das <strong>partes do processo</strong> (também <strong>100% local, sem uso de IA</strong>).</li>
     </ul>
     <p>Os dados viram marcadores genéricos (ex.: <code>PARTE_AUTORA</code>, <code>CPF_OCULTO</code>).</p>
 
     <h4 id="ocr">Rodar OCR</h4>
-    <p>Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). O reconhecimento de texto (OCR) é feito <strong>na sua máquina</strong> — o texto extraído entra na leitura e <strong>pode ser anonimizado antes de ir à IA</strong>. Apenas o que o OCR não conseguir ler (ex.: manuscrito, carimbo pesado) é enviado como imagem à IA do provedor configurado. Documentos com muitas páginas podem demorar mais; ajuste o limite na aba <strong>Geral</strong>.</p>
+    <p>Aparece automaticamente quando há documentos digitalizados (PDFs de imagem). O reconhecimento de texto (OCR) é feito <strong>na sua máquina, sem usar a IA</strong> — o texto extraído entra na leitura e <strong>pode ser anonimizado antes de qualquer envio à IA</strong>. Apenas o que o OCR não conseguir ler (ex.: manuscrito, carimbo pesado) é enviado como imagem à IA do provedor configurado. Documentos com muitas páginas podem demorar mais; ajuste o limite na aba <strong>Geral</strong>.</p>
 
     <h4 id="minutar">Minutar (com triagem automática)</h4>
     <p>Funciona como assistente de triagem:</p>
